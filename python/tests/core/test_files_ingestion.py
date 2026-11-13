@@ -43,6 +43,7 @@ _CONTRACT_BODY = {
         "indexFeatureGroupName": None,
         "maxFileSizeMB": None,
         "filesPerPage": 100,
+        "copyWorkers": 4,
         "failOnFirstError": False,
         "transformScriptPath": None,
         "keepOriginal": False,
@@ -144,6 +145,7 @@ class TestConfiguration:
             "indexFeatureGroupName": None,
             "maxFileSizeMB": None,
             "filesPerPage": 100,
+            "copyWorkers": 4,
             "failOnFirstError": False,
             "transformScriptPath": None,
             "keepOriginal": False,
@@ -199,6 +201,7 @@ class TestConfiguration:
             max_file_size_mb=512,
             fail_on_first_error=True,
             files_per_page=50,
+            copy_workers=8,
         )
 
         files = job.to_dict()["filesConfig"]
@@ -206,6 +209,9 @@ class TestConfiguration:
         assert files["maxFileSizeMB"] == 512
         assert files["failOnFirstError"] is True
         assert files["filesPerPage"] == 50
+        assert files["copyWorkers"] == 8
+        assert job.copy_workers == 8
+        assert _job_builder().to_dict()["filesConfig"]["copyWorkers"] == 4
         assert job.mirror_deletions is True
         assert job.max_file_size_mb == 512
 
@@ -223,6 +229,8 @@ class TestConfiguration:
             ({"max_file_size_mb": -1}, "max_file_size_mb"),
             ({"max_file_size_mb": "big"}, "max_file_size_mb"),
             ({"files_per_page": 0}, "files_per_page"),
+            ({"copy_workers": 0}, "copy_workers"),
+            ({"copy_workers": 17}, "copy_workers"),
             ({"transform_script": "Resources/t.txt"}, "transform_script"),
             ({"transform_script": 3}, "transform_script"),
             ({"resources": [1]}, "resources must be a dict"),

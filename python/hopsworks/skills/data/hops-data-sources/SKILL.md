@@ -542,7 +542,7 @@ drive.save()
 ```
 
 ```bash
-hops datasource ingest-files <source> --dataset NAME [--prefix P] [--include GLOB]... [--exclude GLOB]... [--mirror-deletions] [--index | --index-name FG] [--max-file-size-mb N] [--transform-script Resources/transform.py [--keep-original]] [--cron "0 0 2 ? * *"] [--name JOB] [--no-run]
+hops datasource ingest-files <source> --dataset NAME [--prefix P] [--include GLOB]... [--exclude GLOB]... [--mirror-deletions] [--index | --index-name FG] [--max-file-size-mb N] [--copy-workers N] [--transform-script Resources/transform.py [--keep-original]] [--cron "0 0 2 ? * *"] [--name JOB] [--no-run]
 hops datasource files-jobs <source>          # the files jobs of this data source: job, dataset, prefix, schedule, mirror, index
 hops job history <job>                       # runs; a run that failed on some files is FAILED, the successful copies stay
 ```
@@ -557,6 +557,7 @@ job = sc.ingest_files(
     mirror_deletions=False,            # True: files gone from the source are deleted from the dataset
     index=False,                       # True -> feature group files_<dataset>; or a name
     max_file_size_mb=None,             # None or 0 = no cap; larger files are counted as oversized
+    copy_workers=4,                    # files downloaded at the same time, 1-16; 1 = one at a time
     transform_script=None,             # project path of a .py with a HopsFileTransformer, see "Transform files" below
     keep_original=False,               # with a script: also store the file as it is in the source
     schedule=None,                     # Quartz cron in UTC, seconds first; None = run only when started
@@ -574,7 +575,9 @@ sc.get_files_ingestion_jobs()          # the FILES jobs of this data source in t
 ```
 
 Each run lists the prefix (`files_per_page` objects per request), copies new and changed files (size, modification time or ETag differ from the manifest), and skips the rest; a file that fails does not stop the run (unless `fail_on_first_error=True`), the copies that succeeded stay, and the run ends FAILED with the failures in `files_progress["failedFiles"]`.
-`prefix`, `include`, `exclude`, `mirror_deletions`, `index`, `max_file_size_mb`, `transform_script`, `keep_original`, `schedule` and `resources` can change with `update(...)`; the data source and the dataset cannot, create another job instead.
+`copy_workers` files are downloaded at the same time; raise it for many small files, lower it when the source throttles or refuses connections (SFTP and Google Drive open one connection per worker).
+The transform script, when there is one, still runs on one file at a time.
+`prefix`, `include`, `exclude`, `mirror_deletions`, `index`, `max_file_size_mb`, `copy_workers`, `transform_script`, `keep_original`, `schedule` and `resources` can change with `update(...)`; the data source and the dataset cannot, create another job instead.
 
 **Transform files before they are stored.** `transform_script` names a `.py` file in the project (upload it first, e.g. to `Resources/`) that runs on every downloaded and checksum-verified file before anything of it is in the dataset:
 

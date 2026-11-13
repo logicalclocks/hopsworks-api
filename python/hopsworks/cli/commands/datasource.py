@@ -2616,6 +2616,7 @@ def _files_job_dict(job: Any, execution_id: Any = None) -> dict[str, Any]:
         "mirrorDeletions": job.mirror_deletions,
         "indexFeatureGroup": job.index_feature_group,
         "maxFileSizeMb": job.max_file_size_mb,
+        "copyWorkers": job.copy_workers,
         "transformScript": job.transform_script,
         "keepOriginal": job.keep_original,
         "schedule": job.schedule,
@@ -2674,6 +2675,13 @@ def _files_job_rows(jobs: list[Any]) -> list[list[Any]]:
     "--max-file-size-mb", type=int, help="Skip larger files; unset or 0 for no limit."
 )
 @click.option(
+    "--copy-workers",
+    type=click.IntRange(1, 16),
+    default=4,
+    show_default=True,
+    help="Files downloaded at the same time; 1 copies one file at a time.",
+)
+@click.option(
     "--transform-script",
     help="Path in the project of a .py file whose HopsFileTransformer runs on every file before it is stored, e.g. Resources/transform.py.",
 )
@@ -2702,6 +2710,7 @@ def connector_ingest_files(
     index_files: bool,
     index_name: str | None,
     max_file_size_mb: int | None,
+    copy_workers: int,
     transform_script: str | None,
     keep_original: bool,
     cron: str | None,
@@ -2723,6 +2732,7 @@ def connector_ingest_files(
         index_files: Whether to keep an index feature group.
         index_name: Name of the index feature group.
         max_file_size_mb: File size cap in MB.
+        copy_workers: Number of files downloaded at the same time.
         transform_script: Project path of the script that transforms every file.
         keep_original: Whether the files are also stored as they are in the source.
         cron: Cron expression of the schedule.
@@ -2747,6 +2757,7 @@ def connector_ingest_files(
             mirror_deletions=mirror_deletions,
             index=index,
             max_file_size_mb=max_file_size_mb,
+            copy_workers=copy_workers,
             transform_script=transform_script,
             keep_original=keep_original,
             schedule=cron,

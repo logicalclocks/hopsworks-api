@@ -34,6 +34,8 @@ if TYPE_CHECKING:
 DTO_TYPE = "ingestionJobConfiguration"
 MODE_FILES = "FILES"
 DEFAULT_FILES_PER_PAGE = 100
+DEFAULT_COPY_WORKERS = 4
+MAX_COPY_WORKERS = 16
 _JOB_NAME_PATTERN = re.compile(r"[^A-Za-z0-9_]")
 _INDEX_NAME_PATTERN = re.compile(r"[^a-z0-9_]")
 _MAX_INDEX_NAME = 63
@@ -48,6 +50,7 @@ _EDITABLE = (
     "max_file_size_mb",
     "fail_on_first_error",
     "files_per_page",
+    "copy_workers",
     "transform_script",
     "keep_original",
     "resources",
@@ -135,6 +138,18 @@ def _validate_files_per_page(value: Any) -> int:
     return value
 
 
+def _validate_copy_workers(value: Any) -> int:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not 1 <= value <= MAX_COPY_WORKERS
+    ):
+        raise ValueError(
+            f"copy_workers must be an integer between 1 and {MAX_COPY_WORKERS}."
+        )
+    return value
+
+
 def _validate_resources(resources: Any) -> dict[str, Any] | None:
     if resources is None:
         return None
@@ -181,6 +196,7 @@ class FilesIngestionJob:
         name: str | None = None,
         fail_on_first_error: bool = False,
         files_per_page: int = DEFAULT_FILES_PER_PAGE,
+        copy_workers: int = DEFAULT_COPY_WORKERS,
         transform_script: str | None = None,
         keep_original: bool = False,
         environment_name: str | None = None,
@@ -205,6 +221,7 @@ class FilesIngestionJob:
             name: Job name; `<connector>_<dataset>_files` when `None`.
             fail_on_first_error: Stop the run at the first file that fails instead of continuing.
             files_per_page: Number of files listed per request.
+            copy_workers: Number of files downloaded at the same time, 1 to 16; `1` copies one file at a time.
             transform_script: Path in the project of a `.py` file whose `HopsFileTransformer` runs on every file before it is stored, such as `Resources/transform.py`; `None` copies the files as they are.
             keep_original: With a transform script, also store each file as it is in the source; the transform's output then goes under `_transformed/` in the dataset.
             environment_name: Python environment the job runs in; the cluster default when `None`.
@@ -232,6 +249,7 @@ class FilesIngestionJob:
         self._resources = _validate_resources(resources)
         self._fail_on_first_error = bool(fail_on_first_error)
         self._files_per_page = _validate_files_per_page(files_per_page)
+        self._copy_workers = _validate_copy_workers(copy_workers)
         self._transform_script = _validate_transform_script(transform_script)
         self._keep_original = bool(keep_original)
         self._environment_name = environment_name
@@ -303,6 +321,7 @@ class FilesIngestionJob:
             name=job.name,
             fail_on_first_error=bool(files.get("failOnFirstError")),
             files_per_page=files.get("filesPerPage") or DEFAULT_FILES_PER_PAGE,
+            copy_workers=files.get("copyWorkers") or DEFAULT_COPY_WORKERS,
             transform_script=files.get("transformScriptPath"),
             keep_original=bool(files.get("keepOriginal")),
             environment_name=config.get("environmentName"),
@@ -352,6 +371,7 @@ class FilesIngestionJob:
                 ),
                 "maxFileSizeMB": self._max_file_size_mb,
                 "filesPerPage": self._files_per_page,
+                "copyWorkers": self._copy_workers,
                 "failOnFirstError": self._fail_on_first_error,
                 "transformScriptPath": self._transform_script,
                 # The flag says nothing without a script; the server drops it too.
@@ -430,6 +450,12 @@ class FilesIngestionJob:
     def max_file_size_mb(self) -> int | None:
         """Size cap of the files copied, in MB; `None` or `0` copies any size."""
         return self._max_file_size_mb
+
+    @public
+    @property
+    def copy_workers(self) -> int:
+        """Number of files a run downloads at the same time."""
+        return self._copy_workers
 
     @public
     @property
@@ -554,7 +580,7 @@ class FilesIngestionJob:
     def update(self, **fields: Any) -> FilesIngestionJob:
         """Change settings of the job and save it; they apply from the next run.
 
-        The keyword arguments are any of `prefix`, `include`, `exclude`, `mirror_deletions`, `index`, `max_file_size_mb`, `fail_on_first_error`, `files_per_page`, `transform_script` (`None` removes it), `keep_original`, `resources`, `schedule` (`None` removes it) and `environment_name`.
+        The keyword arguments are any of `prefix`, `include`, `exclude`, `mirror_deletions`, `index`, `max_file_size_mb`, `fail_on_first_error`, `files_per_page`, `copy_workers`, `transform_script` (`None` removes it), `keep_original`, `resources`, `schedule` (`None` removes it) and `environment_name`.
         Fields not given keep their value.
         A changed transform script, or a script whose content changed, processes every file again on the next run: from the stored originals when they are kept, from the source otherwise.
         The data source and the dataset cannot change; create another job for them.
@@ -588,6 +614,8 @@ class FilesIngestionJob:
             self._fail_on_first_error = bool(fields["fail_on_first_error"])
         if "files_per_page" in fields:
             self._files_per_page = _validate_files_per_page(fields["files_per_page"])
+        if "copy_workers" in fields:
+            self._copy_workers = _validate_copy_workers(fields["copy_workers"])
         if "transform_script" in fields:
             self._transform_script = _validate_transform_script(
                 fields["transform_script"]

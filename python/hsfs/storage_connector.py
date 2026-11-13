@@ -455,6 +455,7 @@ class StorageConnector(ABC):
         name: str | None = None,
         fail_on_first_error: bool = False,
         files_per_page: int = 100,
+        copy_workers: int = 4,
         transform_script: str | None = None,
         keep_original: bool = False,
     ) -> files_ingestion.FilesIngestionJob:
@@ -499,6 +500,7 @@ class StorageConnector(ABC):
             name: Job name; `<connector>_<dataset>_files` with `_` for every character outside letters, digits and `_`, when `None`.
             fail_on_first_error: Stop a run at the first file that fails instead of copying the rest.
             files_per_page: Number of files listed per request to the source.
+            copy_workers: Number of files downloaded at the same time, 1 to 16; `1` copies one file at a time. The transform script, when there is one, still runs on one file at a time.
             transform_script: Path in the project of a `.py` file whose `HopsFileTransformer` runs on every downloaded file before it is stored, such as `Resources/transform.py`; `None` copies the files as they are.
             keep_original: With a transform script, also store each file as it is in the source; the output of the transform then goes under `_transformed/` in the dataset.
 
@@ -528,6 +530,7 @@ class StorageConnector(ABC):
             name=name,
             fail_on_first_error=fail_on_first_error,
             files_per_page=files_per_page,
+            copy_workers=copy_workers,
             transform_script=transform_script,
             keep_original=keep_original,
         )
