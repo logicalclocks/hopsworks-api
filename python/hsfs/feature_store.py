@@ -472,7 +472,9 @@ class FeatureStore:
     @deprecated("hsfs.feature_store.FeatureStore.get_data_source")
     @public
     @usage._method_logger
-    def get_storage_connector(self, name: str) -> storage_connector.StorageConnector:
+    def get_storage_connector(
+        self, name: str
+    ) -> storage_connector.StorageConnector | None:
         """Get a previously created storage connector from the feature store.
 
         Storage connectors encapsulate all information needed for the execution engine to read and write to specific storage.
@@ -492,13 +494,14 @@ class FeatureStore:
             name: Name of the storage connector to retrieve.
 
         Returns:
-            Storage connector object.
+            Storage connector object, or `None` if no storage connector with this name exists.
         """
-        return self.get_data_source(name).storage_connector
+        data_source = self.get_data_source(name)
+        return data_source.storage_connector if data_source is not None else None
 
     @public
     @usage._method_logger
-    def get_data_source(self, name: str) -> ds.DataSource:
+    def get_data_source(self, name: str) -> ds.DataSource | None:
         """Get a data source from the feature store.
 
         Data sources encapsulate all information needed for the execution engine
@@ -520,13 +523,14 @@ class FeatureStore:
             name: Name of the data source to retrieve.
 
         Returns:
-            `DataSource`. Data source object.
+            `DataSource`. Data source object, or `None` if no data source with this name exists.
         """
         connector = self._storage_connector_api._get(
             self._id, name, with_mandatory_tags=True
         )
-        if connector is not None:
-            util._check_missing_mandatory_tags(connector.missing_mandatory_tags)
+        if connector is None:
+            return None
+        util._check_missing_mandatory_tags(connector.missing_mandatory_tags)
         return ds.DataSource(storage_connector=connector)
 
     @public

@@ -1422,7 +1422,12 @@ def _main(
 
     project = hopsworks.login()
     fs = project.get_feature_store()
-    connector = fs.get_data_source(config.connector_name).storage_connector
+    data_source = fs.get_data_source(config.connector_name)
+    if data_source is None:
+        raise _MailSyncError(
+            f"Data source {config.connector_name} no longer exists; recreate it and the sync job"
+        )
+    connector = data_source.storage_connector
     if connector.id != config.connector_id or connector.type != connector_type:
         raise _MailSyncError(
             f"Data source {config.connector_name} is no longer the one this job was created for; "
