@@ -498,14 +498,17 @@ class SemanticLayerApi:
 
     # region Exports and clients
 
+    def _export_listing(self, sp: semantic_layer.SemanticProject) -> dict[str, Any]:
+        """The control plane's exports listing: `items`, and `rulesRevision`, the Trino rules revision under which an item that has a row carries `policyFree`."""
+        _client = client._get_instance()
+        return _client._send_request("GET", self._path(sp.id, "exports")) or {}
+
     def _exports(
         self, sp: semantic_layer.SemanticProject
     ) -> list[semantic_layer.SemanticExport]:
-        _client = client._get_instance()
-        response = _client._send_request("GET", self._path(sp.id, "exports")) or {}
         return [
             semantic_layer.SemanticExport.from_response_json(item)
-            for item in response.get("items") or []
+            for item in self._export_listing(sp).get("items") or []
         ]
 
     def _start_export(
@@ -531,18 +534,6 @@ class SemanticLayerApi:
             headers={"content-type": _JSON},
             data=json.dumps(report),
         )
-
-    def _export_rules(
-        self, sp: semantic_layer.SemanticProject, export_name: str
-    ) -> tuple[str | None, bool]:
-        """The Trino rules revision of the caller's gateway session and whether it lists the export as policy-free; nothing else of the session is returned."""
-        _client = client._get_instance()
-        session = _client._send_request("GET", ["semantic", "sessions", sp.id]) or {}
-        entry = next(
-            (e for e in session.get("exports") or [] if e.get("name") == export_name),
-            {},
-        )
-        return session.get("rulesRevision"), entry.get("policyFree") is True
 
     def _query_history(
         self,
@@ -926,12 +917,16 @@ def _run_export(
     """
     api = SemanticLayerApi()
     sp = api._get_by_id(semantic_project_id)
-    export = next((e for e in api._exports(sp) if e.name == export_name), None)
-    if export is None:
+    listing = api._export_listing(sp)
+    item = next(
+        (i for i in listing.get("items") or [] if i.get("name") == export_name), None
+    )
+    if item is None:
         raise SemanticLayerException(
             f"Semantic project '{sp.name}' has no export '{export_name}'.",
             error_code="SEMANTIC_LAYER_NOT_FOUND",
         )
+    export = semantic_layer.SemanticExport.from_response_json(item)
     logical_time = _logical_time()
     execution_id = os.environ.get("HOPSWORKS_JOB_EXECUTION_ID")
     report: dict[str, Any] = {
@@ -942,7 +937,6 @@ def _run_export(
         "rows": None,
     }
     api._report_export(sp, export_name, {**report, "status": "RUNNING"})
-    rules_revision, policy_free = _rules_at_start(api, sp, export_name)
     try:
         _write_export(
             api,
@@ -950,7 +944,7 @@ def _run_export(
             export,
             logical_time,
             report,
-            rules_revision if policy_free else None,
+            listing.get("rulesRevision") if item.get("policyFree") is True else None,
         )
     except Exception as err:
         refused = (
@@ -967,22 +961,6 @@ def _run_export(
     return report
 
 
-def _rules_at_start(
-    api: SemanticLayerApi, sp: semantic_layer.SemanticProject, export_name: str
-) -> tuple[str | None, bool]:
-    """The Trino rules revision at the run's start and whether the session lists the export as policy-free; `(None, False)` when the session cannot be read."""
-    try:
-        return api._export_rules(sp, export_name)
-    except Exception as err:
-        _logger.warning(
-            "Export %s of %s records no materialisation: the session cannot be read: %s",
-            export_name,
-            sp.name,
-            err,
-        )
-        return None, False
-
-
 def _write_export(
     api: SemanticLayerApi,
     sp: semantic_layer.SemanticProject,
@@ -993,7 +971,7 @@ def _write_export(
 ) -> None:
     """Query the export's saved query and write its rows, setting `rows`, `featureGroupId`, `message` and, when one may be recorded, `materialization` in `report`.
 
-    `rules_revision` is the Trino rules revision at the run's start, `None` unless the session then listed the export as policy-free.
+    `rules_revision` is the Trino rules revision at the run's start, `None` unless the exports listing then marked the export policy-free.
     """
     import pandas as pd
 
@@ -1086,7 +1064,7 @@ def _materialization(
 ) -> dict[str, Any] | None:
     """What a run wrote that the gateway may answer queries from, or `None` when any condition fails.
 
-    Every condition of the contract must hold: the export has no lookback, so the run replaced every row; the session listed the export as policy-free at the run's start, under `rules_revision`; the gateway pinned every relation the query scanned (`X-Semantic-Source-Versions`, covering the feature groups it read) and named the build and the saved query's definition; and the Delta version of the run's own commit is found by its application transaction.
+    Every condition of the contract must hold: the export has no lookback, so the run replaced every row; the exports listing marked the export policy-free at the run's start, under `rules_revision`; the gateway pinned every relation the query scanned (`X-Semantic-Source-Versions`, covering the feature groups it read) and named the build and the saved query's definition; and the Delta version of the run's own commit is found by its application transaction.
     """
     try:
         source_versions = json.loads(headers.get(_SOURCE_VERSIONS_HEADER) or "null")

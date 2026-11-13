@@ -1627,23 +1627,13 @@ class TestExports:
 
         assert sales.exports() == []
 
-    def test_export_rules_are_the_sessions_revision_and_the_exports_flag(
-        self, http, sales
-    ):
+    def test_the_listings_rules_fields_stay_off_the_exports(self, http, sales):
         http._send_request.return_value = {
-            "buildId": 12,
             "rulesRevision": "b" * 64,
-            "exports": [
-                {"name": "other", "policyFree": False},
-                {"name": "revenue_daily", "policyFree": True},
-            ],
+            "items": [{**EXPORT_JSON, "policyFree": True}],
         }
-        api = SemanticLayerApi()
 
-        assert api._export_rules(sales, "revenue_daily") == ("b" * 64, True)
-        assert api._export_rules(sales, "other") == ("b" * 64, False)
-        assert api._export_rules(sales, "unlisted") == ("b" * 64, False)
-        assert http._send_request.call_args.args == ("GET", ["semantic", "sessions", 7])
+        assert sales.exports() == [SemanticExport.from_response_json(EXPORT_JSON)]
 
     @pytest.mark.parametrize("wait", [False, True])
     def test_run_export_starts_the_job_and_returns_its_execution(
@@ -1789,23 +1779,20 @@ class TestExportJob:
         """A run of export revenue_daily of semantic project 7, against fake control plane, gateway and feature store."""
         monkeypatch.setenv("HOPSWORKS_JOB_EXECUTION_ID", "77")
         monkeypatch.setenv("HOPS_LOGICAL_DATE", "2026-11-07T02:00:00Z")
+        export = dict(EXPORT_JSON)
         state = SimpleNamespace(
-            export=dict(EXPORT_JSON),
+            export=export,
+            listing={"items": [export]},
             rows=self.ROWS,
             headers={"X-Semantic-Max-Rows": "1000000"},
             reports=[],
             started=[],
-            session={},
             fg=MagicMock(name="FeatureGroup", id=None, version=1, description=None),
         )
 
         def control_plane(method, path, **kwargs):
-            if path[:2] == ["semantic", "sessions"]:
-                if isinstance(state.session, Exception):
-                    raise state.session
-                return state.session
             if path[-1] == "exports":
-                return {"items": [state.export]}
+                return state.listing
             if path[-1] == "status":
                 body = json.loads(kwargs["data"])
                 (
@@ -2120,15 +2107,12 @@ class TestExportMaterialization:
     @pytest.fixture
     def run(self, http, mocker, monkeypatch):
         job = TestExportJob.job.__wrapped__(TestExportJob(), http, mocker, monkeypatch)
-        job.export["featureGroupId"] = 501
+        job.export.update(featureGroupId=501, policyFree=True)
         job.fg.id = 501
-        job.session = {
-            "rulesRevision": self.RULES,
-            "exports": [
-                {"name": "other", "policyFree": False},
-                {"name": "revenue_daily", "policyFree": True},
-            ],
-        }
+        job.listing["rulesRevision"] = self.RULES
+        job.listing["items"].insert(
+            0, {**EXPORT_JSON, "name": "other", "policyFree": True}
+        )
         job.headers = {
             **job.headers,
             "X-Semantic-Build": "12",
@@ -2162,21 +2146,20 @@ class TestExportMaterialization:
         )
         assert run.write_options == _written(True)
         assert "materialization" not in run.started[0]
-        session_calls = [
-            c
-            for c in http._send_request.call_args_list
-            if c.args[1][:2] == ["semantic", "sessions"]
+        assert [
+            c.args for c in http._send_request.call_args_list if c.args[0] == "GET"
+        ] == [
+            ("GET", ["project", 119, "semantic", "projects", 7]),
+            ("GET", ["project", 119, "semantic", "projects", 7, "exports"]),
         ]
-        assert len(session_calls) == 1
 
     @pytest.mark.parametrize(
         "change",
         [
             lambda run: run.export.update(lookback="7 days"),
-            lambda run: run.session.update(rulesRevision=None),
-            lambda run: run.session["exports"][1].update(policyFree=False),
-            lambda run: run.session.update(exports=[]),
-            lambda run: setattr(run, "session", RuntimeError("Payara is down")),
+            lambda run: run.listing.pop("rulesRevision"),
+            lambda run: run.export.update(policyFree=False),
+            lambda run: run.export.pop("policyFree"),
             lambda run: run.headers.pop("X-Semantic-Source-Versions"),
             lambda run: run.headers.update({"X-Semantic-Feature-Groups": "11,13"}),
             lambda run: run.headers.update({"X-Semantic-Source-Versions": "{}"}),
@@ -2188,8 +2171,7 @@ class TestExportMaterialization:
             "lookback",
             "no_rules_revision",
             "not_policy_free",
-            "not_listed",
-            "session_unreadable",
+            "no_policy_free",
             "unpinned",
             "a_source_not_pinned",
             "no_sources",
