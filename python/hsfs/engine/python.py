@@ -1689,7 +1689,16 @@ class Engine:
     def _by_row_hash(df: pd.DataFrame | pl.DataFrame, groups: list[int]) -> list[int]:
         """`groups` reordered so the i-th smallest row hash gets `groups[i]`."""
         if HAS_POLARS and isinstance(df, (pl.DataFrame, pl.dataframe.frame.DataFrame)):
-            hashes = df.hash_rows(seed=0).to_list()
+            try:
+                hashes = df.hash_rows(seed=0).to_list()
+            except pl.exceptions.InvalidOperationError:
+                # Older polars cannot hash list, array or struct cells, such as embeddings.
+                nested = [
+                    pl.Series(name, [str(cell) for cell in df[name].to_list()])
+                    for name, dtype in df.schema.items()
+                    if dtype in (pl.List, pl.Array, pl.Struct)
+                ]
+                hashes = df.with_columns(nested).hash_rows(seed=0).to_list()
         else:
             try:
                 hashes = pd.util.hash_pandas_object(df, index=False).tolist()
