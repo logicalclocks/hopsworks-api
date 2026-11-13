@@ -53,7 +53,11 @@ class JoinSpec:
     prefix: str | None = None
 
     def join_kwargs(self) -> dict[str, list[str] | None]:
-        """The key arguments of ``Query.join()``: ``on``, or ``left_on`` and ``right_on``."""
+        """The key arguments of ``Query.join()``: ``on``, or ``left_on`` and ``right_on``.
+
+        Returns:
+            The keyword arguments for `Query.join()`.
+        """
         if self.right_on is None:
             return {"on": self.on, "left_on": None, "right_on": None}
         return {"on": None, "left_on": self.on, "right_on": self.right_on}

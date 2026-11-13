@@ -135,7 +135,7 @@ def test_composite_key_link_is_kept_whole():
     }
     p = plan(infos, ["deals.a+deals.b=snap.a+snap.b"])
     assert p.links[0].left_cols == ["a", "b"] and p.keys == ["a", "b"]
-    sql = kumo_job.related_sql(p, "snap")
+    sql = kumo_job._related_sql(p, "snap")
     assert 'WHERE s."a" = t."a" AND s."b" = t."b"' in sql
 
 
@@ -223,7 +223,7 @@ def _accounts(crm):
 def test_context_rows_above_the_measured_size_refuse(crm):
     p = plan(crm, [], context_rows=2000)
     with pytest.raises(ScoreRefused, match="over 1000"):
-        kumo_job.check_caps(p)
+        kumo_job._check_caps(p)
 
 
 def test_reach_sql_counts_only_rows_reachable_from_the_selected_rows(crm):
@@ -233,7 +233,7 @@ def test_reach_sql_counts_only_rows_reachable_from_the_selected_rows(crm):
         cutoff="deals.closed_at",
         context_rows=2,
     )
-    sql = kumo_job.reach_sql(p)
+    sql = kumo_job._reach_sql(p)
     # The selection: the query rows and the context rows, bounded as the reads are.
     assert (
         'WITH sel AS ((SELECT "contact_id", "id" FROM "deals_1" WHERE "won" IS NULL'
@@ -256,7 +256,7 @@ def test_reach_sql_counts_only_rows_reachable_from_the_selected_rows(crm):
 def test_reach_sql_follows_two_hops_from_the_previous_group(crm):
     _accounts(crm)
     p = plan(crm, ["deals.contact_id=contacts.id", "contacts.account_id=accounts.id"])
-    sql = kumo_job.reach_sql(p)
+    sql = kumo_job._reach_sql(p)
     assert 'FROM sel s WHERE s."contact_id" = t."id"' in sql
     assert 'FROM p0 s WHERE s."account_id" = t."id"' in sql
 
@@ -265,7 +265,7 @@ def test_reach_sql_matches_composite_keys_on_every_column(crm):
     crm["deals"].columns["region"] = "string"
     crm["contacts"].columns["region"] = "string"
     p = plan(crm, ["deals.contact_id+deals.region=contacts.id+contacts.region"])
-    sql = kumo_job.reach_sql(p)
+    sql = kumo_job._reach_sql(p)
     assert 's."contact_id" = t."id" AND s."region" = t."region"' in sql
 
 
@@ -284,7 +284,7 @@ def _three_links(crm, links):
 
 def test_a_group_reached_two_ways_is_the_union_of_both_paths(crm):
     p = _three_links(crm, THREE_LINKS)
-    sql = kumo_job.related_sql(p, "accounts")
+    sql = kumo_job._related_sql(p, "accounts")
     # The deal's own account, directly; and the accounts of the deal's contact.
     assert (
         'p0 AS (SELECT "id", "plan" FROM "accounts_1" t '
@@ -300,7 +300,7 @@ def test_a_group_reached_two_ways_is_the_union_of_both_paths(crm):
         'SELECT "id", "plan" FROM p3)) WHERE "__n" = 1'
     )
     # Contacts of the deal, and the contacts of the deal's account.
-    contacts = kumo_job.related_sql(p, "contacts")
+    contacts = kumo_job._related_sql(p, "contacts")
     assert "FROM p1 UNION ALL" in contacts and "FROM p2)" in contacts
     assert 'FROM p0 s WHERE s."id" = t."account_id"' in contacts
 
@@ -310,22 +310,24 @@ def test_the_order_of_the_links_changes_nothing(crm, order):
     first = _three_links(crm, THREE_LINKS)
     other = plan(crm, [THREE_LINKS[i] for i in order], cutoff="deals.closed_at")
     for group in ("contacts", "accounts"):
-        assert kumo_job.related_sql(other, group) == kumo_job.related_sql(first, group)
-    assert kumo_job.reach_sql(other) == kumo_job.reach_sql(first)
+        assert kumo_job._related_sql(other, group) == kumo_job._related_sql(
+            first, group
+        )
+    assert kumo_job._reach_sql(other) == kumo_job._reach_sql(first)
 
 
 def test_admission_counts_the_rows_the_reads_take(crm):
     p = _three_links(crm, THREE_LINKS)
-    reach = kumo_job.reach_sql(p)
+    reach = kumo_job._reach_sql(p)
     for group in ("contacts", "accounts"):
-        read = kumo_job.related_sql(p, group)
+        read = kumo_job._related_sql(p, group)
         body = read.split(" SELECT ", 1)[0].removeprefix("WITH ")
         assert reach.startswith(f"WITH {body}")
         assert read[len(body) + len("WITH ") :].strip() in reach
 
 
 def test_reach_sql_is_none_without_related_groups(crm):
-    assert kumo_job.reach_sql(plan(crm, [])) is None
+    assert kumo_job._reach_sql(plan(crm, [])) is None
 
 
 def test_a_third_hop_is_refused_by_the_reach_chain(crm):
@@ -347,7 +349,7 @@ def test_a_third_hop_is_refused_by_the_reach_chain(crm):
     with pytest.raises(
         ScoreRefused, match="orgs not reachable from deals within 2 hops"
     ):
-        kumo_job.reach_sql(p)
+        kumo_job._reach_sql(p)
 
 
 def test_entity_over_the_byte_cap_refuses(crm, monkeypatch):
@@ -357,8 +359,8 @@ def test_entity_over_the_byte_cap_refuses(crm, monkeypatch):
         ScoreRefused,
         match=r"deals: 5 rows, 51 bytes \(UTF-8\) after projection, over the cap of 50",
     ):
-        kumo_job.check_admission(p, (5, 51), {})
-    kumo_job.check_admission(p, (5, 50), {})
+        kumo_job._check_admission(p, (5, 51), {})
+    kumo_job._check_admission(p, (5, 50), {})
 
 
 def test_related_rows_over_the_cap_refuse_on_the_reachable_count(crm, monkeypatch):
@@ -367,24 +369,24 @@ def test_related_rows_over_the_cap_refuse_on_the_reachable_count(crm, monkeypatc
     with pytest.raises(
         ScoreRefused, match=r"reachable .*: 11 \(contacts 4, activities 7\)"
     ):
-        kumo_job.check_admission(
+        kumo_job._check_admission(
             p, (1, 1), {"contacts": (4, 40), "activities": (7, 70)}
         )
-    kumo_job.check_admission(p, (1, 1), {"contacts": (4, 40), "activities": (6, 60)})
+    kumo_job._check_admission(p, (1, 1), {"contacts": (4, 40), "activities": (6, 60)})
 
 
 def test_related_bytes_over_the_cap_refuse_on_the_reachable_count(crm, monkeypatch):
     monkeypatch.setattr(kumo_job, "RELATED_BYTES_MAX", 100)
     p = plan(crm, ["deals.contact_id=contacts.id"])
     with pytest.raises(ScoreRefused, match=r"101 bytes \(UTF-8\) after projection"):
-        kumo_job.check_admission(p, (1, 1), {"contacts": (2, 101)})
-    kumo_job.check_admission(p, (1, 1), {"contacts": (2, 100)})
+        kumo_job._check_admission(p, (1, 1), {"contacts": (2, 101)})
+    kumo_job._check_admission(p, (1, 1), {"contacts": (2, 100)})
 
 
 def test_missing_weights_are_refused_clearly(monkeypatch):
     monkeypatch.delenv("KUMO_RELATIONAL_WEIGHTS", raising=False)
     with pytest.raises(ScoreRefused, match="KUMO_RELATIONAL_WEIGHTS is not set"):
-        kumo_job.weights_path()
+        kumo_job._weights_path()
 
 
 # region: schedule
@@ -453,7 +455,7 @@ def test_the_plan_survives_the_job_launchers_unquoted_expansion(crm):
     argv = launched.stdout.decode().split("\0")[:-1]
     assert argv[:3] == ["--system", "pipe", "--config"]
     assert len(argv) == 4
-    assert kumo_job.Plan.from_arg(argv[3]) == p
+    assert kumo_job.Plan._from_arg(argv[3]) == p
 
 
 def test_a_scheduled_runs_appended_fire_times_are_accepted(crm):
@@ -465,9 +467,9 @@ def test_a_scheduled_runs_appended_fire_times_are_accepted(crm):
         "-end_time",
         "2026-11-06T03:37:00Z",
     ]
-    args = kumo_job.job_args_parser().parse_args(argv)
+    args = kumo_job._job_args_parser().parse_args(argv)
     assert args.system == "pipe"
-    assert kumo_job.Plan.from_arg(args.config) == p
+    assert kumo_job.Plan._from_arg(args.config) == p
 
 
 @pytest.mark.parametrize("name", ["Sales", "my sales", "s'x", "1sales", "sales-1"])
@@ -658,7 +660,7 @@ def _run_row():
 
 def test_the_run_row_is_written_only_after_the_scores_insert_returned():
     calls = []
-    kumo_job.publish(
+    kumo_job._publish(
         pd.DataFrame({"id": [1]}),
         _run_row(),
         lambda df: calls.append("scores"),
@@ -675,7 +677,7 @@ def test_a_failed_scores_insert_leaves_no_run_row():
         raise RuntimeError("insert failed")
 
     with pytest.raises(RuntimeError):
-        kumo_job.publish(
+        kumo_job._publish(
             pd.DataFrame({"id": [1]}),
             _run_row(),
             failing,
@@ -687,7 +689,7 @@ def test_a_failed_scores_insert_leaves_no_run_row():
 
 def test_zero_query_rows_writes_only_the_run_row():
     calls = []
-    kumo_job.publish(
+    kumo_job._publish(
         pd.DataFrame({"id": []}),
         _run_row(),
         lambda df: calls.append("scores"),
@@ -791,9 +793,9 @@ def test_an_unrelated_output_group_is_neither_adopted_nor_deleted(
     owned, foreign = score.owned_resources("sales", None, [fg])
     assert owned == [] and foreign == ["feature group sales_scores v1"]
     with pytest.raises(ScoreRefused, match="sales_scores v1 exists without the marker"):
-        kumo_job.check_output_group(fg, "sales")
-    kumo_job.check_output_group(_group("sales_scores", "hops-score:sales x"), "sales")
-    kumo_job.check_output_group(None, "sales")
+        kumo_job._check_output_group(fg, "sales")
+    kumo_job._check_output_group(_group("sales_scores", "hops-score:sales x"), "sales")
+    kumo_job._check_output_group(None, "sales")
 
 
 @pytest.mark.parametrize(
@@ -831,10 +833,10 @@ def test_the_run_limit_and_class_are_not_the_marker(extra):
 
 
 def test_the_job_writes_the_marker_it_is_checked_by():
-    assert kumo_job.group_marked(
-        f"{kumo_job.owner_marker('sales')} Scores of sales.", "sales"
+    assert kumo_job._group_marked(
+        f"{kumo_job._owner_marker('sales')} Scores of sales.", "sales"
     )
-    assert kumo_job.job_marked(
+    assert kumo_job._job_marked(
         {
             "appPath": "Resources/hops-score/sales/kumo_job.py",
             "defaultArgs": ARGS,
@@ -922,26 +924,26 @@ def test_pinned_versions_reach_every_query_after_admission(crm):
     from dataclasses import replace
 
     p = plan(crm, ["deals.contact_id=contacts.id"], cutoff="deals.closed_at")
-    assert kumo_job.pin_sql(p) == (
+    assert kumo_job._pin_sql(p) == (
         "SELECT 'contacts', max(version) FROM \"contacts_1$history\" UNION ALL "
         "SELECT 'deals', max(version) FROM \"deals_1$history\""
     )
     pinned = replace(p, pins={"deals": 7, "contacts": 3})
     for sql in (
-        kumo_job.query_sql(pinned),
-        kumo_job.context_sql(pinned),
-        kumo_job.admission_sql(pinned, "deals"),
+        kumo_job._query_sql(pinned),
+        kumo_job._context_sql(pinned),
+        kumo_job._admission_sql(pinned, "deals"),
     ):
         assert 'FROM "deals_1" FOR VERSION AS OF 7 ' in sql + " "
     for sql in (
-        kumo_job.reach_sql(pinned),
-        kumo_job.related_sql(pinned, "contacts"),
+        kumo_job._reach_sql(pinned),
+        kumo_job._related_sql(pinned, "contacts"),
     ):
         assert '"deals_1" FOR VERSION AS OF 7 ' in sql
         assert 'FROM "contacts_1" FOR VERSION AS OF 3 t WHERE' in sql
     unique = score.unique_sql(pinned, pinned.links[0])
     assert unique.count('"contacts_1" FOR VERSION AS OF 3') == 2
-    assert "FOR VERSION" not in kumo_job.query_sql(p)
+    assert "FOR VERSION" not in kumo_job._query_sql(p)
 
 
 def test_the_pins_of_the_cli_never_travel_to_the_job(crm):
@@ -950,24 +952,24 @@ def test_the_pins_of_the_cli_never_travel_to_the_job(crm):
 
 
 def test_a_read_stops_before_keeping_rows_or_bytes_past_the_cap():
-    assert kumo_job.row_bytes((12, "abc", None, 1.5)) == 2 + 3 + 3
-    assert kumo_job.row_bytes(("é", "😀", None)) == 2 + 4
-    kumo_job.check_read("contacts", 100, 1_000, 100, 1_000)
+    assert kumo_job._row_bytes((12, "abc", None, 1.5)) == 2 + 3 + 3
+    assert kumo_job._row_bytes(("é", "😀", None)) == 2 + 4
+    kumo_job._check_read("contacts", 100, 1_000, 100, 1_000)
     with pytest.raises(ScoreRefused, match="contacts: the read reached 101 rows"):
-        kumo_job.check_read("contacts", 101, 10, 100, 1_000)
+        kumo_job._check_read("contacts", 101, 10, 100, 1_000)
     with pytest.raises(ScoreRefused, match=r"1001 bytes \(UTF-8\), over what is left"):
-        kumo_job.check_read("contacts", 1, 1_001, 100, 1_000)
+        kumo_job._check_read("contacts", 1, 1_001, 100, 1_000)
 
 
 def test_the_byte_cap_counts_utf8_octets_in_sql_and_in_the_read(crm):
     p = plan(crm, ["deals.contact_id=contacts.id"])
-    sql = kumo_job.admission_sql(p, "contacts")
+    sql = kumo_job._admission_sql(p, "contacts")
     assert "length(to_utf8(cast(" in sql
     assert "coalesce(length(to_utf8(" in sql
     # 40 four-byte characters: 40 characters, under a cap of 100; 160 bytes, over it.
     chunk = [("😀" * 20, "😀" * 20)]
     assert sum(len(v) for v in chunk[0]) == 40
-    size = sum(kumo_job.row_bytes(r) for r in chunk)
+    size = sum(kumo_job._row_bytes(r) for r in chunk)
     assert size == 160
     with pytest.raises(ScoreRefused, match=r"160 bytes \(UTF-8\), over what is left"):
-        kumo_job.check_read("contacts", len(chunk), size, 100, 100)
+        kumo_job._check_read("contacts", len(chunk), size, 100, 100)

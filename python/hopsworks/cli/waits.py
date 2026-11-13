@@ -24,6 +24,12 @@ def kube_reason(monitor: dict | None) -> str | None:
     """The most useful reason a pod gives in a KubeMonitorDTO, or None.
 
     The newest Warning event first, then the last condition of a pod that is not ready.
+
+    Args:
+        monitor: The pod view, or None.
+
+    Returns:
+        The reason, or None.
     """
     events: list[dict] = []
     conditions: list[dict] = []

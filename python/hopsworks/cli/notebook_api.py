@@ -55,21 +55,42 @@ _KERNEL_INFO_SECONDS = 60
 
 
 def server(project_id: int) -> dict | None:
-    """The caller's running Jupyter server in this project (host, port, token), or None."""
+    """The caller's running Jupyter server in this project (host, port, token), or None.
+
+    Args:
+        project_id: The project id.
+
+    Returns:
+        The server description, or None when none runs.
+    """
     return client._get_instance()._send_request(
         "GET", ["project", project_id, "jupyter", "running"]
     )
 
 
 def settings(project_id: int) -> dict:
-    """The caller's saved Jupyter settings: environment, resources, base directory."""
+    """The caller's saved Jupyter settings: environment, resources, base directory.
+
+    Args:
+        project_id: The project id.
+
+    Returns:
+        The saved settings.
+    """
     return client._get_instance()._send_request(
         "GET", ["project", project_id, "jupyter", "settings"]
     )
 
 
 def environment(saved: dict) -> str:
-    """The Python environment the Jupyter server runs in, from the saved settings."""
+    """The Python environment the Jupyter server runs in, from the saved settings.
+
+    Args:
+        saved: The saved Jupyter settings.
+
+    Returns:
+        The environment name, or `?` when the settings hold none.
+    """
     return (saved.get("environment") or {}).get("name", "?")
 
 
@@ -77,6 +98,13 @@ def start(project_id: int, env: str | None = None) -> dict:
     """Start the caller's Jupyter server with their saved Jupyter settings.
 
     With ``env``, in that Python environment, which the settings then keep.
+
+    Args:
+        project_id: The project id.
+        env: The Python environment to run in; the saved one when unset.
+
+    Returns:
+        The server description.
     """
     _client = client._get_instance()
     saved = settings(project_id)
@@ -92,7 +120,11 @@ def start(project_id: int, env: str | None = None) -> dict:
 
 
 def stop(project_id: int) -> None:
-    """Stop the caller's Jupyter server."""
+    """Stop the caller's Jupyter server.
+
+    Args:
+        project_id: The project id.
+    """
     client._get_instance()._send_request(
         "POST", ["project", project_id, "jupyter", "stop"]
     )
@@ -112,7 +144,14 @@ class Setup(NamedTuple):
 
 
 def setup(project_id: int) -> Setup:
-    """The user's Jupyter setup, from the saved settings and the cluster's contents driver."""
+    """The user's Jupyter setup, from the saved settings and the cluster's contents driver.
+
+    Args:
+        project_id: The project id.
+
+    Returns:
+        The Jupyter setup.
+    """
     saved = settings(project_id)
     home = _home(saved)
     return Setup("" if _whole_project() else home, home, environment(saved))
@@ -122,6 +161,12 @@ def root(project_id: int) -> str:
     """Jupyter's root, as ``setup`` finds it, looked up once per process.
 
     With the ``hopsfsmount`` driver the root is the project, and the saved settings are not read.
+
+    Args:
+        project_id: The project id.
+
+    Returns:
+        The root path, empty when it is the project.
     """
     if project_id not in _roots:
         _roots[project_id] = "" if _whole_project() else _home(settings(project_id))
@@ -147,7 +192,18 @@ def _whole_project() -> bool:
 
 
 def in_jupyter(path: str, root: str) -> str:
-    """A project path as Jupyter's contents API names it, relative to Jupyter's root."""
+    """A project path as Jupyter's contents API names it, relative to Jupyter's root.
+
+    Args:
+        path: The path in the project.
+        root: Jupyter's root, as `root` returns it.
+
+    Returns:
+        The path relative to the root.
+
+    Raises:
+        ValueError: If `path` is not under the root.
+    """
     path = path.strip("/")
     if not root:
         return path
@@ -157,7 +213,14 @@ def in_jupyter(path: str, root: str) -> str:
 
 
 def monitor(project_id: int) -> dict | None:
-    """The Kubernetes view of the caller's Jupyter pod (a KubeMonitorDTO), or None when there is none yet."""
+    """The Kubernetes view of the caller's Jupyter pod (a KubeMonitorDTO), or None when there is none yet.
+
+    Args:
+        project_id: The project id.
+
+    Returns:
+        The pod view, or None.
+    """
     try:
         return client._get_instance()._send_request(
             "GET", ["project", project_id, "jupyter", "monitor"]
@@ -182,6 +245,18 @@ def connect(project_id: int, timeout: float, env: str | None = None) -> Jupyter:
     A server that is not ready yet is waited for, printing each status it goes through. With
     ``env``, the server must run in that environment: a running one in another is left alone,
     since stopping it would end the user's kernels.
+
+    Args:
+        project_id: The project id.
+        timeout: The seconds to wait for the server to become ready.
+        env: The Python environment the server must run in; any when unset.
+
+    Returns:
+        The client of the running server.
+
+    Raises:
+        ValueError: If a server runs in another environment than `env`.
+        RuntimeError: If another client stops the server while it starts.
     """
     watch = waits.Watch("Jupyter", timeout, _POLL_SECONDS)
     running = server(project_id)
@@ -226,6 +301,13 @@ def attach(project_id: int, timeout: float) -> Jupyter:
 
     Unlike ``connect``, a running server is not asked whether it answers: the first read does.
     A server not running is started and waited for by ``connect``.
+
+    Args:
+        project_id: The project id.
+        timeout: The seconds `connect` waits when the server is not running.
+
+    Returns:
+        The client of the server.
     """
     running = server(project_id)
     if not _ready(running):
@@ -268,7 +350,14 @@ class Jupyter:
         return response.json() if response.content else None
 
     def wait_ready(self, timeout: float) -> None:
-        """Wait until the server answers, as a freshly started one takes a while."""
+        """Wait until the server answers, as a freshly started one takes a while.
+
+        Args:
+            timeout: The seconds to wait.
+
+        Raises:
+            TimeoutError: If the server does not answer in time.
+        """
         deadline = time.monotonic() + timeout
         while True:
             try:
@@ -285,7 +374,14 @@ class Jupyter:
             time.sleep(1)
 
     def read(self, path: str) -> dict | None:
-        """The notebook at ``path`` (relative to Jupyter's root), or None when it does not exist."""
+        """The notebook at ``path`` (relative to Jupyter's root), or None when it does not exist.
+
+        Args:
+            path: The notebook path, relative to Jupyter's root.
+
+        Returns:
+            The notebook, or None when it does not exist.
+        """
         model = self._call(
             "GET",
             f"/api/contents/{_quote(path)}",
@@ -305,6 +401,13 @@ class Jupyter:
 
         Jupyter keeps one session per path, so every run of a notebook reaches the same kernel and
         its variables, and JupyterLab opening the notebook joins that kernel too.
+
+        Args:
+            path: The notebook path, relative to Jupyter's root.
+            kernel_name: The kernel to create the session with; the server's default when unset.
+
+        Returns:
+            The session.
         """
         existing = self.find_session(path)
         if existing:
@@ -323,7 +426,14 @@ class Jupyter:
         )
 
     def kernelspec(self, name: str | None = None) -> dict:
-        """The notebook metadata's ``kernelspec`` for kernel ``name``, by default the server's default."""
+        """The notebook metadata's ``kernelspec`` for kernel ``name``, by default the server's default.
+
+        Args:
+            name: The kernel name; the server's default when unset.
+
+        Returns:
+            The `kernelspec` metadata.
+        """
         specs = self._call("GET", "/api/kernelspecs") or {}
         name = name or specs.get("default", "python3")
         spec = specs.get("kernelspecs", {}).get(name, {}).get("spec", {})
@@ -343,7 +453,24 @@ class Jupyter:
         self._call("POST", f"/api/kernels/{kernel_id}/interrupt")
 
     def execute(self, session: dict, cell_id: str, code: str, timeout: float) -> Run:
-        """Run ``code`` on the session's kernel; a cell still running at ``timeout`` is interrupted."""
+        """Run ``code`` on the session's kernel; a cell still running at ``timeout`` is interrupted.
+
+        Args:
+            session: The session of the notebook.
+            cell_id: The id of the cell.
+            code: The code to run.
+            timeout: The seconds after which a running cell is interrupted.
+
+        Returns:
+            The outputs and timing of the run.
+
+        Raises:
+            Unreached: If the kernel connection closes before the cell is sent, or the kernel does
+                not answer.
+            RuntimeError: If the connection closes after the cell was sent, or the kernel aborts the
+                cell.
+            TimeoutError: If the kernel does not stop the cell after an interrupt.
+        """
         from websockets.exceptions import ConnectionClosed  # noqa: PLC0415
         from websockets.sync.client import connect as ws_connect  # noqa: PLC0415
 
@@ -506,7 +633,15 @@ def _kernel_info(ws: Any, session_id: str) -> None:
 
 
 def to_output(kind: str, content: dict) -> dict | None:
-    """An iopub message as an nbformat output, or None for messages that are not outputs."""
+    """An iopub message as an nbformat output, or None for messages that are not outputs.
+
+    Args:
+        kind: The message type.
+        content: The message content.
+
+    Returns:
+        The output, or None.
+    """
     if kind == "stream":
         return {
             "output_type": "stream",
@@ -560,6 +695,14 @@ def rewrite_cell(old: dict, cell_type: str, source: str) -> dict:
 
     Its id and metadata carry over, and so do a markdown or raw cell's attachments while it stays
     that type. A code cell starts unrun: no outputs, no run count, no run timing in its metadata.
+
+    Args:
+        old: The cell to rewrite.
+        cell_type: The type of the new cell.
+        source: The new text.
+
+    Returns:
+        The new cell.
     """
     new = new_cell(cell_type, source)
     new["id"] = old.get("id", new["id"])
@@ -596,7 +739,15 @@ def source(cell: dict) -> str:
 
 
 def describe(outputs: list[dict], limit: int) -> str:
-    """The outputs as text for a terminal: text as-is, rich data by its type, ANSI codes removed."""
+    """The outputs as text for a terminal: text as-is, rich data by its type, ANSI codes removed.
+
+    Args:
+        outputs: The cell outputs.
+        limit: The most characters of text to return.
+
+    Returns:
+        The text.
+    """
     parts = []
     for output in outputs:
         kind = output["output_type"]

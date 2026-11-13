@@ -52,7 +52,17 @@ class GroupInfo:
 
 
 def parse_ref(text: str) -> tuple[str, str]:
-    """`<group>.<column>` as two names."""
+    """`<group>.<column>` as two names.
+
+    Args:
+        text: The reference, as typed on the command line.
+
+    Returns:
+        The feature group name and the column name.
+
+    Raises:
+        ScoreRefused: If `text` is not `<group>.<column>`.
+    """
     group, dot, column = text.strip().partition(".")
     if not dot or not _NAME.fullmatch(group) or not _NAME.fullmatch(column):
         raise ScoreRefused(f"'{text}' is not <feature group>.<column>.")
@@ -70,7 +80,18 @@ def _side(text: str, side: str) -> tuple[str, list[str]]:
 
 
 def parse_link(text: str) -> Link:
-    """`deals.contact_id=contacts.id`; a composite key is `a.k1+a.k2=b.k1+b.k2`."""
+    """`deals.contact_id=contacts.id`; a composite key is `a.k1+a.k2=b.k1+b.k2`.
+
+    Args:
+        text: The link, as typed on the command line.
+
+    Returns:
+        The link between the two groups.
+
+    Raises:
+        ScoreRefused: If `text` is not a link, joins a different number of columns on each side, or
+            joins a group to itself.
+    """
     left, eq, right = text.partition("=")
     if not eq or "=" in right:
         raise ScoreRefused(f"'{text}' is not <group>.<col>=<group>.<col>.")
@@ -91,6 +112,15 @@ def links_from_query(query: Any) -> tuple[list[Link], dict[str, int]]:
     """The joins a feature view recorded, as links, and the version of each group it reads.
 
     Refuses a view that reads one group at two versions.
+
+    Args:
+        query: The query of the feature view.
+
+    Returns:
+        The links, and the version of each group the view reads, by group name.
+
+    Raises:
+        ScoreRefused: If the view reads a group at two versions, or a join names no key.
     """
     pins: dict[str, int] = {}
     links: list[Link] = []
@@ -131,6 +161,14 @@ def check_link_pins(
 
     A --link names a group without a version, which reads the latest; the view's group is
     read at its recorded version. `latest` is the latest version of each such group.
+
+    Args:
+        links: The links given with `--link`.
+        pins: The version of each group the feature view reads, by group name.
+        latest: The latest version of each group a link names, by group name.
+
+    Raises:
+        ScoreRefused: If a link names a group whose latest version is not the one the view reads.
     """
     for link in links:
         for group in (link.left, link.right):
@@ -230,8 +268,27 @@ def build_plan(
 
     `infos` holds the entity group and every group a link, `--time` or `--cutoff` names.
     Raises ScoreRefused with the reason; nothing is read.
+
+    Args:
+        name: The system name.
+        entity: The name of the entity feature group.
+        infos: The groups the plan reads, by group name.
+        links: The links between the groups.
+        target: The column of the entity group to score.
+        positive: The value of the target that counts as positive; none for a boolean or 0/1 target.
+        time: The `--time` references, one `<group>.<column>` per group.
+        cutoff: The `--cutoff` reference, a column of the entity group.
+        where: The `--where` filter on the entity rows.
+        context_rows: The most labelled rows used as context.
+        query_rows: The most rows to score.
+
+    Returns:
+        The plan the job runs.
+
+    Raises:
+        ScoreRefused: If an input does not fit the plan.
     """
-    kumo_job.check_inputs_are_not_outputs(name, infos)
+    kumo_job._check_inputs_are_not_outputs(name, infos)
     if entity not in infos:
         raise ScoreRefused(f"{entity} is not among the feature groups given.")
     ent = infos[entity]
@@ -327,14 +384,30 @@ def build_plan(
 
 
 def job_args(name: str, plan: Plan) -> str:
-    """The job's arguments, safe for the Python job launcher's unquoted expansion."""
-    return f"--system {name} --config {plan.to_arg()}"
+    """The job's arguments, safe for the Python job launcher's unquoted expansion.
+
+    Args:
+        name: The system name.
+        plan: The plan the job runs.
+
+    Returns:
+        The argument string of the job.
+    """
+    return f"--system {name} --config {plan._to_arg()}"
 
 
 def unique_sql(plan: Plan, link: Link) -> str:
-    """Rows and distinct keys of the right side of a link."""
-    cols = ", ".join(kumo_job.ident(c) for c in link.right_cols)
-    tbl = kumo_job.table(plan, link.right)
+    """Rows and distinct keys of the right side of a link.
+
+    Args:
+        plan: The plan the job runs.
+        link: The link to check.
+
+    Returns:
+        The SQL text.
+    """
+    cols = ", ".join(kumo_job._ident(c) for c in link.right_cols)
+    tbl = kumo_job._table(plan, link.right)
     return (
         f"SELECT (SELECT count(*) FROM {tbl}), "
         f"(SELECT count(*) FROM (SELECT DISTINCT {cols} FROM {tbl}))"
@@ -342,7 +415,16 @@ def unique_sql(plan: Plan, link: Link) -> str:
 
 
 def check_counts(link: Link, rows: int, distinct: int) -> None:
-    """Refuse a link whose right side repeats a key: a row could join to several."""
+    """Refuse a link whose right side repeats a key: a row could join to several.
+
+    Args:
+        link: The link that was counted.
+        rows: The number of rows of its right side.
+        distinct: The number of distinct keys of its right side.
+
+    Raises:
+        ScoreRefused: If the right side repeats a key.
+    """
     if rows != distinct:
         right = "+".join(f"{link.right}.{c}" for c in link.right_cols)
         raise ScoreRefused(
@@ -352,17 +434,33 @@ def check_counts(link: Link, rows: int, distinct: int) -> None:
 
 
 def check_classes(plan: Plan, sql: Any) -> None:
-    """Refuse before any job exists when the labelled rows hold one class, as the job would."""
+    """Refuse before any job exists when the labelled rows hold one class, as the job would.
+
+    Args:
+        plan: The plan the job runs.
+        sql: The SQL client that runs the query.
+
+    Raises:
+        ScoreRefused: If the labelled rows hold one class only.
+    """
     import pandas as pd  # noqa: PLC0415
 
-    rows = sql.rows(kumo_job.context_sql(plan, kumo_job.ident(plan.target)))
-    kumo_job.check_classes(plan, pd.Series([r[0] for r in rows], dtype=object))
+    rows = sql._rows(kumo_job._context_sql(plan, kumo_job._ident(plan.target)))
+    kumo_job._check_classes(plan, pd.Series([r[0] for r in rows], dtype=object))
 
 
 def check_unique(plan: Plan, sql: Any) -> None:
-    """Run the uniqueness count of every link through `sql` and refuse a repeated key."""
+    """Run the uniqueness count of every link through `sql` and refuse a repeated key.
+
+    Args:
+        plan: The plan the job runs.
+        sql: The SQL client that runs the counts.
+
+    Raises:
+        ScoreRefused: If the right side of a link repeats a key.
+    """
     for link in plan.links:
-        rows, distinct = sql.rows(unique_sql(plan, link))[0]
+        rows, distinct = sql._rows(unique_sql(plan, link))[0]
         check_counts(link, rows, distinct)
 
 
@@ -378,6 +476,19 @@ def schedule_cron(
 
     The minute, and the hour of a daily run without `--at`, come from a stable hash of the
     project and system, so the systems of a cluster do not all fire at once.
+
+    Args:
+        every: `daily` or `hourly`.
+        project_id: The project id.
+        name: The system name.
+        at_hour: The hour of a daily run, 0 to 23; chosen from the hash when unset.
+
+    Returns:
+        The cron expression.
+
+    Raises:
+        ScoreRefused: If `every` is not `daily` or `hourly`, `at_hour` is set on an hourly run, or
+            `at_hour` is outside 0 to 23.
     """
     if every not in SCHEDULES:
         raise ScoreRefused(f"--schedule takes daily or hourly, not '{every}'.")
@@ -397,7 +508,7 @@ def schedule_cron(
 
 
 def _runs_table(name: str) -> str:
-    return kumo_job.ident(f"{name}_score_runs_1")
+    return kumo_job._ident(f"{name}_score_runs_1")
 
 
 def current_run_sql(name: str) -> str:
@@ -409,14 +520,22 @@ def current_run_sql(name: str) -> str:
 
 def ranking_sql(name: str, run_id: Any, top: int) -> str:
     return (
-        f"SELECT * FROM {kumo_job.ident(f'{name}_scores_1')} "
-        f"WHERE run_id = {kumo_job.literal(run_id)} ORDER BY score DESC LIMIT {int(top)}"
+        f"SELECT * FROM {kumo_job._ident(f'{name}_scores_1')} "
+        f"WHERE run_id = {kumo_job._literal(run_id)} ORDER BY score DESC LIMIT {int(top)}"
     )
 
 
 def current_run(sql: Any, name: str) -> dict[str, Any] | None:
-    """The latest completed run: the newest row of `<name>_score_runs`."""
-    rows = sql.rows(current_run_sql(name))
+    """The latest completed run: the newest row of `<name>_score_runs`.
+
+    Args:
+        sql: The SQL client that runs the query.
+        name: The system name.
+
+    Returns:
+        The run as a dict keyed by the run table columns, or None when no run completed.
+    """
+    rows = sql._rows(current_run_sql(name))
     if not rows:
         return None
     keys = (
@@ -433,12 +552,21 @@ def current_run(sql: Any, name: str) -> dict[str, Any] | None:
 def current_ranking(
     sql: Any, name: str, top: int = DEFAULT_TOP
 ) -> tuple[dict | None, Any]:
-    """The current run and its top scores. Only the runs table says which run is current."""
+    """The current run and its top scores. Only the runs table says which run is current.
+
+    Args:
+        sql: The SQL client that runs the queries.
+        name: The system name.
+        top: The number of scores to read.
+
+    Returns:
+        The current run and a frame of its top scores; the frame is None when the run scored no row.
+    """
     run = current_run(sql, name)
     if run is None or not run["scored_rows"]:
         return run, None
-    scores = kumo_job.output_groups(name)[0]
-    frame, _ = sql.frame(
+    scores = kumo_job._output_groups(name)[0]
+    frame, _ = sql._frame(
         ranking_sql(name, run["run_id"], top), top, kumo_job.ENTITY_BYTES_MAX, scores
     )
     return run, frame
@@ -475,6 +603,12 @@ def short_wait(exc: BaseException) -> int | None:
 
     Only a 429 whose Retry-After is a number of at most START_WAIT_MAX_S: a refused
     start started nothing, so sending it again cannot start two.
+
+    Args:
+        exc: The failure of the start.
+
+    Returns:
+        The seconds to wait, or None.
     """
     cause = _rest_error(exc)
     if cause is None or cause.response.status_code != 429:
@@ -526,6 +660,13 @@ def run_refusal(exc: BaseException, name: str) -> ScoreRefused | None:
 
     409: an execution of the job runs. 429: the scoring class is full and nothing started;
     Retry-After gives the seconds to wait. None for any other failure.
+
+    Args:
+        exc: The failure of the start.
+        name: The system name.
+
+    Returns:
+        The refusal to show, or None.
     """
     from hopsworks_common.client.exceptions import (  # noqa: PLC0415 - SDK loaded on use
         RestAPIError,
@@ -819,8 +960,16 @@ def _get_job(api: Any, job_name: str) -> Any:
 
 
 def check_job(job: Any, name: str) -> None:
-    """Refuse an existing job `hops score <name>` did not make."""
-    if job is not None and not kumo_job.job_marked(job.config, name, SCRIPT.name):
+    """Refuse an existing job `hops score <name>` did not make.
+
+    Args:
+        job: The job of the system, or None.
+        name: The system name.
+
+    Raises:
+        ScoreRefused: If the job exists and `hops score` did not make it.
+    """
+    if job is not None and not kumo_job._job_marked(job.config, name, SCRIPT.name):
         raise ScoreRefused(
             f"job {_job_name(name)} exists and was not made by `hops score {name}`: it does "
             f"not run {kumo_job.APP_DIR}/{name}/{SCRIPT.name} with --system {name}. "
@@ -834,18 +983,26 @@ def owned_resources(
     """What `--delete` removes, and what it leaves because the system did not make it.
 
     `job` is the job named for the system or None; `groups` its output groups that exist.
+
+    Args:
+        name: The system name.
+        job: The job named for the system, or None.
+        groups: The output groups that exist.
+
+    Returns:
+        The owned resources as (label, object) pairs, and the labels of the others.
     """
     owned: list[tuple[str, Any]] = []
     foreign: list[str] = []
     if job is not None:
         label = f"job {_job_name(name)}"
-        if kumo_job.job_marked(job.config, name, SCRIPT.name):
+        if kumo_job._job_marked(job.config, name, SCRIPT.name):
             owned.append((f"{label} and its schedule", job))
         else:
             foreign.append(label)
     for fg in groups:
         label = f"feature group {fg.name} v{fg.version}"
-        if kumo_job.group_marked(fg.description, name):
+        if kumo_job._group_marked(fg.description, name):
             owned.append((label, fg))
         else:
             foreign.append(label)
@@ -853,7 +1010,7 @@ def owned_resources(
 
 
 def _outputs(fs: Any, name: str) -> list[Any]:
-    found = [versions.feature_group(fs, g, 1) for g in kumo_job.output_groups(name)]
+    found = [versions.feature_group(fs, g, 1) for g in kumo_job._output_groups(name)]
     return [fg for fg in found if fg is not None]
 
 
@@ -866,7 +1023,7 @@ def _delete(ctx: click.Context, name: str, yes: bool) -> None:
         output.warn(
             "Not deleting %s: it lacks the %s marker, so `hops score %s` did not make it.",
             label,
-            kumo_job.owner_marker(name),
+            kumo_job._owner_marker(name),
             name,
         )
     if not owned:
@@ -986,10 +1143,10 @@ def _score(
         query_rows,
     )
     for fg in _outputs(session.get_feature_store(ctx), name):
-        kumo_job.check_output_group(fg, name)
+        kumo_job._check_output_group(fg, name)
     sql = _sql(ctx)
     reader = kumo_job.Reader(sql, lambda msg: output.info("%s", msg))
-    pinned, _ = kumo_job.admit(plan, reader)
+    pinned, _ = kumo_job._admit(plan, reader)
     check_unique(pinned, sql)
     check_classes(pinned, sql)
     if not plan.time:
@@ -1039,6 +1196,18 @@ def admit_job(api, job, name):
     Writes the two fields when the stored job lacks them, then reads the job from the server
     and refuses unless both are stored: a backend that drops them enforces neither limit.
     Returns the job as stored.
+
+    Args:
+        api: The jobs API of the project.
+        job: The job of the system.
+        name: The system name.
+
+    Returns:
+        The job as stored.
+
+    Raises:
+        ScoreRefused: If the stored job lacks either limit.
+        click.ClickException: If the job cannot be saved.
     """
     job_name = _job_name(name)
     want = {MAX_CONCURRENT: 1, kumo_job.PLATFORM_CLASS_KEY: kumo_job.PLATFORM_CLASS}

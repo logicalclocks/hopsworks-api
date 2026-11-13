@@ -262,7 +262,11 @@ def _stdin_tty() -> bool:
 
 
 def no_input() -> bool:
-    """Whether no one can answer a prompt: HOPS_NO_INPUT=1, or stdin is not a terminal."""
+    """Whether no one can answer a prompt: HOPS_NO_INPUT=1, or stdin is not a terminal.
+
+    Returns:
+        True when no one can answer.
+    """
     return os.environ.get("HOPS_NO_INPUT") == "1" or not _stdin_tty()
 
 
@@ -271,6 +275,13 @@ def confirm(question: str, action: str | None = None) -> None:
 
     With no one to answer, fails naming --yes instead of asking. `action` names what needs the
     answer; the question without its `?` by default. Ctrl-C or a no aborts.
+
+    Args:
+        question: The question to ask.
+        action: What needs the answer; the question without its `?` when unset.
+
+    Raises:
+        click.ClickException: If no one can answer.
     """
     if no_input():
         raise click.ClickException(

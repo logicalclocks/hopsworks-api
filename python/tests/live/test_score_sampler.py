@@ -86,9 +86,9 @@ def test_an_activity_after_the_cutoff_is_not_sampled_for_the_deal():
         }
     )
     inputs = Inputs(query=query, context=context, related={"activities": activities})
-    sampler, link = kumo_job.build_relational(sdm, plan, inputs)
+    sampler, link = kumo_job._build_relational(sdm, plan, inputs)
     started = pd.Timestamp("2026-11-04")
-    task = kumo_job.task_frame(plan, context.assign(won=[True, False]), started, True)
+    task = kumo_job._task_frame(plan, context.assign(won=[True, False]), started, True)
     tt = sdm.TableTensor.from_pandas(df=task, stypes=kumo_job._stypes(plan, True))
     _, related = sampler(
         tt,

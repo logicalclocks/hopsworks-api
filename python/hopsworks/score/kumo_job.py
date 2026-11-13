@@ -7,7 +7,7 @@ against a labelled context, writes ``<name>_scores`` in one insert and publishes
 run by writing its ``<name>_score_runs`` row last. This file imports nothing from the
 rest of ``hopsworks``, so the CLI uploads it as it is.
 
-Usage: ``kumo_job.py --system <name> --config <Plan.to_arg(): base64url plan JSON>``.
+Usage: ``kumo_job.py --system <name> --config <Plan._to_arg(): base64url plan JSON>``.
 """
 
 from __future__ import annotations
@@ -58,20 +58,20 @@ PLATFORM_CLASS_KEY = "platformClass"
 PLATFORM_CLASS = "scoring"
 
 
-def owner_marker(name: str) -> str:
+def _owner_marker(name: str) -> str:
     """The token in the description of every feature group `hops score <name>` makes."""
     return f"hops-score:{name}"
 
 
-def output_groups(name: str) -> tuple[str, str]:
+def _output_groups(name: str) -> tuple[str, str]:
     return f"{name}_scores", f"{name}_score_runs"
 
 
-def group_marked(description: str | None, name: str) -> bool:
-    return owner_marker(name) in (description or "").split()
+def _group_marked(description: str | None, name: str) -> bool:
+    return _owner_marker(name) in (description or "").split()
 
 
-def job_marked(config: dict, name: str, script: str) -> bool:
+def _job_marked(config: dict, name: str, script: str) -> bool:
     """Whether the job runs `script` from the system's folder with `--system <name>`.
 
     The run limit and platform class are not part of the marker: a backend without them drops
@@ -86,9 +86,9 @@ def job_marked(config: dict, name: str, script: str) -> bool:
     return flagged and app.endswith(f"/{APP_DIR}/{name}/{script}")
 
 
-def check_inputs_are_not_outputs(name: str, groups: Any) -> None:
+def _check_inputs_are_not_outputs(name: str, groups: Any) -> None:
     """Refuse an input group named like an output of the system: teardown would delete it."""
-    clash = sorted(set(groups) & set(output_groups(name)))
+    clash = sorted(set(groups) & set(_output_groups(name)))
     if clash:
         raise ScoreRefused(
             f"{', '.join(clash)} is an input, and `hops score {name}` writes and deletes a "
@@ -96,12 +96,12 @@ def check_inputs_are_not_outputs(name: str, groups: Any) -> None:
         )
 
 
-def check_output_group(fg: Any, name: str) -> None:
+def _check_output_group(fg: Any, name: str) -> None:
     """Refuse an existing output group that `hops score <name>` did not make."""
-    if fg is not None and not group_marked(getattr(fg, "description", None), name):
+    if fg is not None and not _group_marked(getattr(fg, "description", None), name):
         raise ScoreRefused(
             f"feature group {fg.name} v{fg.version} exists without the marker "
-            f"{owner_marker(name)} in its description: `hops score {name}` did not make it "
+            f"{_owner_marker(name)} in its description: `hops score {name}` did not make it "
             "and leaves it alone. Choose another system name."
         )
 
@@ -144,7 +144,7 @@ class Plan:
     time: dict[str, str] = field(default_factory=dict)
     context_rows: int = CONTEXT_ROWS_MAX
     query_rows: int = QUERY_ROWS_MAX
-    # Delta table version of each group, set by admit(): every later query reads it.
+    # Delta table version of each group, set by _admit(): every later query reads it.
     pins: dict[str, int] = field(default_factory=dict)
 
     def to_json(self) -> str:
@@ -157,7 +157,7 @@ class Plan:
         raw["links"] = [Link(**v) for v in raw["links"]]
         return cls(**raw)
 
-    def to_arg(self) -> str:
+    def _to_arg(self) -> str:
         """The plan as one job argument: base64url JSON, no space, quote or glob character.
 
         The Python job launcher expands its arguments unquoted, so a quoted JSON argument
@@ -166,7 +166,7 @@ class Plan:
         return base64.urlsafe_b64encode(self.to_json().encode()).decode()
 
     @classmethod
-    def from_arg(cls, text: str) -> Plan:
+    def _from_arg(cls, text: str) -> Plan:
         return cls.from_json(base64.urlsafe_b64decode(text.encode()).decode())
 
     @property
@@ -175,38 +175,38 @@ class Plan:
 
     @property
     def scores_name(self) -> str:
-        return output_groups(self.name)[0]
+        return _output_groups(self.name)[0]
 
     @property
     def runs_name(self) -> str:
-        return output_groups(self.name)[1]
+        return _output_groups(self.name)[1]
 
 
 # region: SQL -------------------------------------------------------------
 
 
-def ident(name: str) -> str:
+def _ident(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
-def table(plan: Plan, group: str) -> str:
-    """The group's offline table, at its pinned Delta version once admit() pinned it."""
-    name = ident(f"{group}_{plan.groups[group].version}")
+def _table(plan: Plan, group: str) -> str:
+    """The group's offline table, at its pinned Delta version once _admit() pinned it."""
+    name = _ident(f"{group}_{plan.groups[group].version}")
     if group in plan.pins:
         return f"{name} FOR VERSION AS OF {int(plan.pins[group])}"
     return name
 
 
-def pin_sql(plan: Plan) -> str:
+def _pin_sql(plan: Plan) -> str:
     """The current Delta version of each group's table, from the connector's $history table."""
     return " UNION ALL ".join(
-        f"SELECT {literal(g)}, max(version) FROM "
-        f"{ident(f'{g}_{plan.groups[g].version}$history')}"
+        f"SELECT {_literal(g)}, max(version) FROM "
+        f"{_ident(f'{g}_{plan.groups[g].version}$history')}"
         for g in sorted(plan.groups)
     )
 
 
-def literal(value: Any) -> str:
+def _literal(value: Any) -> str:
     """A SQL literal for a key value read from a frame."""
     import numpy as np  # noqa: PLC0415 - the job image ships it
     import pandas as pd  # noqa: PLC0415
@@ -224,14 +224,14 @@ def literal(value: Any) -> str:
 
 def _sizes(plan: Plan, group: str) -> str:
     return " + ".join(
-        f"coalesce(length(to_utf8(cast({ident(c)} as varchar))), 0)"
+        f"coalesce(length(to_utf8(cast({_ident(c)} as varchar))), 0)"
         for c in plan.groups[group].names
     )
 
 
-def admission_sql(plan: Plan, group: str) -> str:
+def _admission_sql(plan: Plan, group: str) -> str:
     """Row count and the summed UTF-8 byte length of the projected columns of one group."""
-    return f"SELECT count(*), coalesce(sum({_sizes(plan, group)}), 0) FROM {table(plan, group)}"
+    return f"SELECT count(*), coalesce(sum({_sizes(plan, group)}), 0) FROM {_table(plan, group)}"
 
 
 def _order(plan: Plan) -> str:
@@ -239,35 +239,35 @@ def _order(plan: Plan) -> str:
 
     The order is total, so the selection the reach counts and the rows read are the same.
     """
-    keys = ", ".join(ident(k) for k in plan.keys)
+    keys = ", ".join(_ident(k) for k in plan.keys)
     if plan.cutoff:
-        return f"{ident(plan.cutoff)} DESC, {keys}"
-    parts = ", '|', ".join(f"cast({ident(k)} as varchar)" for k in plan.keys)
+        return f"{_ident(plan.cutoff)} DESC, {keys}"
+    parts = ", '|', ".join(f"cast({_ident(k)} as varchar)" for k in plan.keys)
     return f"md5(to_utf8(concat('{SEED}', '|', {parts}))), {keys}"
 
 
 def _columns(plan: Plan, group: str) -> str:
-    return ", ".join(ident(c) for c in plan.groups[group].names)
+    return ", ".join(_ident(c) for c in plan.groups[group].names)
 
 
-def query_sql(plan: Plan, columns: str | None = None) -> str:
+def _query_sql(plan: Plan, columns: str | None = None) -> str:
     """The rows to score: the target is null, or the `--where` filter, at most query_rows."""
-    cond = f"({plan.where})" if plan.where else f"{ident(plan.target)} IS NULL"
+    cond = f"({plan.where})" if plan.where else f"{_ident(plan.target)} IS NULL"
     return (
-        f"SELECT {columns or _columns(plan, plan.entity)} FROM {table(plan, plan.entity)} "
+        f"SELECT {columns or _columns(plan, plan.entity)} FROM {_table(plan, plan.entity)} "
         f"WHERE {cond} ORDER BY {_order(plan)} LIMIT {plan.query_rows}"
     )
 
 
-def context_sql(plan: Plan, columns: str | None = None) -> str:
+def _context_sql(plan: Plan, columns: str | None = None) -> str:
     """The labelled rows, at most context_rows, never a row the query takes."""
-    conds = [f"{ident(plan.target)} IS NOT NULL"]
+    conds = [f"{_ident(plan.target)} IS NOT NULL"]
     if plan.cutoff:
-        conds.append(f"{ident(plan.cutoff)} IS NOT NULL")
+        conds.append(f"{_ident(plan.cutoff)} IS NOT NULL")
     if plan.where:
         conds.append(f"NOT coalesce(({plan.where}), false)")
     return (
-        f"SELECT {columns or _columns(plan, plan.entity)} FROM {table(plan, plan.entity)} "
+        f"SELECT {columns or _columns(plan, plan.entity)} FROM {_table(plan, plan.entity)} "
         f"WHERE {' AND '.join(conds)} ORDER BY {_order(plan)} LIMIT {plan.context_rows}"
     )
 
@@ -277,7 +277,7 @@ Hop = tuple[
 ]  # from, its columns, to, its columns
 
 
-def paths(plan: Plan) -> list[tuple[Hop, ...]]:
+def _paths(plan: Plan) -> list[tuple[Hop, ...]]:
     """Every path from the entity through the links, MAX_DEPTH hops at most, no group twice.
 
     A link is walked both ways. The list is sorted, so the order of the links changes nothing.
@@ -316,21 +316,21 @@ def _reach_ctes(plan: Plan) -> tuple[list[str], dict[str, list[str]]]:
     path's CTE holds the rows of its last group that match the rows of the path one hop
     shorter on the link's columns.
     """
-    found = paths(plan)
+    found = _paths(plan)
     keys = sorted({c for p in found if p[0][0] == plan.entity for c in p[0][1]})
-    cols = ", ".join(ident(c) for c in keys)
-    ctes = [f"sel AS (({query_sql(plan, cols)}) UNION ({context_sql(plan, cols)}))"]
+    cols = ", ".join(_ident(c) for c in keys)
+    ctes = [f"sel AS (({_query_sql(plan, cols)}) UNION ({_context_sql(plan, cols)}))"]
     alias: dict[tuple[Hop, ...], str] = {(): "sel"}
     by_group: dict[str, list[str]] = {}
     for i, path in enumerate(found):
         src, src_cols, dst, dst_cols = path[-1]
         name = f"p{i}"
         match = " AND ".join(
-            f"s.{ident(sc)} = t.{ident(dc)}"
+            f"s.{_ident(sc)} = t.{_ident(dc)}"
             for sc, dc in zip(src_cols, dst_cols, strict=True)
         )
         ctes.append(
-            f"{name} AS (SELECT {_columns(plan, dst)} FROM {table(plan, dst)} t "
+            f"{name} AS (SELECT {_columns(plan, dst)} FROM {_table(plan, dst)} t "
             f"WHERE EXISTS (SELECT 1 FROM {alias[path[:-1]]} s WHERE {match}))"
         )
         alias[path] = name
@@ -345,20 +345,20 @@ def _reached(plan: Plan, group: str, ctes: list[str]) -> str:
     pk = plan.groups[group].primary_key
     if not pk:
         return " UNION ".join(f"SELECT {cols} FROM {c}" for c in ctes)
-    part = ", ".join(ident(k) for k in pk)
+    part = ", ".join(_ident(k) for k in pk)
     return (
         f"SELECT {cols} FROM (SELECT {cols}, row_number() OVER (PARTITION BY {part}) "
         f'AS "__n" FROM ({union})) WHERE "__n" = 1'
     )
 
 
-def related_sql(plan: Plan, group: str) -> str:
+def _related_sql(plan: Plan, group: str) -> str:
     """The rows of `group` reachable from the selected entity rows: what the job reads."""
     ctes, by_group = _reach_ctes(plan)
     return f"WITH {', '.join(ctes)} {_reached(plan, group, by_group[group])}"
 
 
-def reach_sql(plan: Plan) -> str | None:
+def _reach_sql(plan: Plan) -> str | None:
     """Rows and bytes of each related group's reachable rows: (group, rows, bytes) per group.
 
     The same rows related_sql reads. None when the plan has no related group.
@@ -371,7 +371,7 @@ def reach_sql(plan: Plan) -> str | None:
         name = f"g{i}"
         ctes.append(f"{name} AS ({_reached(plan, group, by_group[group])})")
         counts.append(
-            f"SELECT {literal(group)}, count(*), coalesce(sum({_sizes(plan, group)}), 0) "
+            f"SELECT {_literal(group)}, count(*), coalesce(sum({_sizes(plan, group)}), 0) "
             f"FROM {name}"
         )
     return f"WITH {', '.join(ctes)} " + " UNION ALL ".join(counts)
@@ -383,7 +383,7 @@ def reach_sql(plan: Plan) -> str | None:
 class Reader:
     """Runs SQL through `sql` and logs each call.
 
-    `sql` has `.rows(sql)` and `.frame(sql, max_rows, max_bytes)`; the frame read refuses as
+    `sql` has `._rows(sql)` and `._frame(sql, max_rows, max_bytes)`; the frame read refuses as
     soon as a chunk would take it past either cap, and returns the frame and its bytes.
     """
 
@@ -392,31 +392,31 @@ class Reader:
         self.log = log or (lambda msg: None)
         self.calls: list[tuple[str, str, int]] = []  # (kind, group, rows)
 
-    def pins(self, sql: str) -> dict[str, int]:
+    def _pins(self, sql: str) -> dict[str, int]:
         out = {}
-        for group, version in self.sql.rows(sql):
+        for group, version in self.sql._rows(sql):
             if version is None:
                 raise ScoreRefused(f"{group} has no Delta history to pin.")
             out[group] = int(version)
         return out
 
-    def admission(self, group: str, sql: str) -> tuple[int, int]:
-        rows, size = self.sql.rows(sql)[0]
+    def _admission(self, group: str, sql: str) -> tuple[int, int]:
+        rows, size = self.sql._rows(sql)[0]
         self.calls.append(("admission", group, int(rows)))
         return int(rows), int(size)
 
-    def reach(self, sql: str) -> dict[str, tuple[int, int]]:
+    def _reach(self, sql: str) -> dict[str, tuple[int, int]]:
         out = {}
-        for group, rows, size in self.sql.rows(sql):
+        for group, rows, size in self.sql._rows(sql):
             self.calls.append(("admission", group, int(rows)))
             out[group] = (int(rows), int(size))
         return out
 
-    def read(
+    def _read(
         self, group: str, sql: str, max_rows: int, max_bytes: int
     ) -> tuple[Any, int]:
         started = time.perf_counter()
-        frame, size = self.sql.frame(sql, max_rows, max_bytes, group)
+        frame, size = self.sql._frame(sql, max_rows, max_bytes, group)
         self.calls.append(("read", group, len(frame)))
         self.log(
             f"read {group}: {len(frame)} rows {size} bytes in "
@@ -429,12 +429,14 @@ class Reader:
         return [c for c in self.calls if c[0] == "read"]
 
 
-def row_bytes(row: tuple) -> int:
+def _row_bytes(row: tuple) -> int:
     """A row's size as admission counts it: the UTF-8 bytes of the text of each non-null value."""
     return sum(len(str(v).encode("utf-8")) for v in row if v is not None)
 
 
-def check_read(group: str, rows: int, size: int, max_rows: int, max_bytes: int) -> None:
+def _check_read(
+    group: str, rows: int, size: int, max_rows: int, max_bytes: int
+) -> None:
     """Refuse a read about to hold more than its caps; called before a chunk is kept."""
     if rows > max_rows or size > max_bytes:
         raise ScoreRefused(
@@ -443,7 +445,7 @@ def check_read(group: str, rows: int, size: int, max_rows: int, max_bytes: int) 
         )
 
 
-def check_caps(plan: Plan) -> None:
+def _check_caps(plan: Plan) -> None:
     if plan.context_rows > CONTEXT_ROWS_MAX:
         raise ScoreRefused(
             f"--context-rows {plan.context_rows} is over {CONTEXT_ROWS_MAX}, the largest "
@@ -457,7 +459,7 @@ def check_caps(plan: Plan) -> None:
         raise ScoreRefused("--context-rows needs 2 or more, --query-rows 1 or more.")
 
 
-def check_admission(
+def _check_admission(
     plan: Plan, entity: tuple[int, int], reach: dict[str, tuple[int, int]]
 ) -> None:
     """Refuse over a cap.
@@ -487,18 +489,18 @@ def check_admission(
         )
 
 
-def admit(plan: Plan, reader: Reader) -> tuple[Plan, dict[str, dict[str, int]]]:
+def _admit(plan: Plan, reader: Reader) -> tuple[Plan, dict[str, dict[str, int]]]:
     """Pin each group's Delta version, then count the selection's rows at those versions.
 
     The entity group and the related rows reachable from the selection, in Trino. Refuses over a cap before any frame is read. Returns the pinned plan: its reads see
     the state admission counted, whatever is written in between.
     """
-    check_caps(plan)
-    plan = replace(plan, pins=reader.pins(pin_sql(plan)))
-    rows, size = reader.admission(plan.entity, admission_sql(plan, plan.entity))
-    sql = reach_sql(plan)
-    reach = reader.reach(sql) if sql else {}
-    check_admission(plan, (rows, size), reach)
+    _check_caps(plan)
+    plan = replace(plan, pins=reader._pins(_pin_sql(plan)))
+    rows, size = reader._admission(plan.entity, _admission_sql(plan, plan.entity))
+    sql = _reach_sql(plan)
+    reach = reader._reach(sql) if sql else {}
+    _check_admission(plan, (rows, size), reach)
     stats = {plan.entity: {"rows": rows, "bytes": size}}
     stats.update({g: {"rows": r, "bytes": b} for g, (r, b) in reach.items()})
     reader.log(
@@ -512,7 +514,7 @@ def admit(plan: Plan, reader: Reader) -> tuple[Plan, dict[str, dict[str, int]]]:
     return plan, stats
 
 
-def read_related(plan: Plan, reader: Reader) -> dict[str, Any]:
+def _read_related(plan: Plan, reader: Reader) -> dict[str, Any]:
     """The related rows reachable from the selected entity rows, as admission counted them.
 
     The related caps hold over all groups together, enforced while reading.
@@ -520,9 +522,9 @@ def read_related(plan: Plan, reader: Reader) -> dict[str, Any]:
     frames = {}
     rows = size = 0
     for group in sorted(plan.related):
-        frame, got = reader.read(
+        frame, got = reader._read(
             group,
-            related_sql(plan, group),
+            _related_sql(plan, group),
             RELATED_ROWS_MAX - rows,
             RELATED_BYTES_MAX - size,
         )
@@ -538,29 +540,29 @@ class Inputs:
     related: dict[str, Any]
 
 
-def read_inputs(plan: Plan, reader: Reader) -> Inputs:
+def _read_inputs(plan: Plan, reader: Reader) -> Inputs:
     """The bounded reads of a pinned plan. A query with no rows reads nothing else."""
-    query, size = reader.read(
-        plan.entity, query_sql(plan), plan.query_rows, ENTITY_BYTES_MAX
+    query, size = reader._read(
+        plan.entity, _query_sql(plan), plan.query_rows, ENTITY_BYTES_MAX
     )
     if query.empty:
         return Inputs(query, query.iloc[0:0], {})
-    context, _ = reader.read(
-        plan.entity, context_sql(plan), plan.context_rows, ENTITY_BYTES_MAX - size
+    context, _ = reader._read(
+        plan.entity, _context_sql(plan), plan.context_rows, ENTITY_BYTES_MAX - size
     )
-    return Inputs(query, context, read_related(plan, reader))
+    return Inputs(query, context, _read_related(plan, reader))
 
 
-def load_inputs(plan: Plan, reader: Reader) -> Inputs:
+def _load_inputs(plan: Plan, reader: Reader) -> Inputs:
     """Admission, then the reads at the versions admission pinned."""
-    pinned, _ = admit(plan, reader)
-    return read_inputs(pinned, reader)
+    pinned, _ = _admit(plan, reader)
+    return _read_inputs(pinned, reader)
 
 
 # region: model -----------------------------------------------------------
 
 
-def cpu_limit() -> int:
+def _cpu_limit() -> int:
     """The pod's CPU limit in whole cores (cgroup v2 cpu.max), at least one; one when unlimited."""
     with contextlib.suppress(OSError, ValueError):
         quota, period = (
@@ -571,7 +573,7 @@ def cpu_limit() -> int:
     return 1
 
 
-def weights_path() -> str:
+def _weights_path() -> str:
     path = os.environ.get("KUMO_RELATIONAL_WEIGHTS")
     if not path:
         raise ScoreRefused(
@@ -588,7 +590,7 @@ def weights_path() -> str:
     return str(file)
 
 
-def model_version() -> str:
+def _model_version() -> str:
     return (
         f"{MODEL_REPO}@{os.environ.get('KUMO_RELATIONAL_REVISION', DEFAULT_REVISION)}"
     )
@@ -608,7 +610,7 @@ def _normalise(plan: Plan, group: str, frame: Any) -> Any:
     return frame
 
 
-def is_positive(plan: Plan, values: Any) -> Any:
+def _is_positive(plan: Plan, values: Any) -> Any:
     """Boolean series: the target equals the positive value (a boolean or a 0/1 target needs none)."""
     if plan.positive is not None:
         return values.astype(str).str.lower() == str(plan.positive).lower()
@@ -623,9 +625,9 @@ def is_positive(plan: Plan, values: Any) -> Any:
     )
 
 
-def check_classes(plan: Plan, values: Any) -> None:
+def _check_classes(plan: Plan, values: Any) -> None:
     """Refuse labelled rows of one class only: the model needs both."""
-    labels = is_positive(plan, values)
+    labels = _is_positive(plan, values)
     if labels.nunique() < 2:
         held = "none" if labels.empty else ("positive" if labels.all() else "negative")
         raise ScoreRefused(
@@ -634,7 +636,7 @@ def check_classes(plan: Plan, values: Any) -> None:
         )
 
 
-def build_relational(sdm: Any, plan: Plan, inputs: Inputs) -> tuple[Any, dict]:
+def _build_relational(sdm: Any, plan: Plan, inputs: Inputs) -> tuple[Any, dict]:
     """The sampler over the groups, and the task link to the entity table."""
     import pandas as pd  # noqa: PLC0415
 
@@ -685,7 +687,7 @@ def build_relational(sdm: Any, plan: Plan, inputs: Inputs) -> tuple[Any, dict]:
     return sampler, link
 
 
-def task_frame(plan: Plan, rows: Any, started: Any, labelled: bool) -> Any:
+def _task_frame(plan: Plan, rows: Any, started: Any, labelled: bool) -> Any:
     """Task table rows: keys, the cutoff time, a constant column, and the label when known."""
     out = rows[plan.keys].copy()
     if labelled and plan.cutoff:
@@ -694,7 +696,7 @@ def task_frame(plan: Plan, rows: Any, started: Any, labelled: bool) -> Any:
         out[CUTOFF] = started
     out[CONST] = 0.0
     if labelled:
-        out[LABEL] = is_positive(plan, rows[plan.target]).astype(int).astype(str)
+        out[LABEL] = _is_positive(plan, rows[plan.target]).astype(int).astype(str)
     return out
 
 
@@ -706,7 +708,7 @@ def _stypes(plan: Plan, labelled: bool) -> dict[str, str]:
     return stypes
 
 
-def load_model(path: str) -> Any:
+def _load_model(path: str) -> Any:
     import torch  # noqa: PLC0415 - the job image ships it
     from sdm.models import KumoRelational  # noqa: PLC0415
 
@@ -717,7 +719,7 @@ def load_model(path: str) -> Any:
     return model
 
 
-def positive_column(out: Any) -> Any:
+def _positive_column(out: Any) -> Any:
     frame = out.to_pandas()
     hits = [c for c in frame.columns if str(c) in ("1", "True", "1.0")]
     if not hits:
@@ -725,22 +727,22 @@ def positive_column(out: Any) -> Any:
     return frame[hits[0]].to_numpy()
 
 
-def score(plan: Plan, inputs: Inputs, started: Any, log: Any) -> Any:
+def _score(plan: Plan, inputs: Inputs, started: Any, log: Any) -> Any:
     """Scores for the query rows: one context encoding, query batches of BATCH rows."""
     import numpy as np  # noqa: PLC0415
     import pandas as pd  # noqa: PLC0415
     import sdm  # noqa: PLC0415
     import torch  # noqa: PLC0415
 
-    torch.set_num_threads(int(os.environ.get("TORCH_NUM_THREADS", cpu_limit())))
+    torch.set_num_threads(int(os.environ.get("TORCH_NUM_THREADS", _cpu_limit())))
     t0 = time.perf_counter()
-    model = load_model(weights_path())
+    model = _load_model(_weights_path())
     log(
         f"model loaded in {time.perf_counter() - t0:.1f}s, {torch.get_num_threads()} threads"
     )
 
-    check_classes(plan, inputs.context[plan.target])
-    sampler, link = build_relational(sdm, plan, inputs)
+    _check_classes(plan, inputs.context[plan.target])
+    sampler, link = _build_relational(sdm, plan, inputs)
     kw = {
         "task_link": link,
         "num_neighbors": list(NUM_NEIGHBORS),
@@ -749,7 +751,7 @@ def score(plan: Plan, inputs: Inputs, started: Any, log: Any) -> Any:
 
     with torch.inference_mode():
         t0 = time.perf_counter()
-        ctx_frame = task_frame(
+        ctx_frame = _task_frame(
             plan, _normalise(plan, plan.entity, inputs.context), started, True
         )
         ctx = sdm.TableTensor.from_pandas(df=ctx_frame, stypes=_stypes(plan, True))
@@ -764,10 +766,10 @@ def score(plan: Plan, inputs: Inputs, started: Any, log: Any) -> Any:
         probs = []
         for i in range(0, len(query), BATCH):
             t0 = time.perf_counter()
-            batch = task_frame(plan, query.iloc[i : i + BATCH], started, False)
+            batch = _task_frame(plan, query.iloc[i : i + BATCH], started, False)
             qt = sdm.TableTensor.from_pandas(df=batch, stypes=_stypes(plan, False))
             xq, rq = sampler(qt, **kw).to("cpu")
-            probs.append(positive_column(model.predict(xq, rq)))
+            probs.append(_positive_column(model.predict(xq, rq)))
             log(
                 f"batch {i // BATCH + 1}/{-(-len(query) // BATCH)}: {len(batch)} rows "
                 f"in {time.perf_counter() - t0:.1f}s"
@@ -780,7 +782,7 @@ def score(plan: Plan, inputs: Inputs, started: Any, log: Any) -> Any:
 # region: publish ---------------------------------------------------------
 
 
-def publish(
+def _publish(
     scores: Any,
     run: Any,
     insert_scores: Any,
@@ -802,7 +804,7 @@ def publish(
     log(f"run {run['run_id'].iloc[0]} published")
 
 
-def run_plan(
+def _run_plan(
     plan: Plan,
     reader: Reader,
     insert_scores: Any,
@@ -815,13 +817,13 @@ def run_plan(
 
     started = pd.Timestamp(datetime.now(timezone.utc)).tz_localize(None)
     run_id = f"{started.strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:6]}"
-    version = model_version()
-    inputs = load_inputs(plan, reader)
+    version = _model_version()
+    inputs = _load_inputs(plan, reader)
     log(f"inputs: {len(inputs.query)} query rows, {len(inputs.context)} context rows")
     if inputs.query.empty:
         scored = pd.DataFrame(columns=[*plan.keys, "score"])
     else:
-        scored = score(plan, inputs, started, log)
+        scored = _score(plan, inputs, started, log)
     completed = pd.Timestamp(datetime.now(timezone.utc)).tz_localize(None)
     if len(scored):
         scored["run_id"] = run_id
@@ -850,7 +852,7 @@ def run_plan(
             }
         ]
     )
-    publish(scored, run, insert_scores, insert_run, log, hold)
+    _publish(scored, run, insert_scores, insert_run, log, hold)
     return run_id
 
 
@@ -871,10 +873,10 @@ class TrinoSql:
         names = [str(c[0]) for c in cur.description or []]
         return names, cur.fetchall()
 
-    def rows(self, sql: str) -> list[tuple]:
+    def _rows(self, sql: str) -> list[tuple]:
         return self._run(sql)[1]
 
-    def frame(
+    def _frame(
         self, sql: str, max_rows: int, max_bytes: int, group: str = ""
     ) -> tuple[Any, int]:
         """The result and its bytes, fetched in chunks.
@@ -890,9 +892,9 @@ class TrinoSql:
         kept: list = []
         size = 0
         while chunk := cur.fetchmany(FETCH_ROWS):
-            size += sum(row_bytes(r) for r in chunk)
+            size += sum(_row_bytes(r) for r in chunk)
             try:
-                check_read(group, len(kept) + len(chunk), size, max_rows, max_bytes)
+                _check_read(group, len(kept) + len(chunk), size, max_rows, max_bytes)
             except ScoreRefused:
                 cur.cancel()
                 raise
@@ -900,11 +902,11 @@ class TrinoSql:
         return pd.DataFrame(kept, columns=names), size
 
 
-def job_args_parser() -> argparse.ArgumentParser:
+def _job_args_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--system", required=True, help="The system name.")
     parser.add_argument(
-        "--config", required=True, help="The plan, as base64url JSON (Plan.to_arg)."
+        "--config", required=True, help="The plan, as base64url JSON (Plan._to_arg)."
     )
     # Test hook: tests/live/test_score.py stops a run between the scores and its run row.
     parser.add_argument(
@@ -917,9 +919,9 @@ def job_args_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = job_args_parser().parse_args(argv)
-    plan = Plan.from_arg(args.config)
+def _main(argv: list[str] | None = None) -> int:
+    args = _job_args_parser().parse_args(argv)
+    plan = Plan._from_arg(args.config)
     t_start = time.perf_counter()
 
     def log(msg: str) -> None:
@@ -933,7 +935,7 @@ def main(argv: list[str] | None = None) -> int:
     project = hopsworks.login()
     fs = project.get_feature_store()
     reader = Reader(TrinoSql(project, fs.name), log)
-    marker = owner_marker(plan.name)
+    marker = _owner_marker(plan.name)
     try:
         if args.system != plan.name:
             raise ScoreRefused(
@@ -945,7 +947,7 @@ def main(argv: list[str] | None = None) -> int:
             primary_key=[*plan.keys, "run_id"],
             event_time="scored_at",
             description=f"{marker} Scores of {plan.name}, one insert per run. "
-            f"Model {model_version()}.",
+            f"Model {_model_version()}.",
         )
         runs_fg = fs.get_or_create_feature_group(
             name=plan.runs_name,
@@ -955,11 +957,11 @@ def main(argv: list[str] | None = None) -> int:
             description=f"{marker} Completed runs of {plan.name}: a run is current "
             "once its row is here.",
         )
-        check_inputs_are_not_outputs(plan.name, plan.groups)
+        _check_inputs_are_not_outputs(plan.name, plan.groups)
         # get_or_create returns a group of that name whoever made it: write only to ours.
-        check_output_group(scores_fg, plan.name)
-        check_output_group(runs_fg, plan.name)
-        run_plan(
+        _check_output_group(scores_fg, plan.name)
+        _check_output_group(runs_fg, plan.name)
+        _run_plan(
             plan,
             reader,
             lambda df: scores_fg.insert(df, wait=True),
@@ -974,4 +976,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(_main())

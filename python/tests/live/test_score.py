@@ -91,7 +91,7 @@ def _show(name: str) -> dict:
 
 
 def _run_ids(sql, table: str) -> set:
-    return {r[0] for r in sql.rows(f'SELECT DISTINCT run_id FROM "{table}"')}
+    return {r[0] for r in sql._rows(f'SELECT DISTINCT run_id FROM "{table}"')}
 
 
 def test_publication_current_run_kill_window_and_delete(cluster):
@@ -171,7 +171,7 @@ def test_publication_current_run_kill_window_and_delete(cluster):
         held.stop()
         assert _await(project, job_name, held.id).success is False
         (killed,) = new
-        rows = cluster.sql.rows(
+        rows = cluster.sql._rows(
             f"SELECT count(*) FROM \"{scores_table}\" WHERE run_id = '{killed}'"
         )
         assert rows[0][0] == 5
@@ -343,7 +343,7 @@ def test_oversized_entity_group_is_refused_before_any_read(cluster, monkeypatch)
     monkeypatch.setattr(kumo_job, "ENTITY_BYTES_MAX", 50)
     reader = kumo_job.Reader(cluster.sql)
     with pytest.raises(kumo_job.ScoreRefused, match="over the cap of 50 bytes"):
-        kumo_job.load_inputs(plan, reader)
+        kumo_job._load_inputs(plan, reader)
     assert reader.reads == []
     assert [g for kind, g, _ in reader.calls if kind == "admission"]
 
@@ -365,7 +365,7 @@ def test_non_ascii_text_crossing_the_byte_cap_is_refused_at_admission(
     g = cluster.make("notes", notes, ["id"])
     plan = cluster.plan(g, [])
     cap = 500
-    characters, octets = cluster.sql.rows(
+    characters, octets = cluster.sql._rows(
         f'SELECT sum(length(note)), sum(length(to_utf8(note))) FROM "{g}_1"'
     )[0]
     assert characters < cap < octets
@@ -374,7 +374,7 @@ def test_non_ascii_text_crossing_the_byte_cap_is_refused_at_admission(
     with pytest.raises(
         kumo_job.ScoreRefused, match=r"bytes \(UTF-8\) after projection"
     ):
-        kumo_job.load_inputs(plan, reader)
+        kumo_job._load_inputs(plan, reader)
     assert reader.reads == []
 
 
@@ -413,17 +413,17 @@ def test_related_caps_count_only_the_rows_reachable_from_the_selection(
     assert want[act] < len(activities)
 
     reader = kumo_job.Reader(cluster.sql)
-    _, stats = kumo_job.admit(plan, reader)
+    _, stats = kumo_job._admit(plan, reader)
     assert {g: s["rows"] for g, s in stats.items() if g != d} == want
     assert reader.reads == []
 
     # A cap between the reachable count and the whole table admits; one below it refuses.
     monkeypatch.setattr(kumo_job, "RELATED_ROWS_MAX", sum(want.values()))
-    kumo_job.admit(plan, kumo_job.Reader(cluster.sql))
+    kumo_job._admit(plan, kumo_job.Reader(cluster.sql))
     monkeypatch.setattr(kumo_job, "RELATED_ROWS_MAX", sum(want.values()) - 1)
     reader = kumo_job.Reader(cluster.sql)
     with pytest.raises(kumo_job.ScoreRefused, match="reachable from the selected rows"):
-        kumo_job.load_inputs(plan, reader)
+        kumo_job._load_inputs(plan, reader)
     assert reader.reads == []
 
 
@@ -700,7 +700,7 @@ def test_a_view_on_contacts_v1_reads_v1_when_v2_exists(cluster):
         args = shlex.split(job.config["defaultArgs"])
         from hopsworks.score import kumo_job
 
-        plan = kumo_job.Plan.from_arg(args[args.index("--config") + 1])
+        plan = kumo_job.Plan._from_arg(args[args.index("--config") + 1])
         assert plan.groups[c].version == 1
         assert plan.groups[d].version == 1
 
@@ -764,8 +764,8 @@ def test_a_group_reached_two_ways_reads_the_union_in_any_link_order(cluster):
             d, order, cutoff=f"{d}.closed_at", context_rows=2, query_rows=10
         )
         reader = kumo_job.Reader(cluster.sql)
-        pinned, stats = kumo_job.admit(plan, reader)
-        frames = kumo_job.read_related(pinned, reader)
+        pinned, stats = kumo_job._admit(plan, reader)
+        frames = kumo_job._read_related(pinned, reader)
         assert {g: set(f["id"]) for g, f in frames.items()} == want
         assert {g: len(f) for g, f in frames.items()} == {
             g: s["rows"] for g, s in stats.items() if g != d
@@ -790,7 +790,7 @@ def test_the_reads_see_the_state_admission_pinned(cluster, monkeypatch):
         query_rows=10,
     )
     reader = kumo_job.Reader(cluster.sql)
-    pinned, stats = kumo_job.admit(plan, reader)
+    pinned, stats = kumo_job._admit(plan, reader)
     assert set(pinned.pins) == {d, act}
 
     # Between admission and the reads: more activities for every deal, and a new open deal.
@@ -799,12 +799,12 @@ def test_the_reads_see_the_state_admission_pinned(cluster, monkeypatch):
     new_deal = deals.head(1).assign(id=10_000)
     cluster.fs.get_feature_group(d, version=1).insert(new_deal, wait=True)
 
-    inputs = kumo_job.read_inputs(pinned, reader)
+    inputs = kumo_job._read_inputs(pinned, reader)
     assert len(inputs.related[act]) == stats[act]["rows"]
     assert 10_000 not in set(inputs.query["id"])
     assert len(inputs.query) == 2
     # The same plan unpinned sees the new state, so the pin is what kept it out.
-    latest, later = kumo_job.admit(plan, kumo_job.Reader(cluster.sql))
+    latest, later = kumo_job._admit(plan, kumo_job.Reader(cluster.sql))
     assert later[act]["rows"] > stats[act]["rows"]
     assert latest.pins[act] > pinned.pins[act]
 
@@ -812,4 +812,4 @@ def test_the_reads_see_the_state_admission_pinned(cluster, monkeypatch):
     monkeypatch.setattr(kumo_job, "FETCH_ROWS", 2)
     monkeypatch.setattr(kumo_job, "RELATED_ROWS_MAX", stats[act]["rows"] - 1)
     with pytest.raises(kumo_job.ScoreRefused, match="Stopped before keeping more"):
-        kumo_job.read_related(pinned, kumo_job.Reader(cluster.sql))
+        kumo_job._read_related(pinned, kumo_job.Reader(cluster.sql))
