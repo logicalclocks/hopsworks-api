@@ -596,7 +596,7 @@ class FeatureStore:
             ```
 
         Parameters:
-            target_project: Project name (preferred) or numeric id.
+            target_project: Project name or numeric id.
 
         Raises:
             PermissionError: If the caller lacks Data Owner in the source
@@ -613,15 +613,15 @@ class FeatureStore:
     def shared_with(self) -> list[dict]:
         """List the projects this feature store has been shared with.
 
-        Each entry has at least ``sharedWithProject`` (with ``name`` and
-        ``id``), ``sharedBy``, ``sharedOn``, and ``sharedEntirely`` (true
+        Each entry has at least ``sharedWithProject`` (with ``projectName`` and
+        ``projectId``), ``sharedBy``, ``sharedOn``, and ``sharedEntirely`` (true
         when the whole feature store was shared rather than an individual
         feature group). Requires the Data Owner role in the source project.
 
         Example:
             ```python
             for share in fs.shared_with():
-                print(share["sharedWithProject"]["name"], share["sharedOn"])
+                print(share["sharedWithProject"]["projectName"], share["sharedOn"])
             ```
 
         Returns:

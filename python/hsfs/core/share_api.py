@@ -9,12 +9,9 @@
 #
 """REST wrappers for feature-store and feature-group sharing.
 
-Both endpoints take the *target* project as an integer id, never a name —
-the CLI/SDK callers usually only know the name, so this module does the
-``getProjectInfo`` lookup once and converts ``PermissionError`` /
-``RestAPIError`` from the backend into messages that name the source and
-target projects explicitly. Both REST endpoints require Data Owner role
-in the source project; a 403 is reported as a ``PermissionError``.
+Both endpoints take the *target* project as ``project=<id>`` or ``target_project=<name>``.
+The backend resolves a name itself, since the caller is usually not a member of the target project.
+Both REST endpoints require the Data Owner role in the source project; a 403 is reported as a ``PermissionError`` that names the source and target projects.
 """
 
 from __future__ import annotations
@@ -23,33 +20,29 @@ from typing import TYPE_CHECKING
 
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import RestAPIError
-from hopsworks_common.core import project_api
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
 
-def _resolve_target_project_id(target_project: str | int) -> int:
-    """Translate a project name to its int id, or pass an int id through.
+def _target_query(target_project: str | int) -> dict[str, object]:
+    """Name the target project in the query, by id for an int and by name for a str.
 
     Parameters:
         target_project: Project name or numeric id.
 
     Returns:
-        The numeric project id.
+        The query parameters naming the target project.
 
     Raises:
         ValueError: If ``target_project`` is empty.
-        hopsworks.client.exceptions.RestAPIError: If the backend cannot
-            resolve the project name (e.g. caller has no membership).
     """
     if not target_project and target_project != 0:
         raise ValueError("target_project must be a non-empty project name or id")
     if isinstance(target_project, int):
-        return target_project
-    proj = project_api.ProjectApi()._get_project(target_project)
-    return proj.id
+        return {"project": target_project}
+    return {"target_project": target_project}
 
 
 def _denied_msg(action: str, source_project: str, target_project: str | int) -> str:
@@ -73,12 +66,11 @@ class ShareApi:
         """Share the entire feature store with another project.
 
         Parameters:
-            target_project: Project name (preferred) or numeric id.
+            target_project: Project name or numeric id.
 
         Raises:
             PermissionError: If the caller lacks Data Owner in the source project.
         """
-        target_id = _resolve_target_project_id(target_project)
         _client = client._get_instance()
         path_params = [
             "project",
@@ -88,7 +80,7 @@ class ShareApi:
         ]
         try:
             _client._send_request(
-                "POST", path_params, query_params={"project": target_id}
+                "POST", path_params, query_params=_target_query(target_project)
             )
         except RestAPIError as e:
             if getattr(e.response, "status_code", None) == 403:
@@ -107,7 +99,6 @@ class ShareApi:
         Parameters:
             target_project: Project name or numeric id whose share is being revoked.
         """
-        target_id = _resolve_target_project_id(target_project)
         _client = client._get_instance()
         path_params = [
             "project",
@@ -117,7 +108,7 @@ class ShareApi:
         ]
         try:
             _client._send_request(
-                "DELETE", path_params, query_params={"project": target_id}
+                "DELETE", path_params, query_params=_target_query(target_project)
             )
         except RestAPIError as e:
             if getattr(e.response, "status_code", None) == 403:
@@ -140,7 +131,7 @@ class ShareApi:
 
         Parameters:
             feature_group_id: Numeric feature-group id.
-            target_project: Project name (preferred) or numeric id.
+            target_project: Project name or numeric id.
             features: Optional whitelist of feature names. When provided,
                 only those columns are visible to the target project.
                 When ``None`` (default), the full feature group is shared.
@@ -150,7 +141,6 @@ class ShareApi:
         Raises:
             PermissionError: If the caller lacks Data Owner in the source project.
         """
-        target_id = _resolve_target_project_id(target_project)
         _client = client._get_instance()
         path_params = [
             "project",
@@ -162,7 +152,7 @@ class ShareApi:
         ]
         # JAX-RS @QueryParam Set<String> reads the same param key repeated
         # multiple times; requests serializes a list value the same way.
-        query_params: dict[str, object] = {"project": target_id}
+        query_params = _target_query(target_project)
         if features:
             query_params["feature"] = list(features)
         try:
@@ -183,7 +173,7 @@ class ShareApi:
 
         Returns the ``items`` array from the backend's
         ``GET /featurestores/share`` response. Each entry has at
-        least ``sharedWithProject`` (with ``name`` / ``id``),
+        least ``sharedWithProject`` (with ``projectName`` / ``projectId``),
         ``sharedBy``, ``sharedOn``, and ``sharedEntirely`` (true when
         the whole feature store was shared rather than an individual
         feature group).
@@ -263,7 +253,6 @@ class ShareApi:
             feature_group_id: Numeric feature-group id.
             target_project: Project name or numeric id whose share is being revoked.
         """
-        target_id = _resolve_target_project_id(target_project)
         _client = client._get_instance()
         path_params = [
             "project",
@@ -275,7 +264,7 @@ class ShareApi:
         ]
         try:
             _client._send_request(
-                "DELETE", path_params, query_params={"project": target_id}
+                "DELETE", path_params, query_params=_target_query(target_project)
             )
         except RestAPIError as e:
             if getattr(e.response, "status_code", None) == 403:
