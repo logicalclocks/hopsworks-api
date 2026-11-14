@@ -69,7 +69,7 @@ os.environ.update({
     "DBT_TRINO_PORT": str(trino.get_port()),
     "DBT_TRINO_USER": user,
     "DBT_TRINO_PASSWORD": password,
-    "DBT_TRINO_SCHEMA": f"{getattr(project, 'backing_name', project.name)}_featurestore",
+    "DBT_TRINO_SCHEMA": f"{getattr(project, 'backing_name', project.name).lower()}_featurestore",
     # _get_ca_chain_path is private on purpose: dbt needs the cert as a FILE
     # PATH for profiles.yml, and connect()/create_engine() are the only
     # public paths, which resolve it internally instead of handing it over.

@@ -15,7 +15,7 @@ description: Use when a Hopsworks Python app or agent deployment needs its own
 ## Concept
 
 Every project owns one MySQL-compatible database on **RonDB**, the online
-feature store, named after the project (lowercase). It holds the online feature
+feature store, named after the project's backing name (lowercase), which can differ from its display name. It holds the online feature
 group tables (`<fg_name>_<version>`) and it is also where an app keeps its own
 tables: sessions, user preferences, agent memory, job results. There is no
 separate "app database"; the app and the feature store share the project schema.
@@ -33,7 +33,7 @@ variables, so code written for one works in the other.
 |---|---|
 | `MYSQL_HOST` | internal DNS name of the online feature store MySQL server |
 | `MYSQL_PORT` | its port (normally `3306`) |
-| `MYSQL_DB` | the project database, `<project_name>` lowercased |
+| `MYSQL_DB` | the project database, the project's backing name lowercased |
 | `MYSQL_USER` | the app's own MySQL user, `hopsapp_<app id>`; for an app created before table registration, the user of the person who **started** it, `<project>_<username>` |
 | `MYSQL_PASSWORD_SECRET_NAME` | name of the **Hopsworks secret** holding that user's password (same string as `MYSQL_USER`) |
 

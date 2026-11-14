@@ -13,7 +13,7 @@ The index describes the copies in Hopsworks as of the sync's last run, not live 
 
 - The index is version 1 of a feature group, `sharepoint_<dataset>` unless the sync named it.
   `hops datasource sharepoint sync list <data source>` shows it in the INDEX column; `-` means the sync does not index.
-- In a terminal the project's feature store is mounted read-only, and the index is the directory `/hopsfs/featurestore/<project>_featurestore.db/<name>_1` (`/hopsfs/__featurestore__/...` when the project has a dataset named `featurestore`).
+- In a terminal the project's feature store is mounted read-only, and the index is the directory `/hopsfs/featurestore/<store>.db/<name>_1`, `<store>` being the STORE column of `hops fg list` (the backing name plus `_featurestore`) (`/hopsfs/__featurestore__/...` when the project has a dataset named `featurestore`).
   Confirm it with `ls /hopsfs/featurestore/*_featurestore.db/` before querying; never guess the path.
 - Jupyter and job pods do not mount the feature store; there, read the feature group with the Python client instead (**hops-fg**).
 

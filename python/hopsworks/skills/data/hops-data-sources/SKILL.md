@@ -415,7 +415,7 @@ On Spark, `verify=False` accepts only a single self-signed certificate; a cluste
 ## Mount a feature group from another Hopsworks cluster
 
 A `hopsworks` data source reads a project on another Hopsworks cluster.
-Its databases are the feature stores the remote project can read, its own `<project>_featurestore` and the ones shared with it, and its tables are their feature groups, named `<name>_<version>`.
+Its databases are the feature stores the remote project can read, its own `<backing name>_featurestore` and the ones shared with it, and its tables are their feature groups, named `<name>_<version>`.
 External feature groups are read through the remote cluster's Hopsworks Query Service, and DLTHub ingestion copies one into a local feature group.
 
 ```python
