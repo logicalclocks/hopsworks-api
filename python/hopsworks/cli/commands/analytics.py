@@ -1,11 +1,14 @@
-"""Analytics layers, built by the ``analytics-bronze``, ``analytics-silver`` and ``analytics-gold`` factories.
+"""Analytics layers, built by the ``analytics-bronze``, ``analytics-silver``, ``analytics-gold`` and ``analytics-semantic`` factories.
 
-``hops factory run analytics-bronze|analytics-silver|analytics-gold`` records a
+``hops factory run analytics-bronze|analytics-silver|analytics-gold|analytics-semantic`` records a
 layer's request, as the factory's form collects it, in ``<slug>/system.yaml``,
 registers the layer so the Factory lists it, and starts Claude Code with
-``/hops-bronze <slug>``, ``/hops-silver <slug>`` or ``/hops-gold <slug>`` to build it.
+``/hops-bronze <slug>``, ``/hops-silver <slug>``, ``/hops-gold <slug>`` or
+``/hops-semantic-layer <slug>`` to build it.
 A bronze layer is generated data: one of the generators in the hops-analytics
 references, such as the clickstream example's, copied into the layer.
+A semantic layer is a blueprint from the same references, such as the ecommerce example's:
+generated tables, the dbt project registered as their semantic project, and a chat app.
 A gold layer is built as data marts, each added, changed and deleted on its own;
 those commands, the backfill and the layer's status are ``hops factory system``
 commands.
@@ -41,9 +44,10 @@ REFERENCES = (
 TEMPLATE = REFERENCES / "silver_template"
 GOLD_TEMPLATE = REFERENCES / "gold_template"
 BRONZE_TEMPLATE = REFERENCES / "bronze_template"
+SEMANTIC_TEMPLATE = REFERENCES / "semantic_template"
 SLUG = re.compile(r"^[a-z][a-z0-9-]*$")
-# A layer's analytics repository is hops-<its slug without -bronze, -silver or -gold>.
-LAYER_SUFFIX = re.compile(r"-(bronze|silver|gold)$")
+# A layer's analytics repository is hops-<its slug without -bronze, -silver, -gold or -semantic>.
+LAYER_SUFFIX = re.compile(r"-(bronze|silver|gold|semantic)$")
 REPO = re.compile(r"^hops-[a-z0-9][a-z0-9-]*$")
 TASKS = (
     "deduplicate",
@@ -94,6 +98,9 @@ ANSWER_KEYS = {
 BRONZE_KEYS = {"slug", "name", "description", "lifecycle", "reference_code", "repo"}
 # A generator in the references: a directory holding its bronze.yaml.
 GENERATOR = re.compile(r"^[a-z][a-z0-9_]*_bronze$")
+SEMANTIC_KEYS = {"slug", "name", "description", "lifecycle", "reference_code", "repo"}
+# A semantic layer blueprint in the references: a directory holding its semantic.yaml.
+BLUEPRINT = re.compile(r"^[a-z][a-z0-9_]*_semantic$")
 MODELINGS = ("star", "snowflake")
 GRAIN_TYPES = (
     "transaction",
@@ -701,6 +708,104 @@ def create_gold(ctx: click.Context, data: dict, launch: bool) -> Path:
     output.success(f"Gold layer recorded in {target / 'system.yaml'}")
     _register(ctx, target, data.get("name") or data["slug"], "gold")
     _launch(target, launch, f"/hops-gold {target.name}")
+    return target
+
+
+def _semantic_problems(answers: dict) -> list[str]:
+    problems = [f"unknown answer {k!r}" for k in sorted(set(answers) - SEMANTIC_KEYS)]
+    problems += _repo_problems(answers)
+    if not SLUG.match(str(answers.get("slug", ""))):
+        problems.append(
+            "slug must be lowercase letters, digits and hyphens, starting with a letter"
+        )
+    if answers.get("lifecycle", "dev") not in LIFECYCLES:
+        problems.append(f"lifecycle must be one of {', '.join(LIFECYCLES)}")
+    blueprint = str(answers.get("reference_code") or "")
+    if (
+        not BLUEPRINT.match(blueprint)
+        or not (REFERENCES / blueprint / "semantic.yaml").is_file()
+    ):
+        known = ", ".join(
+            sorted(d.parent.name for d in REFERENCES.glob("*/semantic.yaml"))
+        )
+        problems.append(
+            f"reference_code must name a semantic layer blueprint in the hops-analytics references: {known}"
+        )
+    return problems
+
+
+def _create_semantic(cwd: Path, answers: dict) -> Path:
+    """Copy the semantic template and the blueprint into ``cwd/<slug>``, and describe both in its system.yaml."""
+    import yaml
+
+    repo = _repo_dir(cwd, answers, "semantic")
+    fresh = not repo.exists()
+    slug = answers["slug"]
+    target, doc = _copy_template(repo, slug, SEMANTIC_TEMPLATE)
+    source = REFERENCES / answers["reference_code"]
+    blueprint = yaml.safe_load((source / "semantic.yaml").read_text(encoding="utf-8"))
+    shutil.copytree(
+        source,
+        target,
+        dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns("semantic.yaml", "__pycache__", ".pytest_cache"),
+    )
+    name = slug.replace("-", "_")
+    # The app reads the semantic project's name from its app.json.
+    settings_file = target / blueprint["app"]["path"] / "app.json"
+    settings = json.loads(settings_file.read_text(encoding="utf-8"))
+    settings["semantic_project"] = name
+    settings_file.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+    doc["layer"]["repo"] = _layer_repo(repo, answers)
+    _trust_new(repo, answers, fresh)
+    doc["layer"].update(
+        name=answers.get("name") or slug,
+        slug=slug,
+        description=answers.get("description", ""),
+        lifecycle=answers.get("lifecycle", "dev"),
+    )
+    doc["generator"] = {
+        "reference": answers["reference_code"],
+        "program": blueprint["program"],
+        "environment": blueprint["environment"],
+        "backfill": blueprint["backfill"],
+    }
+    doc["tables"] = blueprint["tables"]
+    doc["schedule"]["cadences"] = blueprint["cadences"]
+    doc["freshness"] = {
+        "max_age_hours": {c: FRESHNESS_HOURS[c] for c in blueprint["cadences"]}
+    }
+    doc["semantic_project"] = {"name": name, **blueprint["semantic"]}
+    doc["reconcile"] = blueprint.get("reconcile") or {}
+    doc["app"] = {"name": f"{slug}-chat", **blueprint["app"]}
+    _write(target, doc)
+    return target
+
+
+def create_semantic(ctx: click.Context, data: dict, launch: bool) -> Path:
+    """Record a semantic layer over generated data in ./<slug>/system.yaml, register it, and build it with Claude Code.
+
+    The answers name the blueprint (`reference_code`, a directory of the
+    hops-analytics references with a semantic.yaml): its generator, the dbt
+    project registered as the semantic project `<slug>` with underscores, the
+    totals its metrics reconcile with, and the chat app `<slug>-chat`, all
+    copied into the layer.
+
+    Args:
+        ctx: Click context.
+        data: The answers of the semantic layer factory's form.
+        launch: Start Claude Code on the layer.
+
+    Returns:
+        The layer's directory.
+    """
+    problems = _semantic_problems(data)
+    if problems:
+        raise click.ClickException("invalid answers:\n  " + "\n  ".join(problems))
+    target = _create_semantic(Path.cwd(), data)
+    output.success(f"Semantic layer recorded in {target / 'system.yaml'}")
+    _register(ctx, target, data.get("name") or data["slug"], "semantic")
+    _launch(target, launch, f"/hops-semantic-layer {target.name}")
     return target
 
 

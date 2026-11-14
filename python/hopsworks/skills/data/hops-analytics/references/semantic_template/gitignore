@@ -1,0 +1,12 @@
+# Copied into the layer directory as .gitignore.
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+target/
+dbt_packages/
+logs/
+.ruff_cache/
+# Logs never belong in the repository; see AGENTS.md.
+logs-*/
+*.log

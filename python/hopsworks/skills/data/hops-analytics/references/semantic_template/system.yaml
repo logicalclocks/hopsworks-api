@@ -1,0 +1,47 @@
+# A semantic layer over generated data: its specification, and what runs.
+# Written by `hops factory run analytics-semantic` from the Factory's answers and the blueprint's
+# semantic.yaml, then by /hops-semantic-layer.
+# The `layer` block marks this system.yaml as an analytics layer, not an ML system.
+layer:
+  kind: semantic
+  name: ""            # title shown in the Factory
+  slug: ""            # this directory's name
+  description: ""     # what the semantic layer answers
+  lifecycle: dev      # dev | staging | prod, mirrored in each table's analytics_table tag
+  status: draft       # draft | building | built | failed
+  repo: {}            # {name, url, provider}: the repository, hops-<prefix> (provider github, gitlab, bitbucket or git; url and provider local for code kept in Hopsworks only)
+generator:            # the program that writes the tables, copied from the hops-analytics references
+  reference: ""       # the references/ directory it came from
+  program: ""         # run by every job, with the job's args
+  environment: ""     # the Python environment the jobs run in
+  backfill: {}        # {args}: run once, before the jobs are scheduled
+tables: []            # the feature groups the program writes: {name, version, primary_key, event_time, cadence}
+schedule:
+  catchup: true       # replay the windows missed while the scheduler was down
+  cadences: {}        # one job per cadence: {daily: {cron, max_catchup_runs, args, tables}}
+semantic_project:     # the dbt project in this directory, registered as a semantic project
+  name: ""            # the slug with underscores
+  path: ""            # the dbt project, relative to this directory
+  time_spine: {}      # {start, end}: the time_spine_day feature group its cumulative and offset metrics need
+reconcile: {}         # metric name to the SQL over the tables whose total it must equal
+app:                  # the chat app: questions to metric queries through an LLM
+  name: ""            # the Hopsworks app
+  path: ""            # its code, relative to this directory
+  environment: ""     # the Python environment it runs in
+phases:               # each {status: pending | running | done | failed, started, finished, note}
+  code: {status: pending}
+  backfill: {status: pending}
+  semantic: {status: pending}
+  verify: {status: pending}
+  app: {status: pending}
+  schedule: {status: pending}
+outputs:
+  tables: []          # the feature groups as built: {name, version, cadence, primary_key, event_time, rows}
+  jobs: []            # {name, cadence, cron, environment, tables}; the backfill job has no cadence
+  semantic_project: {}  # {name, id, build, metrics}: the semantic project as compiled
+  reconciled: []      # {metric, semantic, sql, match}: each reconciled total
+  app: {}             # {name, url}: the chat app as deployed
+  applied_spec: {}    # the spec the layer was last built from
+progress:
+  now: ""             # what the build is doing, one line
+decisions: []         # append-only: {at, by, what, why}

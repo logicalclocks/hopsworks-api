@@ -31,9 +31,16 @@ BUILTINS = (
     "analytics-gold",
     "analytics-pipeline",
     "analytics-ingestion",
+    "analytics-semantic",
 )
 # The builds a factory can hand its answers to instead of writing its own instructions.
-BUILTIN_BUILDS = ("mlsystem", "analytics-bronze", "analytics-silver", "analytics-gold")
+BUILTIN_BUILDS = (
+    "mlsystem",
+    "analytics-bronze",
+    "analytics-silver",
+    "analytics-gold",
+    "analytics-semantic",
+)
 FIELD_TYPES = (
     "slug",
     "text",
