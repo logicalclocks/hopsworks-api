@@ -13,6 +13,7 @@ from unittest import mock
 from click.testing import CliRunner
 from hopsworks.cli.commands import context as context_cmd
 from hopsworks.cli.commands import datasource as datasource_cmd
+from hopsworks.cli.commands import fg as fg_cmd
 from hopsworks.cli.commands import fv as fv_cmd
 from hopsworks.cli.commands import model as model_cmd
 from hopsworks.cli.main import cli
@@ -82,6 +83,30 @@ def test_fg_info_renders_fields(mock_project):
     fs.get_feature_group.assert_called_with("transactions", version=3)
     assert "transactions" in result.output
     assert "id" in result.output
+
+
+def _fg_info_json(mock_project, store):
+    fs = mock_project.get_feature_store.return_value
+    fs.name = "p_featurestore"
+    group = _feature_group("orders", version=2)
+    group.feature_store_name = store
+    fs.get_feature_group.return_value = group
+    with mock.patch.object(fg_cmd, "_fg_type_label", return_value="managed"):
+        return CliRunner().invoke(
+            cli, ["--json", "fg", "info", "orders", "--version", "2"]
+        )
+
+
+def test_fg_info_names_the_sql_table(mock_project):
+    result = _fg_info_json(mock_project, "p_featurestore")
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["sql_table"] == "orders_2"
+
+
+def test_fg_info_quotes_the_store_of_a_shared_group(mock_project):
+    result = _fg_info_json(mock_project, "9abc_featurestore")
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["sql_table"] == '"9abc_featurestore".orders_2'
 
 
 def test_fg_info_not_found(mock_project):

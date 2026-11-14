@@ -15,6 +15,7 @@ per-command, e.g. ``--catalog iceberg`` for Iceberg feature groups, or
 from __future__ import annotations
 
 import contextlib
+import re
 from typing import TYPE_CHECKING, Any
 
 import click
@@ -118,6 +119,48 @@ def _stringify(value: Any) -> str:
     return str(value)
 
 
+_MISSING_TABLE = re.compile(r"Table '(?:[^.']+\.)*([^.']+)' does not exist")
+_DIGIT_IDENTIFIER = "identifiers must not start with a digit"
+
+
+def _table_hint(ctx: click.Context, exc: Exception, schema: str | None) -> str:
+    """Name the table a failed query most likely meant."""
+    name = getattr(exc, "error_name", None)
+    if name == "SYNTAX_ERROR" and _DIGIT_IDENTIFIER in str(exc):
+        return (
+            ". A feature store name that starts with a digit goes in double quotes: "
+            '"<store>".<name>_<version>.'
+        )
+    if name != "TABLE_NOT_FOUND" or schema is not None:
+        return ""
+    match = _MISSING_TABLE.search(str(exc))
+    versioned = re.fullmatch(r"(.+)_(\d+)", match.group(1)) if match else None
+    if not versioned:
+        return ""
+    store = _shared_store_of(ctx, versioned.group(1), int(versioned.group(2)))
+    if store is None:
+        return ""
+    table = match.group(1)
+    return (
+        f". {table} is in the shared feature store {store}: write "
+        f'"{store}".{table}, or pass --schema {store}.'
+    )
+
+
+def _shared_store_of(ctx: click.Context, name: str, version: int) -> str | None:
+    """The first feature store shared with the project that holds this group."""
+    own = _featurestore_schema(ctx)
+    for fs in session.get_accessible_feature_stores(ctx):
+        if fs.name == own:
+            continue
+        try:
+            if fs.get_feature_group(name, version=version) is not None:
+                return fs.name
+        except Exception:  # noqa: BLE001, S112 - not in this store, try the next
+            continue
+    return None
+
+
 def _execute(
     ctx: click.Context,
     sql: str,
@@ -135,7 +178,9 @@ def _execute(
         try:
             cur.execute(sql)
         except Exception as exc:  # noqa: BLE001 - the driver raises a mix of types
-            raise click.ClickException(f"Could not run the query: {exc}") from exc
+            raise click.ClickException(
+                f"Could not run the query: {exc}{_table_hint(ctx, exc, schema)}"
+            ) from exc
         if cur.description is None:
             # Statement that returned no rowset (e.g. CREATE/INSERT). Most users
             # don't run these from the CLI, but report the rowcount if the
@@ -217,6 +262,11 @@ def trino_query(
 
     Provide the SQL as a positional argument, or use `-f` to read from a
     file, or `-i` to read from stdin (useful in shell pipelines).
+
+    A feature group is the table `<name>_<version>` in the project's own feature
+    store by default. A group of a store shared with the project is
+    `"<store>".<name>_<version>`, or pass `--schema <store>`; `hops fg info`
+    names the table.
 
     \f
     Args:

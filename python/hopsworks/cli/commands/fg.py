@@ -116,8 +116,9 @@ def fg_info(
         featurestore: Pin lookup to this feature store by name.
     """
     fg = _get_fg(ctx, name, version, featurestore)
+    sql_table = _sql_table(fg, session.get_feature_store(ctx).name)
     if output.JSON_MODE:
-        output.print_json(_fg_to_dict(fg))
+        output.print_json({**_fg_to_dict(fg), "sql_table": sql_table})
         return
     rows = [
         ["ID", getattr(fg, "id", "?")],
@@ -125,6 +126,7 @@ def fg_info(
         ["Version", getattr(fg, "version", "?")],
         ["Type", _fg_type_label(fg)],
         ["Online", "yes" if getattr(fg, "online_enabled", False) else "no"],
+        ["SQL table", sql_table or "-"],
         ["Primary key", ", ".join(getattr(fg, "primary_key", []) or []) or "-"],
         ["Event time", getattr(fg, "event_time", None) or "-"],
         ["Description", output.first_line(getattr(fg, "description", ""))],
@@ -135,6 +137,19 @@ def fg_info(
         rows += [[_SOURCE_LABELS[k], v or "-"] for k, v in source.items()]
         rows.append(["Access", _access_label(fg)])
     output.print_table(["FIELD", "VALUE"], rows)
+
+
+def _sql_table(fg: Any, own_store: str) -> str | None:
+    """The table `hops sql` reads for this group, or None for an external or spine one.
+
+    A group in another project's store needs that store as its schema, quoted since a
+    generated store name can start with a digit.
+    """
+    if _fg_type_label(fg) in ("external", "spine"):
+        return None
+    table = f"{fg.name}_{fg.version}"
+    store = getattr(fg, "feature_store_name", None)
+    return table if not store or store == own_store else f'"{store}".{table}'
 
 
 @fg_group.command("test-access")

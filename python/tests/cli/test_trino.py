@@ -9,6 +9,7 @@ from click.testing import CliRunner
 from hopsworks.cli import config, session
 from hopsworks.cli.commands import trino
 from hopsworks.cli.main import cli
+from trino.exceptions import TrinoUserError
 
 
 def _connect_kwargs(catalog=None, schema=None):
@@ -60,3 +61,77 @@ def test_a_rejected_query_is_one_error_line(mock_project):
         "b'Access Denied: Invalid credentials'"
     )
     connection.close.assert_called_once()
+
+
+def _rejected(exc):
+    cursor = mock.MagicMock()
+    cursor.execute.side_effect = exc
+    connection = mock.MagicMock()
+    connection.cursor.return_value = cursor
+    with mock.patch.object(trino, "_connect", return_value=connection):
+        return CliRunner().invoke(cli, ["sql", "SELECT count(*) FROM orders_1"])
+
+
+def _store(name, group=None):
+    fs = mock.MagicMock()
+    fs.name = name
+    fs.get_feature_group.return_value = group
+    return fs
+
+
+def _not_found(table):
+    return TrinoUserError(
+        {
+            "errorName": "TABLE_NOT_FOUND",
+            "errorType": "USER_ERROR",
+            "message": f"line 1:22: Table 'delta.p_featurestore.{table}' does not exist",
+        },
+        "q1",
+    )
+
+
+def _with_stores(stores):
+    return (
+        mock.patch.object(
+            session, "get_accessible_feature_stores", return_value=stores
+        ),
+        mock.patch.object(trino, "_featurestore_schema", return_value="p_featurestore"),
+    )
+
+
+def test_a_table_in_a_shared_store_names_that_store(mock_project):
+    stores = [_store("p_featurestore"), _store("9abc_featurestore", mock.MagicMock())]
+    a, b = _with_stores(stores)
+    with a, b:
+        result = _rejected(_not_found("orders_1"))
+    assert result.exit_code == 1
+    assert result.output.strip().endswith(
+        "orders_1 is in the shared feature store 9abc_featurestore: write "
+        '"9abc_featurestore".orders_1, or pass --schema 9abc_featurestore.'
+    )
+    stores[0].get_feature_group.assert_not_called()
+    stores[1].get_feature_group.assert_called_once_with("orders", version=1)
+
+
+def test_a_table_in_no_shared_store_gets_no_hint(mock_project):
+    a, b = _with_stores([_store("p_featurestore"), _store("9abc_featurestore")])
+    with a, b:
+        result = _rejected(_not_found("orders_1"))
+    assert result.exit_code == 1
+    assert result.output.strip().endswith("query_id=q1)")
+
+
+def test_a_store_name_starting_with_a_digit_gets_the_quoting_hint(mock_project):
+    result = _rejected(
+        TrinoUserError(
+            {
+                "errorName": "SYNTAX_ERROR",
+                "errorType": "USER_ERROR",
+                "message": "line 1:22: identifiers must not start with a digit; "
+                "surround the identifier with double quotes",
+            },
+            "q1",
+        )
+    )
+    assert result.exit_code == 1
+    assert result.output.strip().endswith('"<store>".<name>_<version>.')
