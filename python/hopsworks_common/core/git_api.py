@@ -17,9 +17,11 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import TYPE_CHECKING, Literal
 from urllib.parse import quote
 
+import requests
 from hopsworks_common import (
     client,
     git_commit,
@@ -84,7 +86,39 @@ class GitApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
+        return self._clone(url, path, provider=provider, branch=branch)
+
+    def _clone(
+        self,
+        url: str,
+        path: str,
+        provider: str | None = None,
+        branch: str | None = None,
+        timeout: float | None = None,
+    ) -> git_repo.GitRepo:
         _client = client._get_instance()
+        # One budget covers the clone request, the polling and the final lookup, so no step can outlast it.
+        deadline = None if timeout is None else time.monotonic() + timeout
+
+        def remaining() -> float | None:
+            if deadline is None:
+                return None
+            left = deadline - time.monotonic()
+            if left <= 0:
+                raise GitException(
+                    f"Git clone has not finished after {timeout:.0f} seconds."
+                )
+            return left
+
+        def bounded(send):
+            try:
+                return send(remaining())
+            except requests.exceptions.Timeout as e:
+                if deadline is None:
+                    raise
+                raise GitException(
+                    f"Git clone has not finished after {timeout:.0f} seconds."
+                ) from e
 
         # Support absolute and relative path to dataset
         path = util._convert_to_abs(path, _client._project_name)
@@ -104,12 +138,15 @@ class GitApi:
 
         headers = {"content-type": "application/json"}
         git_op = git_op_execution.GitOpExecution.from_response_json(
-            _client._send_request(
-                "POST",
-                path_params,
-                headers=headers,
-                data=json.dumps(clone_config),
-                query_params=query_params,
+            bounded(
+                lambda left: _client._send_request(
+                    "POST",
+                    path_params,
+                    headers=headers,
+                    data=json.dumps(clone_config),
+                    query_params=query_params,
+                    timeout=left,
+                )
             )
         )
         print(
@@ -118,8 +155,14 @@ class GitApi:
                 "/p/" + str(_client._project_id) + "/settings/git"
             )
         )
-        git_op = self._git_engine._execute_op_blocking(git_op, "CLONE")
-        return self.get_repo(git_op.repository.name, git_op.repository.path)
+        git_op = self._git_engine._execute_op_blocking(
+            git_op, "CLONE", timeout=remaining()
+        )
+        return bounded(
+            lambda left: self._get_repo(
+                git_op.repository.name, git_op.repository.path, timeout=left
+            )
+        )
 
     @public
     @usage._method_logger
@@ -225,6 +268,11 @@ class GitApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
+        return self._get_repo(name, path)
+
+    def _get_repo(
+        self, name: str, path: str | None = None, timeout: float | None = None
+    ) -> git_repo.GitRepo | None:
         _client = client._get_instance()
         path_params = [
             "project",
@@ -234,7 +282,9 @@ class GitApi:
         query_params = {"expand": "creator"}
 
         repos = git_repo.GitRepo.from_response_json(
-            _client._send_request("GET", path_params, query_params=query_params)
+            _client._send_request(
+                "GET", path_params, query_params=query_params, timeout=timeout
+            )
         )
 
         if path is not None:

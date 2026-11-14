@@ -27,12 +27,26 @@ datasets it created that no other chart still uses, and nothing else.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import re
 import sys
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 TITLE = "Customers Overview"
 FEATURE_GROUPS = [{"name": "customers", "version": 1, "format": "delta"}]
+# The caller's dataset of a semantic project's metrics on their own semantic connection
+# (hops-superset/references/semantic_layer.md), such as
+# {"name": "sales_metrics", "semantic_project": "sales", "metric": "revenue"}; a chart names one as its
+# dataset, and reads metrics by name, such as "metrics": ["revenue"].
+SEMANTIC_DATASETS: list[dict] = []
+# Where Superset has no semantic connection (SEMANTIC_DATASETS fails with "use METRIC_DATASETS instead"):
+# datasets over metric queries on the Trino connection, such as
+# {"name": "revenue_by_month", "semantic_project": "sales", "metrics": ["revenue"],
+#  "group_by": ["metric_time__month"]}; a chart names one as its dataset like a feature group.
+METRIC_DATASETS: list[dict] = []
+# The code of SEMANTIC_LAYER_DASHBOARDS_DISABLED: Superset has no semantic connections in this project.
+NO_SEMANTIC_CONNECTION = 600014
 
 COUNT = {
     "expressionType": "SQL",
@@ -42,8 +56,8 @@ COUNT = {
     "hasCustomLabel": True,
 }
 
-# One entry per chart: the dataset it reads (a feature group above) and the
-# viz-type specific params from hops-superset/references/chart_params.md.
+# One entry per chart: the dataset it reads (a feature group, or an entry of SEMANTIC_DATASETS or
+# METRIC_DATASETS above), and the viz-type specific params from hops-superset/references/chart_params.md.
 CHARTS = [
     {
         "slice_name": "Total Customers",
@@ -126,6 +140,53 @@ def ensure_dataset(api, database_id: int, schema: str, fg: dict) -> int:
     ]
 
 
+def metric_dataset_name(entry: dict) -> str:
+    """The Superset dataset of a METRIC_DATASETS entry, prefixed by this dashboard, so programs never share one."""
+    slug = re.sub(r"[^a-z0-9]+", "_", TITLE.lower()).strip("_")
+    # Titles that differ only in punctuation or case share a slug; the digest of the exact title tells them apart.
+    digest = hashlib.sha256(TITLE.encode()).hexdigest()[:8]
+    return f"{slug}_{digest}__{entry['name']}"
+
+
+def ensure_metric_dataset(api, database_id: int, schema: str, semantic, entry: dict) -> int:
+    """Write the SQL the semantic layer compiles now into the metric query's dataset, creating it if needed."""
+    semantic_project = semantic.get_project(entry["semantic_project"])
+    if semantic_project is None:
+        raise RuntimeError(f"No semantic project named {entry['semantic_project']}")
+    sql = semantic_project.sql(entry["metrics"], group_by=entry.get("group_by"))
+    for ds in list_all(api, "dataset"):
+        if ds.get("table_name") == metric_dataset_name(entry) and ds.get("schema") == schema:
+            api.update_dataset(ds["id"], sql=sql)
+            # A changed group-by changes the columns, which Superset reads only on a refresh.
+            api._request("PUT", f"/api/v1/dataset/{ds['id']}/refresh")
+            return ds["id"]
+    return api.create_dataset(
+        database_id=database_id, table_name=metric_dataset_name(entry), schema=schema, sql=sql
+    )["id"]
+
+
+def semantic_dataset(semantic, entry: dict) -> int:
+    """The caller's dataset of a semantic project's metrics table, on their own semantic connection.
+
+    Hopsworks creates it, or refreshes its columns, when it makes an Explore link: each metric becomes a saved
+    metric of the dataset and the time columns are marked temporal. The link's form data names the dataset.
+    """
+    semantic_project = semantic.get_project(entry["semantic_project"])
+    if semantic_project is None:
+        raise RuntimeError(f"No semantic project named {entry['semantic_project']}")
+    try:
+        link = semantic_project.explore_url(entry["metric"])
+    except Exception as err:
+        if getattr(err, "error_code", None) != NO_SEMANTIC_CONNECTION:
+            raise
+        raise RuntimeError(
+            f"Superset has no semantic connection for {entry['semantic_project']}; use METRIC_DATASETS instead"
+        ) from err
+    form_data = json.loads(parse_qs(urlparse(link).query)["form_data"][0])
+    # Superset names a chart's dataset "<dataset id>__table".
+    return int(form_data["datasource"].split("__")[0])
+
+
 def find_dashboard(api) -> int | None:
     """This program's dashboard, found by its title."""
     return next(
@@ -155,14 +216,15 @@ def owned_charts(api, dashboard_id: int | None) -> list[int]:
     return owned
 
 
-def create_chart(api, chart: dict, datasource_id: int) -> int:
-    """Create one chart from its entry in CHARTS."""
+def create_chart(api, chart: dict, datasets: dict[str, int]) -> int:
+    """Create one chart from its entry in CHARTS, over its dataset."""
     params = {"viz_type": chart["viz_type"], **chart["params"]}
     return api.create_chart(
         slice_name=chart["slice_name"],
         viz_type=chart["viz_type"],
-        datasource_id=datasource_id,
         params=json.dumps(params),
+        datasource_id=datasets[chart["dataset"]],
+        datasource_type="table",
     )["id"]
 
 
@@ -237,16 +299,34 @@ def ensure_dashboard(api, existing: int | None, chart_ids: list[int]) -> int:
     return dashboard_id
 
 
-def build(api, project_name: str) -> int:
-    """Create or update the datasets, charts and dashboard; return the dashboard id."""
+def dashboard_url(api, project_url: str, dashboard_id: int) -> str:
+    """The dashboard's URL through Hopsworks, on the path Superset reports for it.
+
+    Superset 7.0 serves a dashboard at /dashboard/<id>/, and Superset 6 at /superset/dashboard/<id>/.
+    """
+    host = urlparse(project_url)
+    path = api.get_dashboard(dashboard_id)["result"]["url"]
+    return f"{host.scheme}://{host.netloc}/hopsworks-api/superset{path}"
+
+
+def build(api, project_name: str, semantic=None) -> int:
+    """Create or update the datasets, charts and dashboard; return the dashboard id.
+
+    `semantic` is the project's semantic layer API, needed only when SEMANTIC_DATASETS or METRIC_DATASETS is set.
+    """
     schema = f"{project_name.lower()}_featurestore"
     database_id = find_trino_db_id(api)
     datasets = {fg["name"]: ensure_dataset(api, database_id, schema, fg) for fg in FEATURE_GROUPS}
+    for entry in METRIC_DATASETS:
+        datasets[entry["name"]] = ensure_metric_dataset(api, database_id, schema, semantic, entry)
+    # Looked up before the old charts go, so a missing connection leaves the dashboard as it was.
+    for entry in SEMANTIC_DATASETS:
+        datasets[entry["name"]] = semantic_dataset(semantic, entry)
     existing = find_dashboard(api)
     # Replace every chart this dashboard had, so a chart dropped from CHARTS goes too.
     for chart_id in owned_charts(api, existing):
         api.delete_chart(chart_id)
-    chart_ids = [create_chart(api, chart, datasets[chart["dataset"]]) for chart in CHARTS]
+    chart_ids = [create_chart(api, chart, datasets) for chart in CHARTS]
     return ensure_dashboard(api, existing, chart_ids)
 
 
@@ -262,7 +342,9 @@ def delete(api, project_name: str) -> dict[str, list]:
         api.delete_chart(chart_id)
         removed["charts"].append(chart_id)
     schema = f"{project_name.lower()}_featurestore"
-    ours = {dataset_name(fg) for fg in FEATURE_GROUPS}
+    ours = {dataset_name(fg) for fg in FEATURE_GROUPS} | {
+        metric_dataset_name(e) for e in METRIC_DATASETS
+    }
     in_use = {c.get("datasource_id") for c in list_all(api, "chart")}
     for ds in list_all(api, "dataset"):
         if ds.get("table_name") in ours and ds.get("schema") == schema and ds["id"] not in in_use:
@@ -295,11 +377,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.delete:
         print(json.dumps(delete(api, project.name)))
         return 0
-    dashboard_id = build(api, project.name)
-    host = urlparse(project.get_url())
-    print(
-        f"{host.scheme}://{host.netloc}/hopsworks-api/superset/superset/dashboard/{dashboard_id}/"
-    )
+    semantic = project.get_semantic_layer_api() if SEMANTIC_DATASETS or METRIC_DATASETS else None
+    dashboard_id = build(api, project.name, semantic)
+    print(dashboard_url(api, project.get_url(), dashboard_id))
     return 0
 
 

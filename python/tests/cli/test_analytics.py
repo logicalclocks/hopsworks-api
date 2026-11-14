@@ -948,6 +948,88 @@ def test_bronze_refuses_a_generator_the_references_do_not_hold(tmp_path, monkeyp
     assert not (tmp_path / "hops-clickstream").exists()
 
 
+SEMANTIC_ANSWERS = {
+    "slug": "shop-semantic",
+    "description": "An online shop's sales",
+    "lifecycle": "dev",
+    "reference_code": "ecommerce_semantic",
+}
+
+
+def test_semantic_copies_the_blueprint_and_records_its_parts(tmp_path, monkeypatch):
+    done = _created(tmp_path, monkeypatch, "semantic", SEMANTIC_ANSWERS)
+    target = tmp_path / "hops-shop" / "shop-semantic"
+    doc = _doc(target)
+    assert doc["layer"]["kind"] == "semantic"
+    assert doc["layer"]["repo"] == {"name": "hops-shop"}
+    assert doc["generator"] == {
+        "reference": "ecommerce_semantic",
+        "program": "ecommerce.py",
+        "environment": "python-feature-pipeline",
+        "backfill": {"args": "--mode backfill"},
+    }
+    assert [t["name"] for t in doc["tables"]] == [
+        "ecommerce_customers",
+        "ecommerce_products",
+        "ecommerce_orders",
+        "ecommerce_order_items",
+    ]
+    assert {c: v["args"] for c, v in doc["schedule"]["cadences"].items()} == {
+        "daily": "--mode daily"
+    }
+    assert doc["semantic_project"] == {
+        "name": "shop_semantic",
+        "path": "dbt",
+        "time_spine": {"start": "2020-01-01", "end": "2030-12-31"},
+    }
+    assert doc["app"] == {
+        "name": "shop-semantic-chat",
+        "path": "app",
+        "environment": "python-agent-pipeline",
+    }
+    assert "revenue" in doc["reconcile"]
+    assert list(doc["phases"]) == [
+        "code",
+        "backfill",
+        "semantic",
+        "verify",
+        "app",
+        "schedule",
+    ]
+    # The app answers from the semantic project the build registers.
+    app = json.loads((target / "app" / "app.json").read_text())
+    assert app["semantic_project"] == "shop_semantic" and app["examples"]
+    for path in (
+        "ecommerce.py",
+        "dbt/dbt_project.yml",
+        "dbt/models/ecommerce.yml",
+        "app/app.py",
+        "app/translator.py",
+        "app/static/app.js",
+        "tests/test_translator.py",
+        "AGENTS.md",
+        ".gitignore",
+    ):
+        assert (target / path).is_file(), path
+    assert not (target / "semantic.yaml").exists()
+    assert "claude '/hops-semantic-layer shop-semantic'" in done.output
+
+
+def test_semantic_refuses_a_blueprint_the_references_do_not_hold(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    for blueprint in (
+        "clickstream_bronze",
+        "../ecommerce_semantic",
+        "missing_semantic",
+    ):
+        path = _answers_file(
+            tmp_path, {**SEMANTIC_ANSWERS, "reference_code": blueprint}
+        )
+        done = _create(monkeypatch, "semantic", path, "--no-launch")
+        assert done.exit_code != 0 and "ecommerce_semantic" in done.output
+    assert not (tmp_path / "hops-shop").exists()
+
+
 def test_silver_joins_the_repository_of_the_bronze_layer_it_reads(
     tmp_path, monkeypatch
 ):

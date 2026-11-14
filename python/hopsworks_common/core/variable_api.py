@@ -33,6 +33,7 @@ LOADBALANCER_SERVICES = {
     "datanode": "datanode",
     "namenode": "namenode",
     "trino": "trino",
+    "semantic_gateway": "semantic-gateway",
 }
 
 
@@ -133,6 +134,7 @@ class VariableApi:
             "datanode",
             "namenode",
             "trino",
+            "semantic_gateway",
         ],
     ) -> str:
         """Get domain loadbalancer for a service.

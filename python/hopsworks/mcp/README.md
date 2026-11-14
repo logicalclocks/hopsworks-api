@@ -16,6 +16,19 @@ Hopsworks MCP Server provides the following tools for hopsworks-related function
 | get_project_details | Get project details. | name (str): The name of the project. | The project details or an error message. |
 | get_feature_store | Get the feature store for the current project. | | The feature store information for the current project or an error message. |
 | get_feature_store_by_name | Get the feature store by its name. | name (str): The name of the feature store. | The feature store information or an error message. |
+| list_semantic_projects | List the semantic projects of the current project. | | Name, root path, mode, serving build and whether it is stale, per semantic project. |
+| list_metrics | List a semantic project's metrics. | semantic_project (str), tag (list[str], optional): only metrics carrying every tag | CSV: name, type, label, description, tags. |
+| list_saved_queries | List a semantic project's saved queries. | semantic_project (str) | CSV: name, label, description, metrics, group_by. |
+| get_dimensions | List the dimensions the metrics can be grouped by. | semantic_project (str), metrics (list[str]) | CSV: name, type, granularities, entity path, description. |
+| get_entities | List the entities the metrics can be grouped by. | semantic_project (str), metrics (list[str], optional) | CSV: name, entity path, description. |
+| get_dimension_values | List the values of a dimension. | semantic_project (str), dimension (str), metrics (list[str], optional), limit (int, 100) | CSV with one column. |
+| query_metrics | Run a metric query on Trino as the logged-in user. | semantic_project (str), metrics (list[str]), group_by, where, order_by (list[str], optional), limit (int, 100) | CSV rows, cut at 50,000 characters. |
+| query_saved_query | Run a saved query on Trino as the logged-in user. | semantic_project (str), name (str), group_by (list[str], optional): replaces its own, where (list[str], optional): added to its own, limit (int, 100) | CSV rows, cut at 50,000 characters. |
+| get_metrics_compiled_sql | The SQL of a metric query, without running it. | the query_metrics arguments | The SQL text. |
+| get_semantic_project_tags | The schematised tags of a semantic project. | semantic_project (str) | Name and value per tag. |
+| validate_semantic_project | Check a semantic project's definitions and report their errors and warnings, storing nothing. | semantic_project (str) | Status and issues. |
+| compile_semantic_project | Compile a semantic project into a build. | semantic_project (str) | Build id, status and issues. |
+| create_dashboard_from_metrics | Build a Superset 7.0 dashboard of metrics. | semantic_project (str), metrics (list[str]), group_by (list[str], optional), title (str, optional) | Dashboard id, title and URL. |
 
 ## Usage
 

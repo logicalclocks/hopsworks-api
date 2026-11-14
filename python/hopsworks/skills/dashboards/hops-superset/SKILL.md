@@ -11,7 +11,8 @@ SDK (`project.get_superset_api()`).
 
 ## Contract
 
-- **Input:** an offline-materialized feature group (queryable in Trino).
+- **Input:** an offline-materialized feature group (queryable in Trino), or the
+  metrics of a semantic project ([hops-semantic](../../data/hops-semantic/SKILL.md)).
 - **Output:** a published Superset dashboard (charts + datasets) and its URL.
 - **Pre-condition:** Superset enabled on the cluster, and the FG materialized to
   the offline (Trino) store.
@@ -29,6 +30,41 @@ hops superset dataset list      # auth + Superset reachable in one shot
 The `hops superset {dataset,chart,dashboard} {list,info,create,delete}` CLI is the
 quickest path to list/inspect/clean up (delete takes `--yes`). Re-run
 `hops superset dashboard list` after building to verify the result.
+
+## Charts and dashboard edits without Python
+
+On Superset 7.0, `hops superset chart generate` creates a chart from a short typed config.
+Superset's MCP service compiles it into the viz params and checks every column and metric against the dataset before it saves anything, so no `params` JSON (§4) is needed.
+Prefer it to `create_chart` and to `chart create --params`.
+
+```bash
+hops superset chart types                    # chart types and their required fields
+hops superset chart types xy                 # one type's full config schema, with examples
+hops superset chart generate --dataset 12 --type xy --x event_time \
+  --y 'SUM(amount)' --group-by category --time-grain P1D --name 'Spend per day'
+hops superset chart generate --dataset 12 --type big_number --metric 'COUNT(*)'
+hops superset chart generate --dataset 12 --type table --columns 'category,SUM(amount)' \
+  --filter 'country IN SE,NO' --filter 'amount > 100'
+hops superset chart generate --dataset 12 --config @chart.json   # any type, full schema
+hops superset chart generate --dataset 12 --type pie --dimension category --metric 'SUM(amount)' --preview
+```
+
+- `--y` and `--metric`: `SUM(col)` (also COUNT, AVG, MIN, MAX, COUNT_DISTINCT, MEDIAN) aggregates a column, a bare name is a saved metric of the dataset, anything else (`COUNT(*)`) is a SQL expression.
+- `--preview` leaves the chart unsaved and prints an Explore link; without it the chart is saved and its ID and link printed.
+- A rejected config fails with Superset's message, such as the column it could not find; fix the flag and rerun.
+- Superset runs the chart's query before saving it, so a saved chart is one whose query worked.
+- Superset 7.0.0rc2 saves a generated chart without a query context: it renders in Explore and on dashboards, but `GET /api/v1/chart/{id}/data/` answers 400 `Chart has no query context saved` until the chart is opened and saved once in Superset.
+
+`hops superset dashboard update ID` changes only the fields given and leaves the rest:
+
+```bash
+hops superset dashboard update 7 --title 'Fraud overview' --published --refresh 300
+hops superset dashboard update 7 --metadata '{"color_scheme": "supersetColors"}'   # merged into json_metadata
+hops superset dashboard update 7 --css @print.css --filter-bar horizontal --cross-filters
+```
+
+Put a generated chart on a dashboard with `api.update_chart(chart_id, dashboards=[dashboard_id])` (§1), then lay it out as §5 describes.
+Both commands run only inside the cluster (a Hopsworks terminal or job), like the rest of `hops superset`.
 
 ## Ask the user (only when state is ambiguous)
 
@@ -73,7 +109,9 @@ Methods available on `api`:
 | Databases | `list_databases()` |
 | Datasets | `create_dataset`, `get_dataset`, `list_datasets`, `update_dataset`, `delete_dataset` |
 | Charts | `create_chart`, `get_chart`, `list_charts`, `update_chart`, `delete_chart` |
+| Charts, typed (Superset 7.0 MCP) | `generate_chart(dataset_id, config, name=None, save=True)`, `chart_type_schema(chart_type)` |
 | Dashboards | `create_dashboard`, `get_dashboard`, `list_dashboards`, `update_dashboard`, `delete_dashboard` |
+| Dashboards, partial (Superset 7.0 MCP) | `patch_dashboard(dashboard_id, **fields)`: only the given fields, `json_metadata_overrides` merged |
 
 Signatures (from the Hopsworks SDK):
 
@@ -205,6 +243,19 @@ def ensure_dataset(api, database_id, schema, name, sql):
 Use the same pattern for charts (key on `slice_name`) and dashboards
 (key on `dashboard_title`).
 
+### Metrics from the semantic layer
+
+When a semantic project ([hops-semantic](../../data/hops-semantic/SKILL.md))
+defines the metric a chart shows, chart it from the semantic layer instead of deriving it
+again from the feature group: the definition holds the joins, filters and
+aggregation its owners agreed on, so every dashboard shows the same number.
+Each Data owner and Data scientist has one semantic connection of their own in Superset
+per Hopsworks project, with each semantic project as a schema of it: `hops semantic dashboard`
+builds a dashboard of metrics on it, and other charts read a dataset of the semantic
+project's `metrics` table. Where Superset has no such connection, a chart reads
+a dataset over the metric's SQL. How to tell, and the rules for each, are in
+[references/semantic_layer.md](references/semantic_layer.md).
+
 ---
 
 ## 3. Viz types — use the MODERN keys
@@ -319,9 +370,9 @@ def ensure_dashboard(api, title, chart_ids, chart_slices):
     return dashboard_id
 ```
 
-Dashboard URL:
+Dashboard URL on Superset 7.0 (Superset 6 has `/superset` before `/dashboard`):
 ```
-https://<hopsworks-host>/hopsworks-api/superset/superset/dashboard/<id>/
+https://<hopsworks-host>/hopsworks-api/superset/dashboard/<id>/
 ```
 
 ---
@@ -408,7 +459,8 @@ Every dashboard `/hops dashboard` builds has one program that builds it, filled
 in from [references/dashboard_program.py](references/dashboard_program.py): a
 module docstring naming the title, the feature groups and the charts; `TITLE`,
 `FEATURE_GROUPS` and `CHARTS`; the idempotent steps above; `--delete`; and a
-last line printing the dashboard URL.
+last line printing the dashboard URL. On Superset 7.0, a dashboard that shows
+only metrics needs no program: `hops semantic dashboard` builds it (§2).
 
 - **Where they live:** `Users/<user>/dashboards/<slug>.py` in the project, which
   is `~/dashboards/<slug>.py` in a Hopsworks terminal (the FUSE mount) and
@@ -427,6 +479,9 @@ last line printing the dashboard URL.
   name on another dashboard is left alone.
 - An ML system's dashboard (the app phase of `/hops-build`) keeps its program in
   the system's repository, under `<slug>/dashboards/`, instead of the user's home.
+- **Metric charts** ([references/semantic_layer.md](references/semantic_layer.md)):
+  a chart names a `SEMANTIC_DATASETS` entry as its `dataset`, the caller's dataset of the
+  semantic project's metrics; without a semantic connection, a `METRIC_DATASETS` entry.
 
 ```bash
 python ~/dashboards/customers-overview.py            # create or update, prints the URL
@@ -463,6 +518,7 @@ a chart that still fails is dropped from `CHARTS` with a line saying why.
 ## Next Steps
 
 - Get a feature group materialized offline to chart: **hops-fg**.
+- Define a metric once, then chart it: **hops-semantic**.
 - Inspect / query the underlying Trino table: **hops-trino-sql**, **hops-data-discovery**.
 - A custom interactive app instead of BI dashboards: **hops-app**.
 

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ask the shop</title>
+  <script>
+    // Relative URLs resolve against the proxy mount only with a trailing slash.
+    if (!location.pathname.endsWith("/")) location.replace(location.pathname + "/" + location.search);
+  </script>
+  <link rel="stylesheet" href="static/app.css">
+  <script type="module" src="static/app.js"></script>
+</head>
+<body>
+  <header class="band">
+    <div class="mark" aria-hidden="true">H</div>
+    <div class="grow">
+      <h1>Ask the shop</h1>
+      <div class="sub" id="subtitle">Sales questions, answered from the semantic layer</div>
+    </div>
+    <button type="button" class="ghost" id="build">Build a query</button>
+    <button type="button" class="ghost" id="catalog-toggle" aria-expanded="false" aria-controls="catalog">Metrics and dimensions</button>
+  </header>
+  <div class="layout">
+    <main>
+      <div id="notice" class="notice" role="status" hidden></div>
+      <section id="welcome" class="card welcome">
+        <h2>Ask about orders, revenue, customers and products</h2>
+        <p class="muted">Slice sales by any time range, region, country, customer segment, loyalty tier, new or returning customers, product category, brand, sales channel or promotion. Every answer shows the query it ran, which you can edit and run again.</p>
+        <div id="examples" class="chips"></div>
+      </section>
+      <section id="thread" aria-live="polite"></section>
+      <form id="ask" class="composer card">
+        <label for="question" class="sr-only">Question</label>
+        <textarea id="question" rows="2" placeholder="Ask a question, such as: net revenue by region per month this year" required></textarea>
+        <button type="submit" id="send">Ask</button>
+      </form>
+    </main>
+    <aside id="catalog" class="catalog card" hidden>
+      <input id="catalog-filter" type="search" placeholder="Filter metrics and dimensions" aria-label="Filter metrics and dimensions">
+      <h2>Metrics</h2>
+      <ul id="metric-list" class="defs"></ul>
+      <h2>Dimensions</h2>
+      <ul id="dimension-list" class="defs"></ul>
+    </aside>
+  </div>
+</body>
+</html>
