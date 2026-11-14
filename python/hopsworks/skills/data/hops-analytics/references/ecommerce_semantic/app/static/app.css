@@ -165,7 +165,7 @@ button.link { background: none; color: var(--accent); padding: 0; font-weight: 5
 
 #thread { display: grid; gap: 1rem; }
 #thread:empty { display: none; }
-.turn { display: grid; gap: 0.5rem; }
+.turn { display: grid; gap: 0.5rem; scroll-margin-top: 1rem; }
 .question {
   justify-self: end; max-width: 80%; background: var(--accent); color: #fff;
   border-radius: var(--radius) var(--radius) 4px var(--radius); padding: 0.6rem 0.9rem;
@@ -187,7 +187,8 @@ pre {
 .clarify { border-left: 4px solid var(--warn); }
 .failed { border-left: 4px solid var(--danger); }
 
-.chart { width: 100%; height: auto; display: block; margin-bottom: 0.75rem; }
+/* Wider than this, the chart's fixed aspect makes it taller than the screen. */
+.chart { width: 100%; max-width: 56rem; height: auto; display: block; margin-bottom: 0.75rem; }
 .chart text { fill: var(--muted); font-size: 11px; }
 .chart .grid line { stroke: var(--line); }
 .legend { display: flex; flex-wrap: wrap; gap: 0.75rem; font-size: 0.82rem; margin-bottom: 0.5rem; }

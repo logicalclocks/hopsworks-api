@@ -245,7 +245,7 @@ function renderAnswer(card, answer) {
   card.replaceChildren(
     h("p", { class: "lead" }, q.explanation || "What the query returned:"),
     queryTags(q),
-    chart(answer),
+    ...chart(answer).filter(Boolean),
     table(answer),
     h("details", {}, h("summary", {}, "SQL"), h("pre", {}, answer.sql)),
     h("div", { class: "actions" }, toggle,
@@ -254,12 +254,16 @@ function renderAnswer(card, answer) {
     editorSlot);
 }
 
+// To the top of the screen, not "nearest": the sticky question box would cover a turn scrolled
+// to the bottom edge. At the end of the page the scroll stops early and the box sits below it.
+const reveal = (card) => card.parentElement.scrollIntoView({ behavior: "smooth", block: "start" });
+
 function newTurn(questionText) {
   $("welcome").hidden = true;
   const card = h("div", { class: "card answer", "aria-busy": "true" }, h("div", { class: "loading" }), h("div", { class: "loading" }));
   const turn = h("div", { class: "turn" }, questionText ? h("div", { class: "question" }, questionText) : null, card);
   $("thread").append(turn);
-  card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  reveal(card);
   return card;
 }
 
@@ -298,6 +302,7 @@ function ask(question) {
       failed(card, err.message);
     } finally {
       card.removeAttribute("aria-busy");
+      reveal(card);
     }
   });
 }
@@ -313,6 +318,7 @@ function runEdited(query) {
       failed(card, err.message);
     } finally {
       card.removeAttribute("aria-busy");
+      reveal(card);
     }
   });
 }
@@ -375,7 +381,7 @@ function buildQuery() {
   const start = { metrics: ["revenue"], group_by: ["metric_time__month"], filters: [], time_range: null, order_by: [], limit: 200, chart: "line" };
   const card = h("div", { class: "card answer" }, h("h2", {}, "Build a query"), editor(start, (q) => runEdited(q)));
   $("thread").append(h("div", { class: "turn" }, card));
-  card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  reveal(card);
 }
 
 // endregion
