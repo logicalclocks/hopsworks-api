@@ -25,7 +25,7 @@ KIND = "parse"
 PLATFORM_CLASS = "parse"
 ENVIRONMENT = "document-pipeline"
 _RUN = "run"
-#: Resources of the job's pod: 4 CPU, and 8 GiB over the 5.9 GB peak of a 50-page range.
+#: Resources of the job's pod: 4 CPU and 8 GiB (one page per convert peaked at 2.5 GB on a dense 50-page PDF).
 CORES = 4
 MEMORY_MB = 8192
 
@@ -68,7 +68,7 @@ def fg_parse_group() -> None:
     type=click.IntRange(min=5),
     default=parse_run.RANGE_PAGES,
     show_default=True,
-    help="Pages per conversion of a PDF; lower it for a file that stopped a run.",
+    help="Pages of a PDF between checkpoints; lower it for a file that stopped a run.",
 )
 @click.option(
     "--schedule",
@@ -128,7 +128,7 @@ def fg_parse(
         to: Group name.
         ocr: auto, on or off.
         accurate: TableFormer ACCURATE instead of FAST.
-        range_pages: Pages per conversion.
+        range_pages: Pages of a PDF between checkpoints.
         every: Schedule of the job.
         environment: Python environment of the job.
         parse_here: Run the parse in this process.

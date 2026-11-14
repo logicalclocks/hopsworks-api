@@ -12,11 +12,12 @@ A group parses one path, named in its description. A run:
    skipped; a file the path no longer has is deleted from the group.
 2. Refuses before any parse a file over the size cap, and a run whose files
    to parse have more pages than the page cap.
-3. Converts each file, a PDF in ranges of ``range_pages`` pages: the peak
-   memory is set by one range (50 pages peaked at 5.5 to 5.9 GB on 4 CPU),
-   not by the file's length. Before each range the file and range go to a
-   state file, so a run killed inside a file leaves it named; the next run
-   tries that file once more and then skips it, naming it.
+3. Converts each file, a PDF one page per Docling convert, so a paragraph
+   that crosses a page break stays on its own pages and the peak memory is
+   one page's, not the file's. Pages go in ranges of ``range_pages``: before
+   each range the file and range go to a state file, so a run killed inside
+   a file leaves it named; the next run tries that file once more and then
+   skips it, naming it.
 4. Stops after the range that passes the time budget. The files it finished
    are written (one upsert, one delete), the rest are named; the next run
    skips the finished files by sha256 and goes on.
@@ -43,7 +44,7 @@ STATE_DIR = "Resources/hopsable-parse"
 OWNER = "hopsable.parse.owner="
 PATH = "hopsable.parse.path="
 KEYS = ["path", "page"]
-#: Pages per Docling convert of a PDF: the measured bound on a run's peak memory.
+#: Pages of a PDF between state-file checkpoints and time-budget checks.
 RANGE_PAGES = 50
 #: A page with fewer characters in its text layer than this is read with OCR.
 TEXT_LAYER_CHARS = 16
@@ -342,13 +343,16 @@ def convert(
         if out and past_budget():
             raise OutOfTime
         on_range(first, last)
-        result = conv.get(use_ocr).convert(str(file), page_range=(first, last))
-        try:
-            for page in sorted(result.document.pages):
-                out.append((page, result.document.export_to_markdown(page_no=page)))
-        finally:
-            result.input.release()
-            del result
+        # One page per convert: Docling merges a paragraph that crosses a page
+        # break into one item on its first page, so a multi-page convert
+        # reports the later page empty.
+        for page in range(first, last + 1):
+            result = conv.get(use_ocr).convert(str(file), page_range=(page, page))
+            try:
+                out.append((page, result.document.export_to_markdown()))
+            finally:
+                result.input.release()
+                del result
     return out
 
 
