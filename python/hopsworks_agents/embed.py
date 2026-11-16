@@ -231,6 +231,7 @@ def _vectors(answer: dict, count: int, model: str) -> list[list[float]]:
 def _predict(project: str, deployment: str, body: dict, deadline_s: float) -> dict:
     """POST ``body``; retried only on a 429 or a connection that never sent, inside ``deadline_s`` in all."""
     from hopsworks_common.client.base import _never_sent
+    from hopsworks_common.client.exceptions import RestAPIError
 
     payload = json.dumps(body)
     start = time.monotonic()
@@ -246,7 +247,7 @@ def _predict(project: str, deployment: str, body: dict, deadline_s: float) -> di
         wait = 0.0
         try:
             return _send(project, deployment, payload, left, deadline)
-        except requests.HTTPError as exc:
+        except (RestAPIError, requests.HTTPError) as exc:
             response = exc.response
             status = getattr(response, "status_code", None)
             if status != 429:
@@ -261,7 +262,8 @@ def _predict(project: str, deployment: str, body: dict, deadline_s: float) -> di
                     f"Embedding deployment {deployment!r} dropped the connection after the request went out: not retried."
                 ) from exc
             last = f"connection error ({type(exc).__name__})"
-        except requests.exceptions.ReadTimeout as exc:
+        # A read timeout, or an error answer at or past the deadline.
+        except requests.exceptions.Timeout as exc:
             raise EmbedError(
                 f"Embedding deployment {deployment!r} did not answer within the deadline of {deadline_s:g} s."
             ) from exc
@@ -287,10 +289,10 @@ def _send(
 ) -> dict:
     """One HTTP request.
 
-    ``timeout`` makes the client send once (``_send_until_available`` skips its
-    unavailable-backend loop); ``deadline`` makes an error answer raise
-    ``requests.HTTPError`` unread and skips the stale-session repeat. The
-    session is a plain ``requests`` one, whose adapters retry nothing.
+    With ``timeout`` the client sends once. Under ``deadline`` every socket
+    wait is clipped to the time left; an error answer raises ``RestAPIError``,
+    or ``requests.exceptions.Timeout`` once the deadline has passed. The session
+    is a plain ``requests`` one, whose adapters retry nothing.
     """
     from hopsworks_common import client
 
@@ -313,7 +315,6 @@ def _send(
         data=payload,
         with_base_path_params=with_base,
         timeout=(min(CONNECT_TIMEOUT_S, left), left),
-        retry_while_unavailable=False,
         deadline=deadline,
     )
 

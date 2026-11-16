@@ -85,7 +85,10 @@ def wire(monkeypatch):
 
     def send(prepped, **kwargs):
         sent.append((prepped.url, json.loads(prepped.body)))
-        read_timeout = kwargs["timeout"][1]
+        timeout = kwargs["timeout"]
+        read_timeout = (
+            timeout[1] if isinstance(timeout, tuple) else timeout.read_timeout
+        )
         if wire.attempt_s > read_timeout:
             clock.now += read_timeout
             raise requests.exceptions.ReadTimeout("read timed out")
@@ -160,6 +163,17 @@ def test_the_deadline_counts_the_time_an_attempt_takes(wire):
     # 12 s + 1 s wait + 12 s + 1 s wait leave 4 s: the third attempt is cut at the deadline.
     assert len(wire.sent) == 3
     assert wire.clock.now - 1000.0 == 30.0
+
+
+def test_an_error_answer_at_the_deadline_is_an_embed_error(wire):
+    # The transport turns a non-2xx answer at or past the deadline into a plain Timeout.
+    wire.attempt_s = 30.0
+    wire.script += [_response(429, headers={"Retry-After": "1"})]
+    with pytest.raises(
+        embed.EmbedError, match=r"'embedder'.*within the deadline of 30 s"
+    ):
+        embed.embed_query("q")
+    assert len(wire.sent) == 1
 
 
 def test_a_build_call_has_its_own_longer_deadline(wire, monkeypatch):
