@@ -10,8 +10,11 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import sys
 from typing import TYPE_CHECKING, Any
+
+import click
 
 
 if TYPE_CHECKING:
@@ -268,3 +271,25 @@ def error(msg: str, *args: Any) -> None:
         *args: Values substituted into ``msg``.
     """
     sys.stderr.write(_wrap(_RED, msg % args if args else msg) + "\n")
+
+
+def _stdin_tty() -> bool:
+    return sys.stdin.isatty()
+
+
+def no_input() -> bool:
+    """Whether no one can answer a prompt: HOPS_NO_INPUT=1, or stdin is not a terminal."""
+    return os.environ.get("HOPS_NO_INPUT") == "1" or not _stdin_tty()
+
+
+def confirm(question: str, action: str | None = None) -> None:
+    """Ask `question` before something that cannot be undone; exit 1 unless the answer is yes.
+
+    With no one to answer, fails naming --yes instead of asking. `action` names what needs the
+    answer; the question without its `?` by default. Ctrl-C or a no aborts.
+    """
+    if no_input():
+        raise click.ClickException(
+            f"{action or question.rstrip('?')} needs confirmation: pass --yes."
+        )
+    click.confirm(question, abort=True, err=True)
