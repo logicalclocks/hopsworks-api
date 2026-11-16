@@ -181,8 +181,7 @@ def fg_embed(
     takes the group over from every older run, so a stopped or stuck run never
     writes over a newer one.
 
-    The embedding deployment is called with your own credentials. Search it
-    from an agent with `hops agent init NAME --reads ... --search GROUP`.
+    The embedding deployment is called with your own credentials.
     `hops fg embed delete GROUP` removes the group, its job and its schedule.
 
     \f
