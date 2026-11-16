@@ -306,38 +306,6 @@ class ServingApi:
         ]
         return self._send_switch("POST", path_params, {"enabled": enabled})
 
-    def _set_project_direct_access(self, enabled: bool) -> dict[str, Any] | None:
-        """Switch direct access on or off for every deployment of the project.
-
-        Parameters:
-            enabled: Whether the deployments of the project accept direct calls.
-
-        Returns:
-            A dict with the key `enabled`.
-        """
-        _client = client._get_instance()
-        path_params = ["project", _client._project_id, "serving", "directAccess"]
-        return self._send_switch("PUT", path_params, {"enabled": enabled})
-
-    def _set_deployment_direct_access(
-        self, deployment_instance: deployment.Deployment, enabled: bool
-    ):
-        """Switch direct access on or off for one deployment.
-
-        Parameters:
-            deployment_instance: Metadata object of the deployment.
-            enabled: Whether the deployment accepts direct calls.
-        """
-        _client = client._get_instance()
-        path_params = [
-            "project",
-            _client._project_id,
-            "serving",
-            deployment_instance.id,
-            "directAccess",
-        ]
-        return self._send_switch("POST", path_params, {"enabled": enabled})
-
     def _get_deployment_sharing(
         self, deployment_instance: deployment.Deployment
     ) -> dict[str, Any]:

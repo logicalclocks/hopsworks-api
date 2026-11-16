@@ -1625,45 +1625,6 @@ class Deployment:
 
     @public
     @property
-    def direct_access(self) -> bool:
-        """The direct access switch of this deployment, as stored by the backend.
-
-        See [`Predictor.direct_access`][hsml.predictor.Predictor.direct_access].
-        Setting it only changes the local object; use [`set_direct_access`][hsml.deployment.Deployment.set_direct_access] to change an existing deployment.
-        """
-        return self._predictor.direct_access
-
-    @direct_access.setter
-    def direct_access(self, direct_access: bool):
-        self._predictor.direct_access = direct_access
-
-    @public
-    def set_direct_access(self, enabled: bool):
-        """Switch direct access on or off for an existing deployment.
-
-        While it is off, the deployment answers only through the LLM gateway, for every caller.
-        The change does not restart the deployment.
-        Requires the data owner role in the project.
-        The backend rejects turning it off for a deployment the LLM gateway does not serve.
-        When the backend stores the switch but cannot apply it yet, it applies it within a minute and the call logs this at INFO level.
-
-        Parameters:
-            enabled: Whether the deployment accepts direct calls.
-
-        Raises:
-            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
-
-        Example: Allow only the LLM gateway to reach a deployment
-            ```python
-            deployment = ms.get_deployment("my_llm_deployment")
-            deployment.set_direct_access(False)
-            ```
-        """
-        self._serving_api._set_deployment_direct_access(self, enabled)
-        self._predictor.direct_access = enabled
-
-    @public
-    @property
     def shared_with(self) -> dict[str, Any]:
         """The projects this deployment is shared with through the LLM gateway.
 

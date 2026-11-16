@@ -2584,41 +2584,6 @@ class TestDeploymentSharing:
         )
         return mocker.patch.object(d._serving_api, "_set_deployment_sharing")
 
-    def test_direct_access_defaults_to_on_and_is_omitted_from_to_dict(self, mocker):
-        d = self._deployment(mocker)
-
-        assert d.direct_access is True
-        assert "directAccess" not in d._predictor.to_dict()
-
-    def test_direct_access_setter_is_serialized(self, mocker):
-        d = self._deployment(mocker)
-
-        d.direct_access = False
-
-        assert d.direct_access is False
-        assert d._predictor.to_dict()["directAccess"] is False
-
-    def test_direct_access_read_from_the_backend_json(self, backend_fixtures):
-        p_json = copy.deepcopy(
-            backend_fixtures["predictor"]["get_deployment_vllm_kserve_vllm_variant"][
-                "response"
-            ]
-        )
-        p_json["directAccess"] = False
-
-        kwargs = predictor.Predictor.extract_fields_from_json(humps.decamelize(p_json))
-
-        assert kwargs["direct_access"] is False
-
-    def test_set_direct_access_posts_and_updates_the_local_value(self, mocker):
-        d = self._deployment(mocker)
-        post = mocker.patch.object(d._serving_api, "_set_deployment_direct_access")
-
-        d.set_direct_access(False)
-
-        post.assert_called_once_with(d, False)
-        assert d.direct_access is False
-
     def test_shared_with_reads_the_backend(self, mocker):
         d = self._deployment(mocker)
         self._stored(mocker, d, True, ["b"])

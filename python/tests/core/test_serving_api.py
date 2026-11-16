@@ -804,30 +804,6 @@ class TestVersioning:
         assert json.loads(kwargs["data"]) == {"version": 2}
         deployment.update_from_response_json.assert_called_once_with(response)
 
-    def test_project_direct_access_puts_the_switch(self, mocker):
-        api = ServingApi()
-        hopsworks_client = _patch_client(
-            mocker, _switch_response(200, {"enabled": False})
-        )
-
-        assert api._set_project_direct_access(False) == {"enabled": False}
-
-        args, kwargs = hopsworks_client._send_request.call_args
-        assert args[:2] == ("PUT", ["project", 1, "serving", "directAccess"])
-        assert json.loads(kwargs["data"]) == {"enabled": False}
-
-    def test_deployment_direct_access_posts_to_the_serving_id(self, mocker):
-        api = ServingApi()
-        hopsworks_client = _patch_client(mocker, _switch_response(200, None))
-        depl = MagicMock()
-        depl.id = 5
-
-        assert api._set_deployment_direct_access(depl, False) is None
-
-        args, kwargs = hopsworks_client._send_request.call_args
-        assert args[:2] == ("POST", ["project", 1, "serving", 5, "directAccess"])
-        assert json.loads(kwargs["data"]) == {"enabled": False}
-
     def test_get_deployment_sharing_reads_the_serving_id(self, mocker):
         api = ServingApi()
         body = {"allProjects": False, "projects": ["b"]}
@@ -852,11 +828,9 @@ class TestVersioning:
 
         with caplog.at_level(logging.INFO, logger="hsml.core.serving_api"):
             assert api._set_deployment_sharing(depl, False, ["b"]) == body
-            api._set_deployment_direct_access(depl, False)
-            api._set_project_direct_access(False)
 
         args, kwargs = hopsworks_client._send_request.call_args_list[0]
         assert args[:2] == ("PUT", ["project", 1, "serving", 5, "sharing"])
         assert json.loads(kwargs["data"]) == {"allProjects": False, "projects": ["b"]}
         pending = [r for r in caplog.records if "within a minute" in r.message]
-        assert len(pending) == (3 if logged else 0)
+        assert len(pending) == (1 if logged else 0)
