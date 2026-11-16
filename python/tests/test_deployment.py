@@ -2582,7 +2582,15 @@ class TestDeploymentSharing:
             "_get_deployment_sharing",
             return_value={"allProjects": all_projects, "projects": list(projects)},
         )
-        return mocker.patch.object(d._serving_api, "_set_deployment_sharing")
+        # As the backend answers: no project is named while all are shared.
+        return mocker.patch.object(
+            d._serving_api,
+            "_set_deployment_sharing",
+            side_effect=lambda _, all_projects, names: {
+                "allProjects": all_projects,
+                "projects": [] if all_projects else names,
+            },
+        )
 
     def test_shared_with_reads_the_backend(self, mocker):
         d = self._deployment(mocker)
@@ -2640,14 +2648,35 @@ class TestDeploymentSharing:
 
         put.assert_not_called()
 
+    def test_share_with_returns_what_the_backend_stored(self, mocker):
+        d = self._deployment(mocker)
+        self._stored(mocker, d, False, ["a"])
+
+        assert d.share_with(all_projects=True) == {
+            "all_projects": True,
+            "projects": [],
+        }
+
+    def test_a_write_without_a_body_reads_the_sharing_back(self, mocker):
+        d = self._deployment(mocker)
+        self._stored(mocker, d, False, ["a"])
+        mocker.patch.object(
+            d._serving_api, "_set_deployment_sharing", return_value=None
+        )
+
+        assert d.share_with(projects=["b"]) == {
+            "all_projects": False,
+            "projects": ["a"],
+        }
+
     def test_unshare_removes_the_named_projects(self, mocker):
         d = self._deployment(mocker)
-        put = self._stored(mocker, d, True, ["a", "b"])
+        put = self._stored(mocker, d, False, ["a", "b"])
 
         result = d.unshare(projects=["a", "missing"])
 
-        put.assert_called_once_with(d, True, ["b"])
-        assert result == {"all_projects": True, "projects": ["b"]}
+        put.assert_called_once_with(d, False, ["b"])
+        assert result == {"all_projects": False, "projects": ["b"]}
 
     def test_unshare_all_projects_keeps_the_named_projects(self, mocker):
         d = self._deployment(mocker)

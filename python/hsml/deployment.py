@@ -53,6 +53,13 @@ def _as_name_list(names: list[str] | str | None) -> list[str]:
     return [names] if isinstance(names, str) else list(names)
 
 
+def _sharing_from_json(sharing: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "all_projects": bool(sharing.get("allProjects", False)),
+        "projects": list(sharing.get("projects") or []),
+    }
+
+
 def _warn_opensearch_source_deprecated() -> None:
     """Warn that ``source="opensearch"`` is deprecated for deployment logs.
 
@@ -1649,6 +1656,7 @@ class Deployment:
             projects: Names of the projects to add.
             all_projects: Whether to share with every project (`True`) or stop doing so (`False`).
                 Leave it unset to keep the current setting.
+                While every project is shared, no project is kept by name, so `projects` is dropped.
 
         Returns:
             The sharing state, as returned by [`shared_with`][hsml.deployment.Deployment.shared_with].
@@ -1711,15 +1719,14 @@ class Deployment:
         )
 
     def _read_sharing(self) -> dict[str, Any]:
-        sharing = self._serving_api._get_deployment_sharing(self)
-        return {
-            "all_projects": bool(sharing.get("allProjects", False)),
-            "projects": list(sharing.get("projects") or []),
-        }
+        return _sharing_from_json(self._serving_api._get_deployment_sharing(self))
 
     def _write_sharing(self, all_projects: bool, projects: list[str]) -> dict[str, Any]:
-        self._serving_api._set_deployment_sharing(self, all_projects, projects)
-        return {"all_projects": all_projects, "projects": projects}
+        # The backend drops the named projects when all projects are shared.
+        sharing = self._serving_api._set_deployment_sharing(
+            self, all_projects, projects
+        )
+        return _sharing_from_json(sharing) if sharing else self._read_sharing()
 
     @public
     @property
