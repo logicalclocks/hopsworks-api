@@ -321,7 +321,7 @@ class StorageConnector(ABC):
         Raises:
             ValueError: If a SQL data source with provided credentials is given a username, password, wallet or wallet password, since each member sets their own with `set_credentials()`.
             hopsworks.client.exceptions.FeatureStoreException: If `tags` are passed to a Hopsworks backend older than 5.3, which cannot store data source tags.
-                Also if an S3 data source with an endpoint was saved by such a backend without the endpoint, so it targets AWS S3.
+                Also if an S3 data source has an endpoint, which such a backend cannot store: the request is not sent, or, when the backend's version is unknown, the data source is stored without the endpoint and targets AWS S3.
             hopsworks.client.exceptions.RestAPIError: If a tag that is mandatory for data sources is missing from `tags`, if a tag value does not match its schema, or if the backend encounters another error when handling the request.
         """
         self._check_new()
@@ -349,7 +349,7 @@ class StorageConnector(ABC):
             The updated storage connector.
 
         Raises:
-            hopsworks.client.exceptions.FeatureStoreException: If an S3 data source with an endpoint was updated by a Hopsworks backend older than 5.3, which stored it without the endpoint, so it targets AWS S3.
+            hopsworks.client.exceptions.FeatureStoreException: If an S3 data source has an endpoint and the backend is older than 5.3, which cannot store it: the request is not sent, or, when the backend's version is unknown, the data source is stored without the endpoint and targets AWS S3.
             hopsworks.client.exceptions.RestAPIError: If the data source lacks a tag that is mandatory for data sources, which has to be added with [`add_tag`][hsfs.storage_connector.StorageConnector.add_tag] first, or if the backend encounters another error when handling the request.
         """
         # The response overwrites this instance, so keep what was sent to compare against it.

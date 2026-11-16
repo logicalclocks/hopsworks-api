@@ -146,8 +146,8 @@ if HAS_AVRO:
 _logger = logging.getLogger(__name__)
 
 # Bucket name to the endpoint of the store this process uses it with, None for AWS S3.
-# Kept for the process rather than per Engine: reconnecting builds a new Engine, while the Spark
-# application and s3a's filesystem cache live on.
+# Kept for the process rather than per Engine or per SparkContext: reconnecting builds a new Engine, and every
+# SparkContext of a PySpark process runs in the same JVM, whose Hadoop filesystem cache outlives a stopped context.
 _S3_BUCKET_STORES: dict[str, str | None] = {}
 
 
@@ -2052,10 +2052,12 @@ class Engine:
                 f"Data source '{storage_connector.name}' uses its endpoint for bucket '{storage_connector.bucket}' only, "
                 f"so it cannot use {path} in bucket '{path_bucket}'."
             )
-        # A Glue data source has no bucket of its own; the path names the bucket it reads.
-        bucket = storage_connector.bucket or path_bucket
-        if bucket:
-            self._claim_s3_bucket(storage_connector, bucket)
+        # A Glue data source has no bucket of its own, and an AWS data source may read an absolute path in another
+        # bucket, which Spark opens with whatever that bucket is configured for: the path's bucket is claimed too.
+        self._claim_s3_buckets(
+            storage_connector,
+            [b for b in (storage_connector.bucket, path_bucket) if b],
+        )
 
         # The argument arrive here as strings
         if storage_connector.arguments.get(FS_S3_GLOBAL_CONF, "True").lower() == "true":
@@ -2075,24 +2077,27 @@ class Engine:
             )
         return path.replace("s3://", "s3a://", 1) if path is not None else None
 
-    def _claim_s3_bucket(self, storage_connector, bucket):
-        """Record which store this application uses the bucket name with.
+    def _claim_s3_buckets(self, storage_connector, buckets):
+        """Record which store this process uses the bucket names with, all or none of them.
 
-        s3a keeps one filesystem per bucket name for the life of the application, so a second store under the same
-        bucket name would silently read and write the first one.
+        s3a keeps one filesystem per bucket name, and Hadoop's filesystem cache outlives a stopped SparkContext, so a
+        second store under the same bucket name in the same process would silently read and write the first one.
 
         Raises:
-            FeatureStoreException: The application already uses the bucket name with another store.
+            FeatureStoreException: The process already uses one of the bucket names with another store.
         """
         endpoint = getattr(storage_connector, "endpoint", None) or None
-        known = _S3_BUCKET_STORES.setdefault(bucket, endpoint)
-        if known != endpoint:
-            raise FeatureStoreException(
-                f"Data source '{storage_connector.name}' uses bucket '{bucket}' on {endpoint or 'AWS S3'}, "
-                f"but this Spark application already uses that bucket name on {known or 'AWS S3'}. "
-                "Spark keeps one S3 client per bucket name for the life of the application, "
-                "so use this data source in a new Spark application."
-            )
+        for bucket in buckets:
+            known = _S3_BUCKET_STORES.get(bucket, endpoint)
+            if known != endpoint:
+                raise FeatureStoreException(
+                    f"Data source '{storage_connector.name}' uses bucket '{bucket}' on {endpoint or 'AWS S3'}, "
+                    f"but this Spark application already uses that bucket name on {known or 'AWS S3'}. "
+                    "Spark keeps one S3 client per bucket name for as long as its process runs, "
+                    "so use this data source in a new Spark application process, such as a new job run."
+                )
+        for bucket in buckets:
+            _S3_BUCKET_STORES.setdefault(bucket, endpoint)
 
     def _set_s3_endpoint_hadoop_conf(self, storage_connector, prefix):
         # Bucket scope only, and after the forwarded Spark options so it wins over them:

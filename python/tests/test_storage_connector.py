@@ -4762,11 +4762,11 @@ class TestStorageConnectorMandatoryTags:
     def test_save_without_tags_still_creates_on_an_older_backend(
         self, mocker, backend_fixtures
     ):
-        client = _client(mocker, self._s3_json(backend_fixtures))
+        # Without an endpoint too, which such a backend cannot store either.
+        aws_json = self._s3_json(backend_fixtures, endpoint=None, pathStyleAccess=None)
+        client = _client(mocker, aws_json)
         self._backend(mocker, "5.2.4")
-        sc = storage_connector.StorageConnector.from_response_json(
-            self._s3_json(backend_fixtures)
-        )
+        sc = storage_connector.StorageConnector.from_response_json(aws_json)
 
         sc.save()
 
@@ -4787,3 +4787,48 @@ class TestStorageConnectorMandatoryTags:
 
         body = json.loads(client._send_request.call_args.kwargs["data"])
         assert body["tags"]["items"] == [{"name": "owner", "value": '"risk"'}]
+
+    def test_save_with_endpoint_refuses_a_backend_older_than_5_3(
+        self, mocker, backend_fixtures
+    ):
+        client = _client(mocker, self._s3_json(backend_fixtures))
+        self._backend(mocker, "5.2.4")
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures)
+        )
+        sc._endpoint = "https://s3.example.com:9021"
+
+        with pytest.raises(FeatureStoreException, match="target AWS S3"):
+            sc.save()
+
+        client._send_request.assert_not_called()
+
+    def test_update_with_endpoint_refuses_a_backend_older_than_5_3(
+        self, mocker, backend_fixtures
+    ):
+        client = _client(mocker, self._s3_json(backend_fixtures))
+        self._backend(mocker, "5.2.4")
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures)
+        )
+        sc._endpoint = "https://s3.example.com:9021"
+
+        with pytest.raises(FeatureStoreException, match="target AWS S3"):
+            sc.update()
+
+        client._send_request.assert_not_called()
+
+    @pytest.mark.parametrize("endpoint", [None, "", "  "])
+    def test_update_without_endpoint_still_runs_on_an_older_backend(
+        self, mocker, backend_fixtures, endpoint
+    ):
+        client = _client(mocker, self._s3_json(backend_fixtures))
+        self._backend(mocker, "5.2.4")
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures)
+        )
+        sc._endpoint = endpoint
+
+        sc.update()
+
+        assert client._send_request.call_args.args[0] == "PUT"

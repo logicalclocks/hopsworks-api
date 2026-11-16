@@ -6322,6 +6322,71 @@ class TestSpark:
         spark_engine._setup_s3_hadoop_conf(aws_connector, "s3://landing/fg")
         spark_engine._setup_s3_hadoop_conf(glue_connector, None)
 
+    @pytest.mark.parametrize("endpoint_first", [True, False])
+    def test_setup_s3_hadoop_conf_aws_path_claims_the_bucket_it_reads(
+        self, mocker, endpoint_first
+    ):
+        mock_spark_context = MagicMock()
+        mocker.patch.object(
+            pyspark.sql.SparkSession,
+            "sparkContext",
+            new_callable=PropertyMock,
+            return_value=mock_spark_context,
+        )
+        spark_engine = spark.Engine()
+        endpoint_connector = storage_connector.S3Connector(
+            id=1,
+            name="ecs",
+            featurestore_id=99,
+            bucket="landing",
+            access_key="ecs-key",
+            secret_key="ecs-secret",
+            endpoint="https://ecs.example.com:9021",
+        )
+        aws_connector = storage_connector.S3Connector(
+            id=2,
+            name="aws",
+            featurestore_id=99,
+            bucket="other",
+            access_key="aws-key",
+            secret_key="aws-secret",
+        )
+        hadoop_set = mock_spark_context._jsc.hadoopConfiguration.return_value.set
+        setups = [
+            (endpoint_connector, "s3a://landing/fg"),
+            (aws_connector, "s3://landing/data"),
+        ]
+        if not endpoint_first:
+            setups.reverse()
+
+        spark_engine._setup_s3_hadoop_conf(*setups[0])
+        hadoop_set.reset_mock()
+        with pytest.raises(
+            exceptions.FeatureStoreException, match="already uses that bucket name"
+        ):
+            spark_engine._setup_s3_hadoop_conf(*setups[1])
+
+        hadoop_set.assert_not_called()
+        # Nothing is claimed for a refused data source, its own bucket included.
+        assert ("other" in spark._S3_BUCKET_STORES) == (not endpoint_first)
+
+    def test_setup_s3_hadoop_conf_aws_path_in_another_bucket_in_a_clean_session(
+        self, mocker
+    ):
+        mocker.patch.object(
+            pyspark.sql.SparkSession,
+            "sparkContext",
+            new_callable=PropertyMock,
+            return_value=MagicMock(),
+        )
+        aws_connector = storage_connector.S3Connector(
+            id=2, name="aws", featurestore_id=99, bucket="other"
+        )
+
+        spark.Engine()._setup_s3_hadoop_conf(aws_connector, "s3://landing/data")
+
+        assert spark._S3_BUCKET_STORES == {"other": None, "landing": None}
+
     def test_setup_s3_hadoop_conf_endpoint_refuses_a_path_in_another_bucket(
         self, mocker
     ):

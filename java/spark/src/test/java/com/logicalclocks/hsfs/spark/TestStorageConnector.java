@@ -625,6 +625,22 @@ public class TestStorageConnector {
     }
 
     @Test
+    void testAwsLocationClaimsTheBucketItReads() throws IOException, FeatureStoreException {
+      SparkEngine engine = SparkEngine.getInstance();
+      engine.setupConnectorHadoopConf(endpointConnector("ecs-read-by-aws", "https://s3.example.com:9021"));
+
+      Assertions.assertThrows(FeatureStoreException.class,
+          () -> engine.setupConnectorHadoopConf(endpointConnector("aws-reader", null), "s3://ecs-read-by-aws/data"));
+      // Nothing was claimed for the refused data source, its own bucket included.
+      engine.setupConnectorHadoopConf(endpointConnector("aws-reader", "https://other.example.com:9021"));
+
+      // In the other order the AWS read claims the bucket first.
+      engine.setupConnectorHadoopConf(endpointConnector("aws-clean-reader", null), "s3://aws-clean-target/data");
+      Assertions.assertThrows(FeatureStoreException.class,
+          () -> engine.setupConnectorHadoopConf(endpointConnector("aws-clean-target", "https://s3.example.com:9021")));
+    }
+
+    @Test
     void testGlueClaimsTheBucketOfItsLocation() throws IOException, FeatureStoreException {
       SparkEngine engine = SparkEngine.getInstance();
       engine.setupConnectorHadoopConf(endpointConnector("glue-after", "https://s3.example.com:9021"));

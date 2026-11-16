@@ -834,14 +834,16 @@ public class SparkEngine extends EngineBase {
 
     switch (storageConnector.getStorageConnectorType()) {
       case S3:
-        refuseEndpointLocationInAnotherBucket((StorageConnector.S3Connector) storageConnector, location);
-        setupS3ConnectorHadoopConf((StorageConnector.S3Connector) storageConnector);
+        StorageConnector.S3Connector s3Connector = (StorageConnector.S3Connector) storageConnector;
+        refuseEndpointLocationInAnotherBucket(s3Connector, location);
+        // An AWS data source may read a location in another bucket, which Spark opens with whatever that bucket is
+        // configured for, so the location's bucket is claimed too.
+        claimS3Buckets(s3Connector.getName(), s3Connector.getEndpoint(), s3Connector.getBucket(),
+            s3PathBucket(location));
+        setupS3ConnectorHadoopConf(s3Connector);
         break;
       case GLUE:
-        String bucket = s3PathBucket(location);
-        if (bucket != null) {
-          claimS3Bucket(storageConnector.getName(), bucket, null);
-        }
+        claimS3Buckets(storageConnector.getName(), null, s3PathBucket(location));
         setupGlueConnectorHadoopConf((StorageConnector.GlueConnector) storageConnector);
         break;
       case ADLS:
@@ -867,9 +869,6 @@ public class SparkEngine extends EngineBase {
 
   private void setupS3ConnectorHadoopConf(StorageConnector.S3Connector storageConnector)
       throws IOException, FeatureStoreException {
-    if (!Strings.isNullOrEmpty(storageConnector.getBucket())) {
-      claimS3Bucket(storageConnector.getName(), storageConnector.getBucket(), storageConnector.getEndpoint());
-    }
     if (!Strings.isNullOrEmpty(storageConnector.getAccessKey())) {
       sparkSession.sparkContext().hadoopConfiguration()
           .set(Constants.S3_ACCESS_KEY_ENV, storageConnector.getAccessKey());
@@ -912,22 +911,31 @@ public class SparkEngine extends EngineBase {
   }
 
   /**
-   * Record which store this application uses a bucket name with. s3a keeps one filesystem per bucket name for the
-   * life of the application, so a second store under the same bucket name would silently read and write the first
-   * one.
+   * Record which store this application uses the bucket names with, all or none of them. s3a keeps one filesystem
+   * per bucket name for the life of the application, so a second store under the same bucket name would silently
+   * read and write the first one.
    *
    * @param endpoint the store's endpoint, null or empty for AWS S3
-   * @throws FeatureStoreException the application already uses the bucket name with another store
+   * @param buckets the bucket names; null and empty entries are ignored
+   * @throws FeatureStoreException the application already uses one of the bucket names with another store
    */
-  private void claimS3Bucket(String dataSourceName, String bucket, String endpoint) throws FeatureStoreException {
-    endpoint = Strings.nullToEmpty(endpoint);
-    String known = s3BucketStores.putIfAbsent(bucket, endpoint);
-    if (known != null && !known.equals(endpoint)) {
-      throw new FeatureStoreException("Data source '" + dataSourceName + "' uses bucket '"
-          + bucket + "' on " + storeName(endpoint)
-          + ", but this Spark application already uses that bucket name on " + storeName(known)
-          + ". Spark keeps one S3 client per bucket name for the life of the application, "
-          + "so use this data source in a new Spark application.");
+  private void claimS3Buckets(String dataSourceName, String endpoint, String... buckets)
+      throws FeatureStoreException {
+    String store = Strings.nullToEmpty(endpoint);
+    List<String> named = Arrays.stream(buckets).filter(bucket -> !Strings.isNullOrEmpty(bucket))
+        .collect(Collectors.toList());
+    for (String bucket : named) {
+      String known = s3BucketStores.getOrDefault(bucket, store);
+      if (!known.equals(store)) {
+        throw new FeatureStoreException("Data source '" + dataSourceName + "' uses bucket '"
+            + bucket + "' on " + storeName(store)
+            + ", but this Spark application already uses that bucket name on " + storeName(known)
+            + ". Spark keeps one S3 client per bucket name for as long as its process runs, "
+            + "so use this data source in a new Spark application process, such as a new job run.");
+      }
+    }
+    for (String bucket : named) {
+      s3BucketStores.putIfAbsent(bucket, store);
     }
   }
 
