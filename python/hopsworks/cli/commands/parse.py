@@ -132,7 +132,7 @@ def fg_parse(
         every: Schedule of the job.
         environment: Python environment of the job.
         parse_here: Run the parse in this process.
-    """
+    """  # noqa: D301 - click reads the form feed as the end of the help text
     try:
         root = parse_run.normal_path(path)
     except parse_run.ParseError as exc:
@@ -410,7 +410,7 @@ def fg_parse_delete(
         dry_run: List only.
         timeout: Seconds to wait for the deletion execution.
         in_job: Run the deletion in this process.
-    """
+    """  # noqa: D301 - click reads the form feed as the end of the help text
     group = group.lower()
     project = session.get_project(ctx)
     fs = session.get_feature_store(ctx)

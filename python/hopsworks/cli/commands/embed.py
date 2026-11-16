@@ -576,6 +576,7 @@ def start_refusal(exc: BaseException, group: str, kind: str = "embed") -> str | 
     Args:
         exc: The exception raised by the execution start.
         group: Name of the feature group whose build was started.
+        kind: The command that started it, `embed` or `parse`, named in the message.
 
     Returns:
         The message of the refusal, or `None` when the failure is not a refusal.
