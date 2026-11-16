@@ -74,7 +74,15 @@ class OutOfTime(Exception):
 
 
 def description(path: str, group: str) -> str:
-    """The group's description: its path and its owner, which `described` reads back."""
+    """The group's description: its path and its owner, which `described` reads back.
+
+    Args:
+        path: The project path the group parses.
+        group: Name of the group that owns the path.
+
+    Returns:
+        The description text.
+    """
     return f"Pages of {path} as Markdown, by hops fg parse. {PATH}{path} {OWNER}{group}"
 
 
@@ -84,13 +92,27 @@ _DESCRIBED = re.compile(
 
 
 def described(thing: Any) -> dict | None:
-    """{"path", "owner"} from a group or job description `description` wrote; None otherwise."""
+    """{"path", "owner"} from a group or job description `description` wrote; None otherwise.
+
+    Args:
+        thing: A feature group or job with a description.
+
+    Returns:
+        A dict with the keys "path" and "owner", or None when the description was not written by `description`.
+    """
     match = _DESCRIBED.search((getattr(thing, "description", "") or "").rstrip())
     return match.groupdict() if match else None
 
 
 def normal_path(path: str) -> str:
-    """A project-relative path without leading, trailing or doubled slashes."""
+    """A project-relative path without leading, trailing or doubled slashes.
+
+    Args:
+        path: A path given by the user.
+
+    Returns:
+        The cleaned path, relative to the project.
+    """
     parts = [p for p in path.strip().split("/") if p not in ("", ".")]
     if ".." in parts:
         raise ParseError(f"'{path}' leaves the project: give a path inside it.")
@@ -102,7 +124,15 @@ def under(path: str, root: str) -> bool:
 
 
 def list_files(mount: Path, root: str) -> dict[str, int]:
-    """{project-relative path: bytes} of every file under `root` with one of SUFFIXES."""
+    """{project-relative path: bytes} of every file under `root` with one of SUFFIXES.
+
+    Args:
+        mount: Local mount of the project.
+        root: Project-relative file or folder to list.
+
+    Returns:
+        A dict from project-relative path to size in bytes.
+    """
     base = mount / root
     if base.is_file():
         found = [base]
@@ -158,6 +188,15 @@ def plan(
     failed) is parsed again. A file that stopped STOPS_BEFORE_SKIP runs is
     skipped while its content is the one that stopped them; a new content is
     parsed again.
+
+    Args:
+        files: The sha256 of each file on HopsFS, by path.
+        held: The sha256 values held in the group, by path.
+        stops: Count of runs stopped, by "path@sha256".
+        listed: Paths found on HopsFS, including ones left out of `files`; defaults to the keys of `files`.
+
+    Returns:
+        The Plan: files to parse, unchanged and removed, and files skipped with a reason.
     """
     # Removed means not under the path at all: a listed file left out of `files`
     # (over a cap, unreadable) keeps its rows.
@@ -196,7 +235,11 @@ class State:
         self.data.setdefault("stops", {})
 
     def take_over(self) -> str | None:
-        """Counts the stop a killed run left; returns what it was converting, or None."""
+        """Counts the stop a killed run left; returns what it was converting, or None.
+
+        Returns:
+            A text naming the file and pages the killed run was converting, or None.
+        """
         current = self.data.pop("current", None)
         if not current:
             return None
@@ -219,7 +262,12 @@ class State:
         self._save()
 
     def never(self, path: str, digest: str) -> None:
-        """Runs skip this content of the file from now on."""
+        """Runs skip this content of the file from now on.
+
+        Args:
+            path: Project-relative path of the file.
+            digest: The sha256 of the content that stopped runs.
+        """
         self.data["stops"][f"{path}@{digest}"] = STOPS_BEFORE_SKIP
         self._save()
 
@@ -235,12 +283,27 @@ class State:
 
 
 def ranges(pages: int, size: int) -> list[tuple[int, int]]:
-    """1-based inclusive page ranges of at most `size` pages."""
+    """1-based inclusive page ranges of at most `size` pages.
+
+    Args:
+        pages: Number of pages of the file.
+        size: Most pages in one range.
+
+    Returns:
+        A list of (first, last) page pairs covering all pages.
+    """
     return [(s, min(s + size - 1, pages)) for s in range(1, pages + 1, size)]
 
 
 def pdf_pages(file: Path) -> tuple[int, bool]:
-    """(pages, whether every page has a text layer)."""
+    """(pages, whether every page has a text layer).
+
+    Args:
+        file: Path of the PDF.
+
+    Returns:
+        The number of pages, and whether every page has a text layer.
+    """
     import pypdfium2  # noqa: PLC0415 - in the document-pipeline image, with Docling
 
     pdf = pypdfium2.PdfDocument(str(file))
@@ -254,7 +317,14 @@ def pdf_pages(file: Path) -> tuple[int, bool]:
 
 
 def pages_of(file: Path) -> int:
-    """Pages a file counts for the page cap: a PDF its pages, any other file (read whole) 1."""
+    """Pages a file counts for the page cap: a PDF its pages, any other file (read whole) 1.
+
+    Args:
+        file: Path of the file.
+
+    Returns:
+        The number of pages the file counts for.
+    """
     return pdf_pages(file)[0] if file.suffix.lower() in PAGED else 1
 
 
@@ -323,6 +393,17 @@ def convert(
 ) -> list[tuple[int, str]]:
     """[(page, Markdown)] of one file. `ocr`: "auto" (pages without text), "on" or "off".
 
+    Args:
+        conv: The Converter holding the Docling converters.
+        file: Path of the file to convert.
+        ocr: "auto" (OCR pages without text), "on" or "off".
+        range_pages: Pages per range; the budget is checked between ranges.
+        on_range: Called with (first, last) before each range is converted.
+        past_budget: Returns True when the run's time budget is spent.
+
+    Returns:
+        A list of (page, Markdown) pairs; page is 0 for a file read whole, 1 for a converted file that is not paged.
+
     Raises OutOfTime after a range when `past_budget()` and ranges are left.
     """
     suffix = file.suffix.lower()
@@ -385,7 +466,25 @@ def run(
     log: Callable[..., None],
     clock: Callable[[], float] = time.monotonic,
 ) -> Outcome:
-    """Converge `fg` onto the files under `root`; rows under any other path are left alone."""
+    """Converge `fg` onto the files under `root`; rows under any other path are left alone.
+
+    Args:
+        fg: The feature group holding the parsed pages.
+        mount: Local mount of the project.
+        root: Project-relative file or folder to parse.
+        group: Name of the feature group, used for the run's state file.
+        conv: The Converter holding the Docling converters.
+        ocr: "auto", "on" or "off".
+        range_pages: Pages per range.
+        max_pages: Most pages one run may parse.
+        max_file_mb: Largest file size, in MB, a run may parse.
+        max_minutes: Time budget of one run, in minutes.
+        log: Called with a format string and arguments to log progress.
+        clock: Returns the current time in seconds; replaced to control time.
+
+    Returns:
+        The Outcome: what was parsed, left, removed and skipped, and why the run stopped.
+    """
     budget_s = max_minutes * 60
     run_start = clock()
     deadline = run_start + budget_s

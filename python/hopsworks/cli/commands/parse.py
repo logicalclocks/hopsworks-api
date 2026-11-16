@@ -198,7 +198,14 @@ def fg_parse(
 
 
 def default_group(root: str) -> str:
-    """The folder or file name, as a feature group name, plus _pages."""
+    """The folder or file name, as a feature group name, plus _pages.
+
+    Args:
+        root: The folder or file path given to the command.
+
+    Returns:
+        The feature group name made from the last part of `root`.
+    """
     name = Path(root).stem or "files"
     slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "files"
     if slug[0].isdigit():
@@ -207,7 +214,16 @@ def default_group(root: str) -> str:
 
 
 def latest_owned(fs: Any, group: str, root: str) -> Any:
-    """The group's latest version when hops fg parse made it for `root`; None when it does not exist."""
+    """The group's latest version when hops fg parse made it for `root`; None when it does not exist.
+
+    Args:
+        fs: The feature store.
+        group: Name of the feature group.
+        root: The project path being parsed.
+
+    Returns:
+        The latest feature group version, or None when the group does not exist.
+    """
     try:
         found = embed_run.versions_of(fs, group)
     except embed_run.EmbedError as exc:
