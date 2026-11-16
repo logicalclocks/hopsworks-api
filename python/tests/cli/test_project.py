@@ -110,3 +110,42 @@ def test_project_use_survives_a_project_without_a_feature_store(authed_config):
     assert result.exit_code == 0, result.output
     assert config.load().feature_store_id is None
     assert config.load().project == "demo"
+
+
+QUOTA = {
+    "method": "KUEUE",
+    "source": "other",
+    "cpu": {"limit": 4.15, "used": 1.5, "available": 2.65},
+    "memory": {"limit": 17152 * 1024**2, "used": 2 * 1024**3, "available": 0},
+    "warnings": [],
+}
+
+
+def _run_info(send_request):
+    from hopsworks_common.core import rest
+
+    with (
+        mock.patch.object(auth, "login", return_value=mock.MagicMock(name="Project")),
+        mock.patch.object(rest, "_send_request", side_effect=send_request),
+        mock.patch.object(rest, "_project_path", side_effect=lambda *p: list(p)),
+    ):
+        return CliRunner().invoke(cli, ["project", "info"])
+
+
+def test_project_info_shows_the_compute_quota_and_its_use(authed_config):
+    result = _run_info(lambda method, path: QUOTA)
+    assert result.exit_code == 0, result.output
+    assert "KUEUE (other)" in result.output
+    assert "1.5 of 4.15 cores used" in result.output
+    assert "2 of 16.75 GiB used" in result.output
+    assert "GPU" not in result.output
+
+
+def test_project_info_says_unavailable_when_the_quota_cannot_be_read(authed_config):
+    def fail(method, path):
+        raise RuntimeError("503")
+
+    result = _run_info(fail)
+    assert result.exit_code == 0, result.output
+    assert "unavailable" in result.output
+    assert "Project" in result.output
