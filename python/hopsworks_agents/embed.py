@@ -300,7 +300,7 @@ def _send(
         from hsml.core.serving_api import ServingApi
 
         path = ServingApi()._get_istio_inference_path(
-            SimpleNamespace(project_namespace=namespace, name=name)
+            SimpleNamespace(project_namespace=namespace, name=name, model_server=None)
         )
         sender, with_base = istio, False
     else:
@@ -327,11 +327,11 @@ def _route(project: str, deployment: str) -> tuple[str, str, int]:
     key = (project, deployment)
     if key not in _routes:
         from hopsworks_common import client
-        from hopsworks_common.project import Project
 
         info = client._get_instance()._send_request(
             "GET", ["project", "getProjectInfo", project]
         )
-        serving = Project.from_response_json(info)
-        _routes[key] = (serving.backing_name, deployment, serving.id)
+        # A backend without backing names returns none; there the segment is the project name.
+        backing = info.get("backingName") or info["projectName"]
+        _routes[key] = (backing, deployment, info["projectId"])
     return _routes[key]
