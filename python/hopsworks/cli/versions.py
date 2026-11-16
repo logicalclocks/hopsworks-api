@@ -28,6 +28,12 @@ def not_found(exc: BaseException) -> bool:
     """The thing asked for does not exist: a REST 404, or a missing HopsFS path.
 
     Anything else is a failed read.
+
+    Args:
+        exc: The exception raised by the read.
+
+    Returns:
+        `True` if `exc` is a REST 404 or a missing HopsFS path, `False` otherwise.
     """
     from hopsworks_common.client.exceptions import RestAPIError
 

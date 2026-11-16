@@ -86,7 +86,15 @@ class EmbedError(Exception):
 
 
 def variable_int(name: str, default: int) -> int:
-    """A positive-integer Hopsworks variable; `default` when it is not set."""
+    """A positive-integer Hopsworks variable; `default` when it is not set.
+
+    Args:
+        name: Name of the Hopsworks variable.
+        default: Value returned when the variable is not set.
+
+    Returns:
+        The value of the variable, or `default`.
+    """
     from hopsworks.cli import versions  # noqa: PLC0415
     from hopsworks_common.core.variable_api import VariableApi  # noqa: PLC0415
 
@@ -102,7 +110,15 @@ def variable_int(name: str, default: int) -> int:
 
 
 def positive_int(name: str, raw: Any) -> int:
-    """The value of Hopsworks variable `name`, which must be a positive integer."""
+    """The value of Hopsworks variable `name`, which must be a positive integer.
+
+    Args:
+        name: Name of the Hopsworks variable, used in the error message.
+        raw: The raw value of the variable.
+
+    Returns:
+        The value as an integer, at least 1.
+    """
     try:
         value = int(str(raw).strip())
     except ValueError:
@@ -115,7 +131,11 @@ def positive_int(name: str, raw: Any) -> int:
 
 
 def embed_limits() -> tuple[int, int]:
-    """(maximum chunks, maximum source bytes) of one group on this cluster."""
+    """(maximum chunks, maximum source bytes) of one group on this cluster.
+
+    Returns:
+        The maximum chunks and the maximum source bytes.
+    """
     return variable_int(VAR_MAX_CHUNKS, MAX_CHUNKS), variable_int(
         VAR_MAX_BYTES, MAX_BYTES
     )
@@ -128,6 +148,14 @@ def chunks(
 
     A pure function of the text, so unchanged text keeps its chunk numbers.
     Empty or missing text has no chunks.
+
+    Args:
+        text: The text to split; `None` or empty gives no chunks.
+        size: Characters in one chunk.
+        overlap: Characters shared by two consecutive chunks.
+
+    Returns:
+        The chunks, in order.
     """
     if not 0 <= overlap < size:
         raise ValueError("The overlap must be at least 0 and less than the chunk size.")
@@ -150,7 +178,14 @@ def sha(text: str) -> str:
 
 
 def doc_id(values: list[Any]) -> str:
-    """The primary key as one string; a composite key joins its parts as a JSON list."""
+    """The primary key as one string; a composite key joins its parts as a JSON list.
+
+    Args:
+        values: The values of the primary key columns of one row.
+
+    Returns:
+        The document id.
+    """
     if len(values) == 1:
         return str(values[0])
     return json.dumps([str(v) for v in values])
@@ -165,7 +200,20 @@ def read_source(
     max_chunks: int,
     max_bytes: int,
 ) -> dict:
-    """(doc_id, chunk_ix) -> chunk text, for every row of the source, read once as a stream of Arrow batches."""
+    """(doc_id, chunk_ix) -> chunk text, for every row of the source, read once as a stream of Arrow batches.
+
+    Args:
+        source: The source query of the group.
+        primary_key: Names of the primary key columns.
+        text: Name of the text column.
+        size: Characters in one chunk.
+        overlap: Characters shared by two consecutive chunks.
+        max_chunks: Most chunks the group may hold.
+        max_bytes: Most UTF-8 bytes of text the group may hold.
+
+    Returns:
+        The chunk text of every row, by key.
+    """
     columns = [*primary_key, text]
     with source.select(columns).read_batches(batch_size=SOURCE_BATCH) as batches:
         return chunk_rows(
@@ -195,6 +243,19 @@ def chunk_rows(
     Stops at the first row that takes the input past `max_chunks` (rows count
     too: each is a document) or `max_bytes` of UTF-8 text, so what is held is
     never more than the maximum and no later batch is pulled.
+
+    Args:
+        batches: Arrow record batches of the source.
+        name: Name of the source feature group.
+        primary_key: Names of the primary key columns.
+        text: Name of the text column.
+        size: Characters in one chunk.
+        overlap: Characters shared by two consecutive chunks.
+        max_chunks: Most chunks the group may hold.
+        max_bytes: Most UTF-8 bytes of text the group may hold.
+
+    Returns:
+        The chunk text of every row, by key.
     """
     out: dict = {}
     rows = 0
@@ -246,7 +307,14 @@ def description(
 
 
 def described(fg: Any) -> dict | None:
-    """Model, dimension and owner from a group `hops fg embed` made; None for any other group."""
+    """Model, dimension and owner from a group `hops fg embed` made; None for any other group.
+
+    Args:
+        fg: The feature group.
+
+    Returns:
+        The model, dimension and owner, or `None` for a group `hops fg embed` did not make.
+    """
     found = _DESCRIPTION.search((getattr(fg, "description", "") or "").strip())
     if not found:
         return None
@@ -258,7 +326,15 @@ def described(fg: Any) -> dict | None:
 
 
 def fenced_by(fg: Any, job_id: Any) -> bool:
-    """Whether `fg` is fenced with the job `job_id` as its writer: the only groups a run of that job can claim."""
+    """Whether `fg` is fenced with the job `job_id` as its writer: the only groups a run of that job can claim.
+
+    Args:
+        fg: The feature group.
+        job_id: Id of the job.
+
+    Returns:
+        `True` if `fg` is fenced with `job_id` as its writer.
+    """
     index = getattr(fg, "embedding_index", None)
     return (
         getattr(index, "fenced", False) is True
@@ -303,6 +379,15 @@ def rewrite_set(want: dict, held: dict, online: dict, unsettled: list[int]) -> R
     epochs, below the highest of them: a held write of an unsettled run would
     otherwise still be accepted over it. Offline keys the source lacks are
     deleted.
+
+    Args:
+        want: Chunk text by key, from the source.
+        held: Content hash by key, from the offline table.
+        online: `Doc` by key, from the online store.
+        unsettled: Epochs of runs not yet settled.
+
+    Returns:
+        The chunks to change, to write online, and to delete.
     """
     floor = max(unsettled, default=None)
     changed, stale = [], []
@@ -330,6 +415,15 @@ def converged(
     A written chunk is live with its content at `epoch`; a deleted key is a
     tombstone at `epoch`; any other chunk is live with its content, at or above
     the highest unsettled epoch.
+
+    Args:
+        want: Chunk text by key, from the source.
+        rewrite: The writes of the run.
+        epoch: Epoch of this run.
+        unsettled: Epochs of runs not yet settled.
+
+    Returns:
+        A check taking a key and its online document, true when the document is what the run settles on.
     """
     floor = max(unsettled, default=0)
     written = set(rewrite.changed) | set(rewrite.online)
@@ -355,6 +449,14 @@ def fence_lag(progress: list[dict], partitions: list[int], epoch: int) -> list[i
     Only the VECTORDB consumer groups keep fences, and each of them must have
     passed the fence on every partition. Every partition lags while none of
     them reports.
+
+    Args:
+        progress: Rows of online progress, one per consumer group and partition.
+        partitions: The partitions of the group.
+        epoch: Epoch of the fence.
+
+    Returns:
+        The partitions that have not passed the fence, sorted.
     """
     fences: dict[str, dict[int, Any]] = {}
     for row in progress:
@@ -403,7 +505,16 @@ def _refusal(exc: BaseException) -> Any:
 
 
 def claim_refused(name: str, version: int, reason: str) -> EmbedError:
-    """The stop of a run whose claim the backend refused (409) for `reason`."""
+    """The stop of a run whose claim the backend refused (409) for `reason`.
+
+    Args:
+        name: Name of the feature group.
+        version: Version of the feature group.
+        reason: The reason the backend gave.
+
+    Returns:
+        The error that stops the run.
+    """
     if "newer run" in reason:
         return EmbedError(
             f"a newer run of this embed job holds the group ({reason}); "
@@ -443,7 +554,11 @@ class Writer:
         )
 
     def claim(self) -> tuple[int, list[int]]:
-        """(this execution's epoch, the unsettled epochs below it); a refused claim stops the run before it writes."""
+        """(this execution's epoch, the unsettled epochs below it); a refused claim stops the run before it writes.
+
+        Returns:
+            The epoch of this execution and the unsettled epochs below it.
+        """
         try:
             answer = self._send("POST", "writer")
         except Exception as exc:  # noqa: BLE001
@@ -486,7 +601,11 @@ class Stores:
         return {kafka_engine.WRITER_EPOCH_OPTION: self.epoch}
 
     def fence(self) -> list[int]:
-        """The Delta fence commit, then one fence record per partition; the partitions fenced."""
+        """The Delta fence commit, then one fence record per partition; the partitions fenced.
+
+        Returns:
+            The partitions fenced.
+        """
         from hsfs.core import delta_engine, kafka_engine  # noqa: PLC0415
 
         delta_engine.DeltaEngine(
@@ -498,6 +617,12 @@ class Stores:
         """(doc_id, chunk_ix) -> (content_sha, embedding, embedded_at) of every offline row.
 
         Streamed; with `limit`, the read stops once the group holds more rows than that.
+
+        Args:
+            limit: Stop once the group holds more rows than this; no limit when `None`.
+
+        Returns:
+            The content hash, embedding and embedding time by key.
         """
         import numpy as np  # noqa: PLC0415
 
@@ -521,7 +646,14 @@ class Stores:
         return out
 
     def online(self, keys: list) -> dict:
-        """Key -> `Doc` of every key with a document online, tombstones included."""
+        """Key -> `Doc` of every key with a document online, tombstones included.
+
+        Args:
+            keys: The keys to read.
+
+        Returns:
+            The `Doc` of each key that has one.
+        """
         from hsfs.core.vector_db_client import (  # noqa: PLC0415
             DELETED_FIELD,
             VERSION_FIELD,
@@ -568,6 +700,12 @@ def upsert_frame(rows: list[dict]) -> Any:
     """The rows as a frame whose embeddings infer as array<float>, the group's type.
 
     A list of Python floats infers as array<double>, which the insert refuses.
+
+    Args:
+        rows: The rows to write, each a dict of column values.
+
+    Returns:
+        The data frame to insert.
     """
     import numpy as np  # noqa: PLC0415
     import pandas as pd  # noqa: PLC0415
@@ -585,7 +723,16 @@ def wait_fenced(
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
 ) -> None:
-    """Poll online-progress until every partition saved the fence at `epoch`, or stop past `timeout_s`."""
+    """Poll online-progress until every partition saved the fence at `epoch`, or stop past `timeout_s`.
+
+    Args:
+        writer: The writer of the group.
+        partitions: The partitions of the group.
+        epoch: Epoch of the fence.
+        timeout_s: Seconds to wait before stopping.
+        clock: Returns the time in seconds.
+        sleep: Waits for the given seconds.
+    """
     deadline = clock() + timeout_s
     while True:
         lag = fence_lag(writer.progress(), partitions, epoch)
@@ -607,7 +754,17 @@ def wait_online(
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
 ) -> None:
-    """Read `keys` back online until each passes `check`, or stop past `timeout_s` naming what is left."""
+    """Read `keys` back online until each passes `check`, or stop past `timeout_s` naming what is left.
+
+    Args:
+        stores: The stores of the group.
+        keys: The keys to read back.
+        check: Returns whether a key and its online document are as expected.
+        timeout_s: Seconds to wait before stopping.
+        what: Names what is awaited, for the error message.
+        clock: Returns the time in seconds.
+        sleep: Waits for the given seconds.
+    """
     deadline = clock() + timeout_s
     pending = list(keys)
     while pending:
@@ -624,7 +781,11 @@ def wait_online(
 
 
 def execution_id() -> int:
-    """This job execution's id; a run outside a job execution has none and cannot claim a group."""
+    """This job execution's id; a run outside a job execution has none and cannot claim a group.
+
+    Returns:
+        The id of this execution.
+    """
     raw = os.environ.get(EXECUTION_ENV, "")
     if not raw.isdigit():
         raise EmbedError(
@@ -794,7 +955,15 @@ def _embed_all(
 
 
 def versions_of(fs: Any, group: str) -> list[Any]:
-    """Every version of `group`, oldest first; none when it does not exist."""
+    """Every version of `group`, oldest first; none when it does not exist.
+
+    Args:
+        fs: The feature store.
+        group: Name of the feature group.
+
+    Returns:
+        The versions of the group, oldest first.
+    """
     from hopsworks.cli import versions  # noqa: PLC0415
 
     try:
@@ -819,6 +988,16 @@ def delete_run(
     Fenced first, so no older run writes any of them again; the backend then
     deletes each group with its index. The job itself is deleted by the caller
     once D has succeeded.
+
+    Args:
+        fs: The feature store.
+        job: The embed job.
+        group: Name of the feature group.
+        execution: Id of this execution.
+        log: Called with each progress message.
+
+    Returns:
+        The versions deleted.
     """
     owned = [
         fg

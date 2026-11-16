@@ -460,6 +460,14 @@ def schedule_cron(every: str, project_id: Any, group: str) -> str:
     at once. An interval below a day must reach the floor an admin grants in the
     Hopsworks variable platform_jobs_embed_min_interval_minutes; with none set, a day
     is the floor.
+
+    Args:
+        every: The `--schedule` value: `daily`, `hourly`, or a number of minutes.
+        project_id: Id of the project, hashed into the minute and hour.
+        group: Name of the feature group, hashed into the minute and hour.
+
+    Returns:
+        The Quartz cron expression.
     """
     word = every.strip().lower().removeprefix("@")
     minutes = {"daily": DAY_MINUTES, "hourly": 60}.get(
@@ -552,6 +560,13 @@ def start_refusal(exc: BaseException, group: str) -> str | None:
     429: the platform's embed capacity (start rate or inventory) is full. 409:
     the job is being deleted (130102), or already has an execution
     (maxConcurrentExecutions is 1).
+
+    Args:
+        exc: The exception raised by the execution start.
+        group: Name of the feature group whose build was started.
+
+    Returns:
+        The message of the refusal, or `None` when the failure is not a refusal.
     """
     from hopsworks_common.client.exceptions import (  # noqa: PLC0415 - SDK loaded on use
         RestAPIError,
