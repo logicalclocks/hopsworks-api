@@ -915,11 +915,13 @@ public class SparkEngine extends EngineBase {
    * per bucket name for the life of the application, so a second store under the same bucket name would silently
    * read and write the first one.
    *
+   * <p>Synchronized, since checking and recording are separate steps that concurrent reads must not interleave.
+   *
    * @param endpoint the store's endpoint, null or empty for AWS S3
    * @param buckets the bucket names; null and empty entries are ignored
    * @throws FeatureStoreException the application already uses one of the bucket names with another store
    */
-  private void claimS3Buckets(String dataSourceName, String endpoint, String... buckets)
+  private synchronized void claimS3Buckets(String dataSourceName, String endpoint, String... buckets)
       throws FeatureStoreException {
     String store = Strings.nullToEmpty(endpoint);
     List<String> named = Arrays.stream(buckets).filter(bucket -> !Strings.isNullOrEmpty(bucket))

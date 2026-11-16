@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import sys
+import threading
 from unittest.mock import MagicMock, PropertyMock, call, mock_open
 
 import hopsworks_common
@@ -6369,6 +6370,60 @@ class TestSpark:
         hadoop_set.assert_not_called()
         # Nothing is claimed for a refused data source, its own bucket included.
         assert ("other" in spark._S3_BUCKET_STORES) == (not endpoint_first)
+
+    def test_claim_s3_buckets_admits_one_store_under_concurrent_claims(
+        self, mocker, monkeypatch
+    ):
+        mocker.patch.object(
+            pyspark.sql.SparkSession,
+            "sparkContext",
+            new_callable=PropertyMock,
+            return_value=MagicMock(),
+        )
+        first_checked = threading.Event()
+        release_first = threading.Event()
+
+        class PausingRegistry(dict):
+            # The first lookup stops after reading, between the first claim's check and its record.
+            paused = False
+
+            def get(self, key, default=None):
+                value = super().get(key, default)
+                if not PausingRegistry.paused:
+                    PausingRegistry.paused = True
+                    first_checked.set()
+                    release_first.wait(5)
+                return value
+
+        monkeypatch.setattr(spark, "_S3_BUCKET_STORES", PausingRegistry())
+        outcomes = {}
+
+        def claim(name, endpoint):
+            connector = storage_connector.S3Connector(
+                id=1, name=name, featurestore_id=99, bucket="landing", endpoint=endpoint
+            )
+            try:
+                spark.Engine()._claim_s3_buckets(connector, ["landing"])
+                outcomes[name] = "claimed"
+            except exceptions.FeatureStoreException:
+                outcomes[name] = "refused"
+
+        first = threading.Thread(
+            target=claim, args=("ecs", "https://ecs.example.com:9021")
+        )
+        first.start()
+        assert first_checked.wait(5)
+        second = threading.Thread(
+            target=claim, args=("minio", "https://minio.example.com:9000")
+        )
+        second.start()
+        # Without the lock the second claim completes here, inside the first one's window.
+        second.join(0.3)
+        release_first.set()
+        first.join(5)
+        second.join(5)
+
+        assert outcomes == {"ecs": "claimed", "minio": "refused"}
 
     def test_setup_s3_hadoop_conf_aws_path_in_another_bucket_in_a_clean_session(
         self, mocker

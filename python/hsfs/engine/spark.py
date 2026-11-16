@@ -21,6 +21,7 @@ import json
 import os
 import re
 import shutil
+import threading
 import urllib.parse
 import uuid
 import warnings
@@ -149,6 +150,8 @@ _logger = logging.getLogger(__name__)
 # Kept for the process rather than per Engine or per SparkContext: reconnecting builds a new Engine, and every
 # SparkContext of a PySpark process runs in the same JVM, whose Hadoop filesystem cache outlives a stopped context.
 _S3_BUCKET_STORES: dict[str, str | None] = {}
+# Held across checking and recording a data source's buckets, so concurrent reads cannot both claim one bucket.
+_S3_BUCKET_LOCK = threading.Lock()
 
 
 def _s3_path_bucket(path):
@@ -2087,17 +2090,18 @@ class Engine:
             FeatureStoreException: The process already uses one of the bucket names with another store.
         """
         endpoint = getattr(storage_connector, "endpoint", None) or None
-        for bucket in buckets:
-            known = _S3_BUCKET_STORES.get(bucket, endpoint)
-            if known != endpoint:
-                raise FeatureStoreException(
-                    f"Data source '{storage_connector.name}' uses bucket '{bucket}' on {endpoint or 'AWS S3'}, "
-                    f"but this Spark application already uses that bucket name on {known or 'AWS S3'}. "
-                    "Spark keeps one S3 client per bucket name for as long as its process runs, "
-                    "so use this data source in a new Spark application process, such as a new job run."
-                )
-        for bucket in buckets:
-            _S3_BUCKET_STORES.setdefault(bucket, endpoint)
+        with _S3_BUCKET_LOCK:
+            for bucket in buckets:
+                known = _S3_BUCKET_STORES.get(bucket, endpoint)
+                if known != endpoint:
+                    raise FeatureStoreException(
+                        f"Data source '{storage_connector.name}' uses bucket '{bucket}' on {endpoint or 'AWS S3'}, "
+                        f"but this Spark application already uses that bucket name on {known or 'AWS S3'}. "
+                        "Spark keeps one S3 client per bucket name for as long as its process runs, "
+                        "so use this data source in a new Spark application process, such as a new job run."
+                    )
+            for bucket in buckets:
+                _S3_BUCKET_STORES[bucket] = endpoint
 
     def _set_s3_endpoint_hadoop_conf(self, storage_connector, prefix):
         # Bucket scope only, and after the forwarded Spark options so it wins over them:
