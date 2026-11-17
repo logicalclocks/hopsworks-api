@@ -575,6 +575,10 @@ def current_ranking(
 # region: command ---------------------------------------------------------
 
 
+# PROJECT_COMPUTE_BUSY of the Project, Job, Service, Serving and Kube families: the project's compute quota is held by another start or an ending workload. Not the platform class at capacity.
+_QUOTA_BUSY_CODES = frozenset({"150131", "130095", "100086", "240077", "510032"})
+
+
 def _job_name(name: str) -> str:
     return f"kumo-score-{name}"
 
@@ -688,6 +692,9 @@ def run_refusal(exc: BaseException, name: str) -> ScoreRefused | None:
     if not isinstance(body, dict):
         body = {}
     job_name = _job_name(name)
+    if status == 429 and str(body.get("errorCode")) in _QUOTA_BUSY_CODES:
+        reason = body.get("errorMsg") or "the project's compute quota is busy"
+        return ScoreRefused(f"No run of {job_name} started: {reason}")
     if status == 429:
         after = (cause.response.headers.get("Retry-After") or "").strip()
         when = f"in {after} s" if after.isdigit() else "later"

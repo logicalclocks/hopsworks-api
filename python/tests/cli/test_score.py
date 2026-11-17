@@ -514,6 +514,24 @@ def test_a_429_says_nothing_started_and_when_to_retry():
     assert "Retry later" in str(_refusal(429, body, {"Retry-After": "soon"}))
 
 
+def test_a_platform_class_429_keeps_the_capacity_wording():
+    for code in (130097, 130099, 130100, 130101):
+        body = {"errorCode": code, "errorMsg": "Jobs of this class are at capacity."}
+        message = str(_refusal(429, body, {"Retry-After": "5"}))
+        assert "the platform's scoring capacity is full" in message
+        assert "Retry in 5 s with `hops score deals`." in message
+
+
+@pytest.mark.parametrize("code", [150131, 130095, 100086, 240077, 510032])
+def test_a_quota_busy_429_shows_the_server_message(code):
+    body = {"errorCode": code, "errorMsg": "The project needs 4.1 CPU, 4.05 free."}
+    message = str(_refusal(429, body, {"Retry-After": "30"}))
+    assert message == (
+        "No run of kumo-score-deals started: The project needs 4.1 CPU, 4.05 free."
+    )
+    assert "capacity" not in message
+
+
 def test_the_409_wording_prefers_the_user_message_then_the_error_message():
     both = {"usrMsg": "Execution #7 is running.", "errorMsg": "Job has #7."}
     message = str(_refusal(409, both))
