@@ -35,21 +35,34 @@ class DataSourceData:
     def __init__(
         self,
         limit: int = 50,
-        features: list[feature.Feature] | None = None,
+        features: list[feature.Feature | dict[str, Any]] | None = None,
         preview: list[dict] | None = None,
         schema_fetch_failed: bool = False,
         schema_fetch_in_progress: bool = False,
         schema_fetch_logs: str = "",
         supported_resources: list[str] | None = None,
+        column_metadata: list[dict[str, Any]] | None = None,
         **kwargs,
     ):
+        # The backend returns features as raw JSON dicts and from_response_json passes
+        # them straight into this constructor.
+        # Build Feature objects so the features property matches its annotated type and
+        # consumers such as infer_metadata can read feature.name / feature.type rather
+        # than failing with AttributeError: 'dict' object has no attribute 'name'.
+        # Feature objects passed by direct construction are kept as-is.
+        from hsfs import feature as feature_mod
+
         self._limit = limit
-        self._features = features if features else []
+        self._features = [
+            feature_mod.Feature.from_response_json(f) if isinstance(f, dict) else f
+            for f in (features or [])
+        ]
         self._preview = preview if preview else []
         self._schema_fetch_failed = schema_fetch_failed
         self._schema_fetch_in_progress = schema_fetch_in_progress
         self._schema_fetch_logs = schema_fetch_logs
         self._supported_resources = supported_resources if supported_resources else []
+        self._column_metadata = column_metadata if column_metadata else []
 
     @classmethod
     def from_response_json(cls, json_dict: dict[str, Any]) -> DataSourceData:
@@ -101,3 +114,9 @@ class DataSourceData:
     def supported_resources(self) -> list[str]:
         """The list of supported resources."""
         return self._supported_resources
+
+    @public
+    @property
+    def column_metadata(self) -> list[dict[str, Any]]:
+        """SQL Server tables only: each source column with its `name`, `source_type`, and whether it is a FILESTREAM column (`file_stream`), can be stored as files (`file_candidate`) and is stored as files in this read (`file`)."""
+        return self._column_metadata

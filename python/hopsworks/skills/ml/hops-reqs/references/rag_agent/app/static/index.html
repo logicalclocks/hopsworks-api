@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Help desk</title>
+  <script>
+    // Relative URLs resolve against the proxy mount only with a trailing slash.
+    if (!location.pathname.endsWith("/")) location.replace(location.pathname + "/" + location.search);
+  </script>
+  <link rel="stylesheet" href="static/app.css">
+  <script type="module" src="static/app.js"></script>
+</head>
+<body>
+  <header class="band">
+    <div class="mark" aria-hidden="true">H</div>
+    <div>
+      <h1>Help desk</h1>
+      <div class="sub">Answers from the help desk documents and the customer's recent events</div>
+    </div>
+  </header>
+  <main>
+    <section class="card">
+      <h2>Ask</h2>
+      <form class="ask" id="ask">
+        <div>
+          <label for="user">User id</label>
+          <select id="user" name="user_id" required><option value="">Loading…</option></select>
+        </div>
+        <div>
+          <label for="query">Question</label>
+          <textarea id="query" name="query" required maxlength="2000"
+            placeholder="Where is my refund for the headphones I returned?"></textarea>
+        </div>
+        <button type="submit" id="send">Send</button>
+      </form>
+    </section>
+    <div class="split">
+      <section class="card">
+        <h2>Answer</h2>
+        <div id="answer" aria-live="polite"><p class="muted">Pick a user, ask a question and press Send.</p></div>
+      </section>
+      <section class="card">
+        <h2>Recent events</h2>
+        <table id="events">
+          <thead><tr><th>When</th><th>Event</th><th>Product</th></tr></thead>
+          <tbody><tr><td colspan="3" class="muted">The events the agent read appear here.</td></tr></tbody>
+        </table>
+      </section>
+      <section class="card">
+        <h2>Sources</h2>
+        <ol class="sources" id="sources"><li class="muted">The passages the answer drew on appear here.</li></ol>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

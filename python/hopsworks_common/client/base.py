@@ -17,12 +17,13 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import hashlib
 import logging
 import os
 import struct
+import tempfile
 import time
-from pathlib import Path
 
 import furl
 import requests
@@ -35,6 +36,7 @@ from cryptography.hazmat.primitives.serialization import (
 )
 from hopsworks_apigen import also_available_as
 from hopsworks_common.client import auth, exceptions
+from hopsworks_common.constants import _temp_dir
 from hopsworks_common.decorators import _connected
 
 
@@ -52,6 +54,9 @@ class Client:
     TOKEN_FILE = "token.jwt"
     TOKEN_EXPIRED_RETRY_INTERVAL = 0.6
     TOKEN_EXPIRED_MAX_RETRIES = 10
+    # GenericErrorCode.TOO_MANY_REQUESTS: the backend's rate limiter refused the request before any resource ran, so it is safe to resend.
+    RATE_LIMITED_ERROR_CODE = 120015
+    RATE_LIMITED_RETRY_BUDGET_SECONDS = 60
 
     APIKEY_FILE = "api.key"
     REST_ENDPOINT = "REST_ENDPOINT"
@@ -129,10 +134,13 @@ class Client:
         stream: bool = False,
         files: dict | None = None,
         with_base_path_params: bool = True,
+        timeout: float | tuple[float, float] | None = None,
+        deadline: float | None = None,
     ) -> dict:
         """Send REST request to Hopsworks.
 
         Uses the client it is executed from. Path parameters are url encoded automatically.
+        A request refused by the backend's per-user rate limiter is resent after the advertised `Retry-After`, for up to 60 seconds in total, as long as its body can be resent.
 
         Parameters:
             method: 'GET', 'PUT' or 'POST'
@@ -143,6 +151,10 @@ class Client:
             stream: Set if response should be a stream, defaults to False
             files: dictionary for multipart encoding upload
             with_base_path_params: Whether to include the base path parameters (hopsworks-api/api) in the request URL.
+            timeout: How long to wait for the connection and for each block of the response, in seconds, passed straight through to `requests`.
+                Without it a stalled connection blocks the caller indefinitely, so pass one wherever the caller has its own deadline to honour.
+            deadline: Monotonic time after which no request, token refresh or rate-limit retry starts.
+                Each socket wait is clipped to the time left, so a response can finish after it; a successful one is returned.
 
         Returns:
             Response json
@@ -170,15 +182,53 @@ class Client:
 
         _logger.debug(f"url:{url} hostname_verification:{self._verify}")
 
-        prepped = self._session.prepare_request(request)
-        response = self._session.send(prepped, verify=self._verify, stream=stream)
-
-        if response.status_code == 401 and self.REST_ENDPOINT in os.environ:
-            # refresh token and retry request - only on hopsworks
-            response = self._retry_token_expired(
-                request, stream, self.TOKEN_EXPIRED_RETRY_INTERVAL, 1
+        replayable = self._is_replayable(data, files) and self._is_replayable(
+            query_params, None
+        )
+        retry_deadline = time.monotonic() + self.RATE_LIMITED_RETRY_BUDGET_SECONDS
+        if deadline is not None:
+            retry_deadline = min(retry_deadline, deadline)
+        rate_limited = False
+        while True:
+            prepped = self._session.prepare_request(request)
+            response = self._session.send(
+                prepped,
+                verify=self._verify,
+                stream=stream,
+                timeout=self._deadline_timeout(timeout, deadline),
             )
 
+            if response.status_code == 401 and self.REST_ENDPOINT in os.environ:
+                # refresh token and retry request - only on hopsworks
+                refreshed = self._retry_token_expired(
+                    request,
+                    stream,
+                    self.TOKEN_EXPIRED_RETRY_INTERVAL,
+                    1,
+                    timeout,
+                    retry_deadline if rate_limited or deadline is not None else None,
+                )
+                # A requests.Response is falsy for any 4xx or 5xx, so `or` would drop a refreshed 429.
+                if refreshed is not None:
+                    response = refreshed
+
+            wait = self._rate_limited_wait(response) if replayable else None
+            if wait is None or wait > retry_deadline - time.monotonic():
+                break
+            _logger.info("Rate limited by Hopsworks, retrying in %s s: %s", wait, url)
+            response.close()
+            time.sleep(wait)
+            if time.monotonic() > retry_deadline:
+                break
+            rate_limited = True
+
+        if (
+            deadline is not None
+            and time.monotonic() >= deadline
+            and response.status_code // 100 != 2
+        ):
+            response.close()
+            raise requests.exceptions.Timeout("HTTP request exceeded its deadline")
         if response.status_code // 100 != 2:
             raise exceptions.RestAPIError(url, response)
 
@@ -189,11 +239,72 @@ class Client:
             return None
         return response.json()
 
-    def _retry_token_expired(self, request, stream, wait, retries):
+    @staticmethod
+    def _deadline_timeout(timeout, deadline):
+        """Share the remaining budget between connection and response waits."""
+        if deadline is None:
+            return timeout
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise requests.exceptions.Timeout("HTTP request deadline expired")
+        connect, read = timeout if isinstance(timeout, tuple) else (timeout, timeout)
+        return urllib3.util.Timeout(
+            total=remaining,
+            connect=min(connect, remaining) if connect is not None else remaining,
+            read=min(read, remaining) if read is not None else remaining,
+        )
+
+    @staticmethod
+    def _is_replayable(data, files) -> bool:
+        """Whether the request body can be sent again, which a stream or generator already read cannot."""
+        if isinstance(data, dict):
+            # requests reads each value once; an iterator value would be empty on the retry.
+            for value in data.values():
+                items = value if isinstance(value, (list, tuple)) else [value]
+                if not all(
+                    item is None or isinstance(item, (str, bytes, int, float))
+                    for item in items
+                ):
+                    return False
+        elif not (data is None or isinstance(data, (str, bytes))):
+            return False
+        if files is None:
+            return True
+        if not isinstance(files, dict):
+            return False
+        for value in files.values():
+            # A value is the content itself or a (filename, content, ...) tuple.
+            content = value[1] if isinstance(value, tuple) else value
+            if not isinstance(content, (str, bytes)):
+                return False
+        return True
+
+    def _rate_limited_wait(self, response) -> int | None:
+        """Seconds the rate limiter asks the client to wait, or None if the response is not a rate-limit refusal."""
+        if (
+            response.status_code
+            != exceptions.RestAPIError.STATUS_CODE_TOO_MANY_REQUESTS
+        ):
+            return None
+        try:
+            wait = int(response.headers.get("Retry-After"))
+            error_code = response.json().get("errorCode")
+        except (TypeError, ValueError, AttributeError):
+            return None
+        if error_code != self.RATE_LIMITED_ERROR_CODE or wait < 0:
+            return None
+        return wait
+
+    def _retry_token_expired(
+        self, request, stream, wait, retries, timeout=None, deadline=None
+    ):
         """Refresh the JWT token and retry the request. Only on Hopsworks.
 
         As the token might take a while to get refreshed. Keep trying.
+        A request already retried after a 429 passes the rate-limit deadline, which this stops at.
         """
+        if deadline is not None and time.monotonic() + wait > deadline:
+            return None
         # Sleep the waited time before re-issuing the request
         time.sleep(wait)
 
@@ -201,11 +312,22 @@ class Client:
         # Update request with the new token
         request.auth = self._auth
         prepped = self._session.prepare_request(request)
-        response = self._session.send(prepped, verify=self._verify, stream=stream)
+        # The sleep can overshoot, for example while the process is suspended.
+        if deadline is not None and time.monotonic() > deadline:
+            return None
+        response = self._session.send(
+            prepped,
+            verify=self._verify,
+            stream=stream,
+            timeout=self._deadline_timeout(timeout, deadline),
+        )
 
         if response.status_code == 401 and retries < self.TOKEN_EXPIRED_MAX_RETRIES:
             # Try again.
-            return self._retry_token_expired(request, stream, wait * 2, retries + 1)
+            refreshed = self._retry_token_expired(
+                request, stream, wait * 2, retries + 1, timeout, deadline
+            )
+            return refreshed if refreshed is not None else response
         # If the number of retries have expired, the _send_request method
         # will throw an exception to the user as part of the status_code validation.
         return response
@@ -383,16 +505,47 @@ class Client:
         ks_keys, ks_certs = self._load_jks(keystore_path, keystore_pw)
         _, ts_certs = self._load_jks(truststore_path, truststore_pw)
 
-        ca_chain_path = os.path.join("/tmp", f"{prefix}_ca_chain.pem")
+        ca_chain_path = os.path.join(_temp_dir(), f"{prefix}_ca_chain.pem")
         self._write_ca_chain(ks_certs, ts_certs, ca_chain_path)
 
-        client_cert_path = os.path.join("/tmp", f"{prefix}_client_cert.pem")
+        client_cert_path = os.path.join(_temp_dir(), f"{prefix}_client_cert.pem")
         self._write_client_cert(ks_keys, client_cert_path)
 
-        client_key_path = os.path.join("/tmp", f"{prefix}_client_key.pem")
+        client_key_path = os.path.join(_temp_dir(), f"{prefix}_client_key.pem")
         self._write_client_key(ks_keys, client_key_path)
 
         return ca_chain_path, client_cert_path, client_key_path
+
+    @staticmethod
+    def _replace_file(path, content):
+        """Write `content` to `path` so that a reader sees the old file or the new one, never a partial one.
+
+        The PEM paths are derived from the project and connector id only, so every connector object for the same Kafka connector in a process writes the same files.
+        Truncating one in place made a concurrent confluent_kafka Producer fail with "no certificate or crl found".
+        The file is created with mode 0600 whatever the umask, since one of them is an unencrypted private key in the shared temp directory.
+        A file that already holds `content` is left alone: the stores rarely change, and Windows refuses to replace a file another handle has open.
+        """
+        with contextlib.suppress(OSError), open(path) as f:
+            if f.read() == content:
+                return
+        directory, name = os.path.split(path)
+        fd, temp_path = tempfile.mkstemp(dir=directory or None, prefix=f".{name}.")
+        try:
+            with os.fdopen(fd, "w") as f:
+                f.write(content)
+            for attempt in range(50):
+                try:
+                    os.replace(temp_path, path)
+                    break
+                except PermissionError:
+                    # Windows: a reader has the target open; it is released within milliseconds.
+                    if attempt == 49:
+                        raise
+                    time.sleep(0.02)
+        except BaseException:
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(temp_path)
+            raise
 
     @staticmethod
     def _der_to_pem(der_bytes, pem_type="CERTIFICATE"):
@@ -411,8 +564,7 @@ class Client:
         for cert_der in ks_certs + ts_certs:
             ca_chain += self._der_to_pem(cert_der)
 
-        with Path(ca_chain_path).open("w") as f:
-            f.write(ca_chain)
+        self._replace_file(ca_chain_path, ca_chain)
 
     def _write_client_cert(self, ks_keys, client_cert_path):
         """Writes client certificate PEM from keystore private key entries."""
@@ -421,8 +573,7 @@ class Client:
             for cert_der in cert_chain:
                 client_cert += self._der_to_pem(cert_der)
 
-        with Path(client_cert_path).open("w") as f:
-            f.write(client_cert)
+        self._replace_file(client_cert_path, client_cert)
 
     def _write_client_key(self, ks_keys, client_key_path):
         """Writes client private key PEM from keystore."""
@@ -433,5 +584,4 @@ class Client:
                 Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()
             ).decode()
 
-        with Path(client_key_path).open("w") as f:
-            f.write(client_key)
+        self._replace_file(client_key_path, client_key)

@@ -19,6 +19,27 @@ from hsfs import user
 
 
 class TestUser:
+    def test_from_response_json_parses_cluster_roles(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["user"]["get_with_roles"]["response"]
+
+        # Act
+        u = user.User.from_response_json(json)
+
+        # Assert
+        assert u.roles == ["HOPS_ADMIN"]
+
+    def test_from_response_json_without_roles(self, backend_fixtures):
+        # A user parsed from an embedded reference carries no role information.
+        # Arrange
+        json = backend_fixtures["user"]["get"]["response"]
+
+        # Act
+        u = user.User.from_response_json(json)
+
+        # Assert
+        assert u.roles == []
+
     def test_from_response_json(self, backend_fixtures):
         # Arrange
         json = backend_fixtures["user"]["get"]["response"]

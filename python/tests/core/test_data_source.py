@@ -95,6 +95,37 @@ class TestDataSource:
         # Assert
         assert sc._database == ds.database
 
+    def test_update_storage_connector_elasticsearch(self):
+        # Arrange
+        ds = data_source.DataSource()
+        ds.database = "cluster"
+        ds.table = "events"
+
+        sc = storage_connector.ElasticsearchConnector(1, "test", 100)
+
+        # Act
+        ds._update_storage_connector(sc)
+
+        # Assert
+        assert sc.default_index == "events"
+
+    def test_update_storage_connector_hopsworks_keeps_the_connector(self):
+        # Arrange
+        ds = data_source.DataSource()
+        ds.database = "sales_featurestore"
+        ds.table = "transactions_1"
+
+        sc = storage_connector.HopsworksConnector(
+            1, "test", 100, host="h", project="sales"
+        )
+        before = sc.to_dict()
+
+        # Act
+        ds._update_storage_connector(sc)
+
+        # Assert
+        assert sc.to_dict() == before
+
     def test_update_storage_connector_other(self):
         # Arrange
         ds = data_source.DataSource()
@@ -140,42 +171,6 @@ class TestDataSource:
 
         # Assert
         assert ds.format == "delta"
-
-    def test_from_response_json_items_null_is_single(self):
-        # A DTO can carry `items: null` (e.g. the data source embedded in a
-        # feature group inside a QueryDTO) — that is a single data source, not a
-        # list, and must not be iterated.
-        payload = {"items": None, "count": None, "path": "s3://bucket/path"}
-
-        # Act
-        ds = data_source.DataSource.from_response_json(payload)
-
-        # Assert
-        assert isinstance(ds, data_source.DataSource)
-        assert ds.path == "s3://bucket/path"
-
-    def test_from_response_json_items_list(self):
-        # A populated `items` collection still deserializes into a list.
-        payload = {"items": [{"path": "a"}, {"path": "b"}]}
-
-        # Act
-        result = data_source.DataSource.from_response_json(payload)
-
-        # Assert
-        assert isinstance(result, list)
-        assert [d.path for d in result] == ["a", "b"]
-
-    def test_from_response_json_items_empty_list(self):
-        # An empty `items` collection (e.g. a list endpoint with `count: 0`) is
-        # still a list payload and must deserialize to an empty list, not a
-        # single data source.
-        payload = {"items": [], "count": 0}
-
-        # Act
-        result = data_source.DataSource.from_response_json(payload)
-
-        # Assert
-        assert result == []
 
     def test_format_emitted_in_to_dict(self):
         # Arrange
@@ -251,6 +246,7 @@ class TestInferredMetadata:
             ],
             "suggestedPrimaryKey": ["user_id"],
             "suggestedEventTime": "event_time",
+            "suggestedDescription": "User events, one row per event.",
         }
 
         # Act
@@ -263,6 +259,10 @@ class TestInferredMetadata:
         assert inferred.features[0].type == "bigint"
         assert inferred.suggested_primary_key == ["user_id"]
         assert inferred.suggested_event_time == "event_time"
+        assert inferred.suggested_description == "User events, one row per event."
+        assert inferred.to_dict()["suggestedDescription"] == (
+            "User events, one row per event."
+        )
 
 
 class TestDataSourceApiInferMetadata:
@@ -328,6 +328,136 @@ class TestDataSourceApiInferMetadata:
             ]
         }
         assert isinstance(result, im.InferredMetadata)
+
+    def test_data_source_data_from_response_json_builds_feature_objects(self):
+        # Regression for the infer_metadata break (HWORKS-2876, d830e12f6):
+        # DataSourceData.from_response_json decamelized the backend JSON and
+        # passed the feature entries straight through, so `features` held raw
+        # dicts instead of Feature objects. Assert from_response_json — the path
+        # the API actually uses — yields Feature objects with readable name/type.
+        preview_data = dsd.DataSourceData.from_response_json(
+            {
+                "features": [
+                    {"name": "col_a", "type": "string"},
+                    {"name": "col_b", "type": "bigint"},
+                ],
+                "preview": [],
+            }
+        )
+
+        assert all(isinstance(f, feature.Feature) for f in preview_data.features)
+        assert [f.name for f in preview_data.features] == ["col_a", "col_b"]
+        assert [f.type for f in preview_data.features] == ["string", "bigint"]
+
+    def test_infer_metadata_handles_data_source_data_from_response_json(self):
+        # Regression for the infer_metadata break (HWORKS-2876, d830e12f6):
+        # _infer_metadata reads feature.name / feature.type, which raised
+        # "AttributeError: 'dict' object has no attribute 'name'" when
+        # DataSourceData.features held raw dicts. Build the preview the same way
+        # the client does at runtime — via from_response_json — so the regression
+        # would resurface here rather than only in production.
+        preview_data = dsd.DataSourceData.from_response_json(
+            {
+                "features": [
+                    {"name": "col_a", "type": "string"},
+                    {"name": "col_b", "type": "bigint"},
+                ],
+                "preview": [
+                    {
+                        "values": [
+                            {"value0": "col_a", "value1": "x1"},
+                            {"value0": "col_b", "value1": "1"},
+                        ]
+                    },
+                ],
+            }
+        )
+
+        sc = MagicMock()
+        sc._featurestore_id = 99
+        sc._name = "my_conn"
+
+        api = data_source_api.DataSourceApi()
+
+        captured: dict = {}
+
+        class _StubClient:
+            _project_id = 1
+
+            def _send_request(self, method, path_params, **kwargs):
+                captured["data"] = kwargs.get("data")
+                return {
+                    "features": [],
+                    "suggestedPrimaryKey": [],
+                    "suggestedEventTime": None,
+                }
+
+        # Act — must not raise AttributeError reading feature.name / feature.type.
+        with patch(
+            "hsfs.core.data_source_api.client._get_instance",
+            return_value=_StubClient(),
+        ):
+            result = api._infer_metadata(sc, preview_data)
+
+        # Assert — per-column samples are read off Feature objects, not dicts.
+        body = json.loads(captured["data"])
+        assert body == {
+            "columns": [
+                {"name": "col_a", "type": "string", "values": ["x1"]},
+                {"name": "col_b", "type": "bigint", "values": ["1"]},
+            ]
+        }
+        assert isinstance(result, im.InferredMetadata)
+
+    def test_infer_metadata_sends_source_column_names_verbatim(self):
+        # Feature.__init__ runs the feature-store autofix over `name`, so `feature.name` is
+        # lower-cased with spaces turned into underscores. The backend echoes the names we send
+        # back as `originalName`, and the caller matches those against the real source columns —
+        # so sending the sanitized form makes every suggestion unmatchable for any table whose
+        # columns are uppercase or contain spaces, which is the common case for Snowflake/Oracle.
+        preview_data = dsd.DataSourceData.from_response_json(
+            {
+                "features": [
+                    {"name": "USER_ID", "type": "bigint"},
+                    {"name": "Order Date", "type": "timestamp"},
+                ],
+                "preview": [
+                    {
+                        "values": [
+                            {"value0": "USER_ID", "value1": "7"},
+                            {"value0": "Order Date", "value1": "2026-01-01"},
+                        ]
+                    },
+                ],
+            }
+        )
+
+        sc = MagicMock()
+        sc._featurestore_id = 99
+        sc._name = "my_conn"
+
+        api = data_source_api.DataSourceApi()
+        captured: dict = {}
+
+        class _StubClient:
+            _project_id = 1
+
+            def _send_request(self, method, path_params, **kwargs):
+                captured["data"] = kwargs.get("data")
+                return {
+                    "features": [],
+                    "suggestedPrimaryKey": [],
+                    "suggestedEventTime": None,
+                }
+
+        with patch(
+            "hsfs.core.data_source_api.client._get_instance",
+            return_value=_StubClient(),
+        ):
+            api._infer_metadata(sc, preview_data)
+
+        body = json.loads(captured["data"])
+        assert [c["name"] for c in body["columns"]] == ["USER_ID", "Order Date"]
 
     def _make_rest_api_error(self, error_code: int) -> RestAPIError:
         # Build a real RestAPIError without going through HTTP — we just need
@@ -490,3 +620,69 @@ class TestDataSourceEstimateIngestionResources:
         ds = data_source.DataSource(storage_connector=sc)
         with pytest.raises(ValueError, match="feature_group"):
             ds.estimate_ingestion_resources()
+
+
+class TestDataSourceTags:
+    @staticmethod
+    def _data_source(mocker):
+        sc = storage_connector.S3Connector(1, "test_s3", 67)
+        mocker.patch.object(sc, "add_tag")
+        mocker.patch.object(sc, "delete_tag")
+        mocker.patch.object(sc, "get_tag", return_value="risk")
+        mocker.patch.object(sc, "get_tags", return_value={"owner": "risk"})
+        mocker.patch.object(sc, "get_tag_metadata", return_value="tag")
+        mocker.patch.object(sc, "get_tags_metadata", return_value={"owner": "tag"})
+        return data_source.DataSource(storage_connector=sc), sc
+
+    def test_add_tag_delegates_to_connector(self, mocker):
+        ds, sc = self._data_source(mocker)
+
+        ds.add_tag("owner", {"team": "risk"})
+
+        sc.add_tag.assert_called_once_with("owner", {"team": "risk"})
+
+    def test_delete_tag_delegates_to_connector(self, mocker):
+        ds, sc = self._data_source(mocker)
+
+        ds.delete_tag("owner")
+
+        sc.delete_tag.assert_called_once_with("owner")
+
+    def test_getters_delegate_to_connector(self, mocker):
+        ds, sc = self._data_source(mocker)
+
+        assert ds.get_tag("owner") == "risk"
+        assert ds.get_tags() == {"owner": "risk"}
+        assert ds.get_tag_metadata("owner") == "tag"
+        assert ds.get_tags_metadata() == {"owner": "tag"}
+        sc.get_tag.assert_called_once_with("owner")
+        sc.get_tag_metadata.assert_called_once_with("owner")
+
+    @pytest.mark.parametrize(
+        ("method", "args"),
+        [
+            ("add_tag", ("owner", "risk")),
+            ("delete_tag", ("owner",)),
+            ("get_tag", ("owner",)),
+            ("get_tags", ()),
+            ("get_tag_metadata", ("owner",)),
+            ("get_tags_metadata", ()),
+        ],
+    )
+    def test_tag_methods_without_connector_raise(self, method, args):
+        ds = data_source.DataSource(table="t")
+
+        with pytest.raises(ValueError, match="no storage connector"):
+            getattr(ds, method)(*args)
+
+    def test_missing_mandatory_tags_delegates_to_connector(self):
+        sc = storage_connector.S3Connector(1, "test_s3", 67)
+        sc._missing_mandatory_tags = [{"name": "owner"}]
+        ds = data_source.DataSource(storage_connector=sc)
+
+        assert ds.missing_mandatory_tags == [{"name": "owner"}]
+
+    def test_missing_mandatory_tags_without_connector_is_empty(self):
+        ds = data_source.DataSource(table="t")
+
+        assert ds.missing_mandatory_tags == []

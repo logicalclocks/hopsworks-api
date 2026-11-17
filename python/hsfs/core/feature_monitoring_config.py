@@ -141,6 +141,7 @@ class FeatureMonitoringConfig:
         training_dataset_id: int | None = None,
         feature_view_id: int | None = None,
         enabled: bool | None = None,
+        event_time: str | None = None,
         **kwargs,
     ):
         self.name = name
@@ -161,9 +162,20 @@ class FeatureMonitoringConfig:
         # model_name AND model_version. Persisted via to_dict/from_response_json.
         self._model_name = model_name
         self._model_version = model_version
+        # Event-time basis for the detection and reference windows. None
+        # means commit-time windows (today's behaviour). Resolved by the caller (see
+        # FeatureMonitoringConfigEngine._resolve_event_time) before the config is built.
+        self._event_time = event_time
         # In-memory only (not serialized): set by FeatureView.create_model_monitoring so
         # with_reference_training_dataset can default to / validate against the model's TD.
         self._associated_model_td_version: int | None = None
+        # In-memory only (not serialized): set by FeatureView.create_model_monitoring
+        # to the feature view's training features.
+        # compare_on*() without a feature_name fans out over these instead of the whole
+        # logging feature group schema, whose serving keys, predicted_* and logging
+        # metadata columns have no counterpart in a training-dataset reference.
+        # Explicitly named features are not restricted.
+        self._fanout_feature_names: set[str] | None = None
         self._job_name = job_name
         self._feature_monitoring_type = (
             feature_monitoring_type
@@ -212,6 +224,21 @@ class FeatureMonitoringConfig:
         else:
             self._valid_features = None
             self._valid_feature_names = valid_feature_names
+
+    def _fanout_valid_features(self) -> dict[str, str] | None:
+        """Return the name -> type map a feature_name-less compare_on*() fans out over.
+
+        Returns `_valid_features` unchanged when no fan-out restriction is set.
+        Returns None when `_valid_features` is None, that is when the config was built
+        without feature type information.
+        """
+        if self._valid_features is None or self._fanout_feature_names is None:
+            return self._valid_features
+        return {
+            name: ftype
+            for name, ftype in self._valid_features.items()
+            if name in self._fanout_feature_names
+        }
 
     def _parse_feature_statistics_configs(
         self,
@@ -270,6 +297,10 @@ class FeatureMonitoringConfig:
             the_dict["modelName"] = self._model_name
         if self._model_version is not None:
             the_dict["modelVersion"] = self._model_version
+
+        # Event-time basis — nullable; emit only when set.
+        if self._event_time is not None:
+            the_dict["eventTime"] = self._event_time
 
         # Backend-assigned entity IDs — emit only when set (populated from server responses).
         if self._training_dataset_id is not None:
@@ -530,7 +561,7 @@ class FeatureMonitoringConfig:
             if self._valid_features is not None:
                 feature_names = (
                     self._feature_monitoring_config_engine._resolve_compatible_features(
-                        metric=metric, valid_features=self._valid_features
+                        metric=metric, valid_features=self._fanout_valid_features()
                     )
                 )
             else:
@@ -666,7 +697,8 @@ class FeatureMonitoringConfig:
             if self._valid_features is not None:
                 feature_names = (
                     self._feature_monitoring_config_engine._resolve_compatible_features(
-                        metric=metric_upper, valid_features=self._valid_features
+                        metric=metric_upper,
+                        valid_features=self._fanout_valid_features(),
                     )
                 )
             else:
@@ -1065,6 +1097,19 @@ class FeatureMonitoringConfig:
     def model_version(self) -> int | None:
         """Version of the model whose inference logs are filtered by this configuration."""
         return self._model_version
+
+    @public
+    @property
+    def event_time(self) -> str | None:
+        """Name of the feature the detection and reference windows are sliced by.
+
+        `None` means the windows are sliced by commit time instead, which is the
+        behavior of feature monitoring configurations created before this field existed.
+
+        Info:
+            This property is read-only once the feature monitoring configuration has been saved.
+        """
+        return self._event_time
 
     @public
     @property

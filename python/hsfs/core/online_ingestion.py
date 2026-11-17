@@ -27,7 +27,7 @@ from typing import (
 import humps
 from hopsworks_apigen import public
 from hopsworks_common import client, util
-from hsfs.core import online_ingestion_result
+from hsfs.core import online_ingestion_failure, online_ingestion_result
 from hsfs.core.opensearch import OpenSearchClientSingleton
 from tqdm.auto import tqdm
 
@@ -173,6 +173,8 @@ class OnlineIngestion:
         Parameters:
             options: Options for waiting.
                 - "timeout" (int): Maximum time to wait in seconds (default: 60).
+                  Set to `0` to wait until every entry is ingested.
+                  An ingestion without an entry count cannot tell when that is, so with `0` its wait does not end on its own; it warns when it starts.
                 - "period" (int): Polling period in seconds (default: 1).
 
         Raises:
@@ -181,8 +183,16 @@ class OnlineIngestion:
         if options is None:
             options = {}
 
+        timeout = options.get("timeout", 60)
+        if timeout == 0 and self.num_entries is None:
+            warnings.warn(
+                f"Online ingestion {self.id} has no entry count, so its completion cannot be detected; "
+                "with a timeout of 0 this wait does not end on its own.",
+                stacklevel=1,
+            )
+
         # Set timeout time
-        timeout_delta = timedelta(seconds=options.get("timeout", 60))
+        timeout_delta = timedelta(seconds=timeout)
         timeout_time = datetime.now() + timeout_delta
 
         with tqdm(
@@ -195,14 +205,16 @@ class OnlineIngestion:
                 # Get total number of rows processed
                 rows_processed = sum(result.rows for result in self.results)
 
-                # Update progress bar
-                if any(result.status != "UPSERTED" for result in self.results):
+                # Update progress bar colour based on the worst status seen so far
+                if any(result.status == "FAILED" for result in self.results):
                     progress_bar.colour = "RED"
+                elif any(result.status == "IGNORED" for result in self.results):
+                    progress_bar.colour = "YELLOW"
                 progress_bar.n = rows_processed
                 progress_bar.refresh()
 
                 # Check if the online ingestion is complete
-                if self.num_entries and rows_processed >= self.num_entries:
+                if self.num_entries is not None and rows_processed >= self.num_entries:
                     break
 
                 # Check if the timeout has been reached (if timeout is 0 we will wait indefinitely)
@@ -218,17 +230,21 @@ class OnlineIngestion:
 
                 self.refresh()
 
-    @public
-    def print_logs(self, priority: str = "error", size: int = 20):
-        """Print logs related to the online ingestion operation from OpenSearch.
+    def _search_logs(
+        self, must: list[dict[str, Any]], size: int
+    ) -> list[dict[str, Any]]:
+        """Search the onlinefs logs of this ingestion in OpenSearch.
 
         Parameters:
-            priority: Log priority to filter by (default: "error").
-            size: Number of log entries to retrieve (default: 20).
+            must: Additional query clauses narrowing the search.
+            size: Maximum number of log entries to retrieve.
+
+        Returns:
+            The matching log entries, most relevant first.
         """
         open_search_client = OpenSearchClientSingleton()
 
-        response = open_search_client.search(
+        response = open_search_client._search(
             body={
                 "query": {
                     "bool": {
@@ -243,7 +259,7 @@ class OnlineIngestion:
                                     "log_arguments.online_ingestion_id": f"{self.id}"
                                 }
                             },
-                            {"match": {"priority": priority}},
+                            *must,
                         ]
                     }
                 },
@@ -252,5 +268,60 @@ class OnlineIngestion:
             index=f"onlinefs_{client._get_instance()._project_id}-*",
         )
 
-        for hit in response["hits"]["hits"]:
+        return response["hits"]["hits"]
+
+    @public
+    def print_logs(self, priority: str = "error", size: int = 20) -> None:
+        """Print logs related to the online ingestion operation from OpenSearch.
+
+        Parameters:
+            priority: Log priority to filter by.
+            size: Maximum number of log entries to retrieve.
+        """
+        for hit in self._search_logs([{"match": {"priority": priority}}], size):
             print(hit["_source"]["error"]["data"])
+
+    @public
+    def get_failures(
+        self, size: int = 100
+    ) -> list[online_ingestion_failure.OnlineIngestionFailure]:
+        """Get the records of this ingestion that never reached the online feature store.
+
+        [`results`][hsfs.core.online_ingestion.OnlineIngestion.results] reports how many rows
+        failed; this reports which ones and why.
+        Each failure identifies a Kafka record by topic, partition and offset, and carries the
+        reason it was rejected - a value too long for its online column, a payload that does not
+        match the schema, or a row the database refused.
+
+        Use it after an insert to find the rows that need correcting:
+
+        ```python
+        ingestion = feature_group.get_latest_online_ingestion()
+        ingestion.wait_for_completion()
+        for failure in ingestion.get_failures():
+            print(failure.record_key, failure.failure_type, failure.failure_reason)
+        ```
+
+        Info: Failures are read from logs, not from a durable store
+            Failures are recovered from the online ingestion service's logs, so they are subject to
+            the log retention of the cluster and are not guaranteed to be available indefinitely.
+            A record is reported here as long as its feature group and ingestion headers could be
+            read, even when the rest of the record could not be parsed.
+            A record whose headers are themselves unreadable cannot be attributed to this
+            ingestion at all, and is only visible in the raw online ingestion service logs.
+
+        Parameters:
+            size: Maximum number of failures to retrieve.
+
+        Returns:
+            The failed records, or an empty list if none of this ingestion's records failed.
+        """
+        return [
+            online_ingestion_failure.OnlineIngestionFailure._from_log_arguments(
+                hit["_source"]["log_arguments"]
+            )
+            for hit in self._search_logs(
+                [{"exists": {"field": "log_arguments.failure_type"}}], size
+            )
+            if "log_arguments" in hit.get("_source", {})
+        ]

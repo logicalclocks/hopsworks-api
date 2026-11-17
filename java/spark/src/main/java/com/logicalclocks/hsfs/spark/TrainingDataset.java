@@ -53,6 +53,11 @@ public class TrainingDataset extends TrainingDatasetBase {
   private TrainingDatasetEngine trainingDatasetEngine = new TrainingDatasetEngine();
   private StatisticsEngine statisticsEngine = new StatisticsEngine(EntityEndpointType.TRAINING_DATASET);
 
+  public static class TrainingDatasetBuilder {
+    TrainingDatasetBuilder() {
+    }
+  }
+
   @Builder(builderMethodName = "buildTrainingDataset")
   public TrainingDataset(Integer version, String description, DataFormat dataFormat,
                          Boolean coalesce, StorageConnector storageConnector, String location, List<Split> splits,

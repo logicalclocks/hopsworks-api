@@ -26,13 +26,16 @@ import contextlib
 import warnings
 from unittest.mock import MagicMock, patch
 
+import pytest
 from hsfs import feature_group as fg_mod
+from hsfs.client.exceptions import FeatureStoreException
 from hsfs.core import feature_monitoring_config as fmc
 from hsfs.core import feature_monitoring_config_engine
 from hsfs.core import monitoring_window_config as mwc
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 from hsfs.core.feature_monitoring_result import FeatureMonitoringResult
 from hsfs.core.feature_statistics_result import FeatureStatisticsResult
+from hsfs.feature import Feature
 from hsfs.feature_group_commit import FeatureGroupCommit
 from hsfs.util import _is_sub_hour_cron
 
@@ -58,6 +61,7 @@ def _make_fg(stream: bool = True) -> fg_mod.FeatureGroup:
         id=DEFAULT_FG_ID,
         stream=stream,
         time_travel_format="DELTA",
+        features=[Feature(name="log_time", type="timestamp")],
     )
 
 
@@ -65,13 +69,16 @@ def _make_fm_config(
     model_name: str | None = "iris",
     model_version: int | None = 1,
     config_id: int = DEFAULT_CONFIG_ID,
+    trigger_type: fmc.TriggerType = fmc.TriggerType.CRON,
+    event_time: str | None = None,
 ) -> MagicMock:
     cfg = MagicMock(spec=fmc.FeatureMonitoringConfig)
     cfg.id = config_id
     cfg.model_name = model_name
     cfg.model_version = model_version
-    cfg.trigger_type = fmc.TriggerType.CRON
+    cfg.trigger_type = trigger_type
     cfg.feature_statistics_configs = []
+    cfg.event_time = event_time
     cfg.get_feature_names.return_value = ["petal_length"]
     detection_wc = MagicMock(spec=mwc.MonitoringWindowConfig)
     detection_wc.window_config_type = mwc.WindowConfigType.ROLLING_TIME
@@ -154,6 +161,48 @@ class TestIsSubHourCron:
 # ---------------------------------------------------------------------------
 # Idea A — SDK UserWarning on create_model_monitoring in FeatureView
 # ---------------------------------------------------------------------------
+
+
+class TestModelMonitoringFanOutFeatures:
+    def test_create_model_monitoring_fans_out_over_training_features_only(self):
+        """Fan-out covers the training features of the model's training dataset only.
+
+        Labels, serving keys and helper columns are excluded by the same resolver
+        feature logging uses, `_get_untransformed_feature_names`, asked for the
+        training dataset version recorded on the model.
+        """
+        from hsfs.feature_view import FeatureView
+
+        fv = MagicMock(spec=FeatureView)
+        fv.logging_enabled = True
+        fv._get_untransformed_feature_names.return_value = [
+            "sepal_length",
+            "petal_length",
+        ]
+        logging_fg = MagicMock()
+        config = MagicMock()
+        logging_fg.create_feature_monitoring.return_value = config
+        fv.feature_logging.get_feature_group.return_value = logging_fg
+
+        with (
+            patch("hsml.core.model_api.ModelApi._get") as mock_model_get,
+            patch("hsfs.feature_view.client._get_instance") as mock_client,
+        ):
+            mock_client.return_value._project_id = 1
+            mock_model_get.return_value.training_dataset_version = 2
+
+            returned = FeatureView.create_model_monitoring(
+                fv,
+                name="test",
+                model_name="iris",
+                model_version=1,
+                cron_expression="0 0 12 ? * * *",
+            )
+
+        assert returned is config
+        assert config._fanout_feature_names == {"sepal_length", "petal_length"}
+        fv._get_untransformed_feature_names.assert_called_once_with(2)
+        assert config._associated_model_td_version == 2
 
 
 class TestSubHourCronWarningOnModelMonitoring:
@@ -713,3 +762,268 @@ class TestRunFeatureMonitoringIdeaD:
         run_single.assert_called_once()
         call_kwargs = run_single.call_args.kwargs
         assert call_kwargs["end_commit_time_override"] == ingestion_commit_time
+
+    def _add_rolling_reference_window(self, config: MagicMock) -> None:
+        reference_wc = MagicMock(spec=mwc.MonitoringWindowConfig)
+        reference_wc.window_config_type = mwc.WindowConfigType.ROLLING_TIME
+        reference_wc.time_offset = "7d"
+        config.reference_window_config = reference_wc
+
+    def test_model_monitoring_event_time_none_uses_log_time_fallback(self, mocker):
+        """A model-monitoring config with event_time=None falls back to log_time for both windows."""
+        engine = self._make_engine()
+        fg = _make_fg()
+        config = _make_fm_config(event_time=None)
+        self._add_rolling_reference_window(config)
+
+        mocker.patch.object(
+            engine._feature_monitoring_config_api,
+            "_get_by_name",
+            return_value=config,
+        )
+        mocker.patch.object(
+            engine,
+            "_get_latest_fg_commit_time",
+            return_value=_HOURLY_COMMIT_TIME,
+        )
+        mocker.patch.object(
+            engine._result_engine,
+            "_get_latest_by_config_id",
+            return_value=None,
+        )
+        run_single = mocker.patch.object(
+            engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=[_make_fds()],
+        )
+        mocker.patch.object(
+            engine._result_engine,
+            "_run_and_save_statistics_comparison",
+            return_value=MagicMock(spec=FeatureMonitoringResult),
+        )
+
+        engine._run_feature_monitoring(entity=fg, config_name="cfg")
+
+        assert run_single.call_count == 2
+        for call in run_single.call_args_list:
+            assert call.kwargs["event_time_feature"].name == "log_time"
+
+    def test_model_monitoring_event_time_log_time_resolves_from_entity(self, mocker):
+        """A model-monitoring config with event_time="log_time" resolves it on both windows."""
+        engine = self._make_engine()
+        fg = _make_fg()
+        config = _make_fm_config(event_time="log_time")
+        self._add_rolling_reference_window(config)
+
+        mocker.patch.object(
+            engine._feature_monitoring_config_api,
+            "_get_by_name",
+            return_value=config,
+        )
+        mocker.patch.object(
+            engine,
+            "_get_latest_fg_commit_time",
+            return_value=_HOURLY_COMMIT_TIME,
+        )
+        mocker.patch.object(
+            engine._result_engine,
+            "_get_latest_by_config_id",
+            return_value=None,
+        )
+        run_single = mocker.patch.object(
+            engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=[_make_fds()],
+        )
+        mocker.patch.object(
+            engine._result_engine,
+            "_run_and_save_statistics_comparison",
+            return_value=MagicMock(spec=FeatureMonitoringResult),
+        )
+
+        engine._run_feature_monitoring(entity=fg, config_name="cfg")
+
+        assert run_single.call_count == 2
+        for call in run_single.call_args_list:
+            assert call.kwargs["event_time_feature"].name == "log_time"
+
+    def test_ingestion_config_ignores_event_time_on_both_windows(self, mocker):
+        """The built-in ingestion configuration slices by commit time regardless of event_time."""
+        engine = self._make_engine()
+        fg = _make_fg()
+        config = _make_fm_config(
+            model_name=None,
+            model_version=None,
+            trigger_type=fmc.TriggerType.INGESTION,
+            event_time="datetime",
+        )
+        self._add_rolling_reference_window(config)
+
+        mocker.patch.object(
+            engine._feature_monitoring_config_api,
+            "_get_by_name",
+            return_value=config,
+        )
+        run_single = mocker.patch.object(
+            engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=[_make_fds()],
+        )
+        mocker.patch.object(
+            engine._result_engine,
+            "_run_and_save_statistics_comparison",
+            return_value=MagicMock(spec=FeatureMonitoringResult),
+        )
+
+        engine._run_feature_monitoring(entity=fg, config_name="cfg")
+
+        assert run_single.call_count == 2
+        for call in run_single.call_args_list:
+            assert call.kwargs["event_time_feature"] is None
+
+
+# ---------------------------------------------------------------------------
+# Training-dataset reference window on a logging feature group
+# ---------------------------------------------------------------------------
+
+
+class TestTrainingDatasetReferenceEntity:
+    def _make_engine(
+        self,
+    ) -> feature_monitoring_config_engine.FeatureMonitoringConfigEngine:
+        return feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FS_ID,
+            feature_group_id=DEFAULT_FG_ID,
+        )
+
+    def _setup(self, mocker, engine, config, feature_view=None):
+        mocker.patch.object(
+            engine._feature_monitoring_config_api,
+            "_get_by_name",
+            return_value=config,
+        )
+        mocker.patch.object(
+            engine, "_get_latest_fg_commit_time", return_value=_HOURLY_COMMIT_TIME
+        )
+        mocker.patch.object(
+            engine._result_engine, "_get_latest_by_config_id", return_value=None
+        )
+        mocker.patch.object(
+            engine._result_engine,
+            "_run_and_save_statistics_comparison",
+            return_value=MagicMock(spec=FeatureMonitoringResult),
+        )
+        fg = _make_fg()
+        # entity.feature_store is a lazy REST lookup; the reference window resolves
+        # the feature view through it.
+        feature_store = MagicMock()
+        feature_store.get_feature_view.return_value = feature_view
+        mocker.patch.object(
+            fg_mod.FeatureGroup,
+            "feature_store",
+            new_callable=mocker.PropertyMock,
+            return_value=feature_store,
+        )
+        return fg, feature_store
+
+    def test_reference_window_resolves_the_feature_view(self, mocker):
+        """A training dataset reference must be read from the feature view.
+
+        The monitored entity of a model monitoring config is the logging feature
+        group, and _run_single_window_monitoring only reads training dataset
+        statistics for a feature view. Passing it the feature group made the
+        reference fall back to that group's own statistics, so the log was compared
+        against itself and no drift was ever reported.
+        """
+        engine = self._make_engine()
+        config = _make_fm_config()
+        reference_wc = MagicMock(spec=mwc.MonitoringWindowConfig)
+        reference_wc.window_config_type = mwc.WindowConfigType.TRAINING_DATASET
+        config.reference_window_config = reference_wc
+        config.feature_view_name = "my_fv"
+        config.feature_view_version = 1
+
+        feature_view = MagicMock()
+        fg, feature_store = self._setup(mocker, engine, config, feature_view)
+        run_single = mocker.patch.object(
+            engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=[_make_fds()],
+        )
+
+        engine._run_feature_monitoring(entity=fg, config_name="cfg")
+
+        feature_store.get_feature_view.assert_called_once_with(name="my_fv", version=1)
+        detection_call, reference_call = run_single.call_args_list
+        assert detection_call.kwargs["entity"] is fg
+        assert reference_call.kwargs["entity"] is feature_view
+        # The model filter is meaningless against a training dataset.
+        assert reference_call.kwargs["model_filter"] is None
+
+    def test_rolling_reference_window_keeps_the_feature_group(self, mocker):
+        """A rolling reference reads the same logging feature group as detection."""
+        engine = self._make_engine()
+        config = _make_fm_config()
+        reference_wc = MagicMock(spec=mwc.MonitoringWindowConfig)
+        reference_wc.window_config_type = mwc.WindowConfigType.ROLLING_TIME
+        config.reference_window_config = reference_wc
+
+        fg, feature_store = self._setup(mocker, engine, config)
+        run_single = mocker.patch.object(
+            engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=[_make_fds()],
+        )
+
+        engine._run_feature_monitoring(entity=fg, config_name="cfg")
+
+        feature_store.get_feature_view.assert_not_called()
+        for call in run_single.call_args_list:
+            assert call.kwargs["entity"] is fg
+
+    def test_a_missing_feature_view_name_fails_loudly(self, mocker):
+        """There is no sensible fallback: comparing the log against itself is what this fix removes."""
+        engine = self._make_engine()
+        config = _make_fm_config()
+        reference_wc = MagicMock(spec=mwc.MonitoringWindowConfig)
+        reference_wc.window_config_type = mwc.WindowConfigType.TRAINING_DATASET
+        config.reference_window_config = reference_wc
+        config.feature_view_name = None
+        config.feature_view_version = 1
+
+        fg, feature_store = self._setup(mocker, engine, config)
+        mocker.patch.object(
+            engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=[_make_fds()],
+        )
+
+        with pytest.raises(FeatureStoreException, match="needs a feature view"):
+            engine._run_feature_monitoring(entity=fg, config_name="cfg")
+
+        feature_store.get_feature_view.assert_not_called()
+
+    def test_a_missing_feature_view_version_fails_loudly(self, mocker):
+        """The version can be missing on its own, and a missing version is not harmless.
+
+        `FeatureStore.get_feature_view(name, None)` warns and returns version 1, so a config that names no version would quietly monitor against whichever feature view happens to be version 1.
+        """
+        engine = self._make_engine()
+        config = _make_fm_config()
+        reference_wc = MagicMock(spec=mwc.MonitoringWindowConfig)
+        reference_wc.window_config_type = mwc.WindowConfigType.TRAINING_DATASET
+        config.reference_window_config = reference_wc
+        config.feature_view_name = "my_fv"
+        config.feature_view_version = None
+
+        fg, feature_store = self._setup(mocker, engine, config)
+        mocker.patch.object(
+            engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=[_make_fds()],
+        )
+
+        with pytest.raises(FeatureStoreException, match="needs a feature view"):
+            engine._run_feature_monitoring(entity=fg, config_name="cfg")
+
+        feature_store.get_feature_view.assert_not_called()

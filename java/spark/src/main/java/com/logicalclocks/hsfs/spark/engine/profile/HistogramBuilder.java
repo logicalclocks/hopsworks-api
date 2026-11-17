@@ -47,10 +47,10 @@ class HistogramBuilder {
    *
    * @param df source dataframe
    * @param columnName column to histogram
-   * @param minValue pre-computed column minimum (non-null, from agg row)
-   * @param maxValue pre-computed column maximum (non-null, from agg row)
+   * @param minValue pre-computed minimum over the finite values (non-null, from agg row)
+   * @param maxValue pre-computed maximum over the finite values (non-null, from agg row)
    * @param histogramBins number of bins
-   * @param totalRows total non-null rows (denominator for ratio)
+   * @param totalRows total finite rows (denominator for ratio)
    * @return list of histogram entry maps with keys: value, count, ratio
    */
   List<Map<String, Object>> buildNumeric(Dataset<Row> df,
@@ -73,7 +73,11 @@ class HistogramBuilder {
       );
     }
 
-    Dataset<Row> binned = df.filter(col.isNotNull())
+    // Non-finite values belong to no bin and must not reach binExpr: NaN floors to bin 0,
+    // and floor(Infinity) is Long.MAX_VALUE, which least() clamps into the last bin - or,
+    // where ANSI mode is on, fails the job outright on the cast to int. Hopsworks pins
+    // spark.sql.ansi.enabled=false, so the default is the silent miscount, not the error.
+    Dataset<Row> binned = df.filter(col.isNotNull().and(ColumnProfiler.isFinite(col)))
         .withColumn("_bin", binExpr)
         .groupBy("_bin")
         .count();
@@ -115,9 +119,15 @@ class HistogramBuilder {
       String columnName,
       int histogramBins,
       long totalRows) {
+    // Project to a fixed name before grouping, as ColumnProfiler's uniqueness pass does. For
+    // a feature named "count", grouping on the column itself leaves two "count" columns, and
+    // Spark resolves the orderBy against the grouping one rather than failing: the bins come
+    // out ordered by value, and the top-N cut keeps the wrong values.
+    Column value = functions.col(columnName).alias("_v");
     Dataset<Row> grouped = df
-        .filter(functions.col(columnName).isNotNull())
-        .groupBy(functions.col(columnName))
+        .select(value)
+        .filter(functions.col("_v").isNotNull())
+        .groupBy(functions.col("_v"))
         .count()
         .orderBy(functions.desc("count"))
         .limit(histogramBins);

@@ -17,7 +17,8 @@ import sys
 from unittest import mock
 
 import pytest
-from hopsworks_common.client.exceptions import FeatureStoreException
+import requests
+from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hopsworks_common.core.constants import HAS_PYICEBERG
 from hsfs import feature_group
 from hsfs.core import feature_group_engine, partition_transforms
@@ -110,15 +111,60 @@ class TestIcebergEngine:
         assert options == {}
 
     def test_setup_iceberg_read_opts_time_travel_query(self, mocker):
-        # Arrange
+        # Arrange: end timestamp falls between two snapshots. Resolution must
+        # pin the latest snapshot committed at or before it (11), not defer to
+        # Iceberg's server-side timestamp resolution which, on a different
+        # clock, could read the wrong side of the boundary.
         iceberg_engine = _make_engine(mocker)
         fg_alias = _make_alias(end_timestamp=1234567890000)
+        mocker.patch.object(
+            iceberg_engine,
+            "_read_snapshots",
+            return_value=[
+                {"committed_at": 1234567880000, "snapshot_id": 11},
+                {"committed_at": 1234567895000, "snapshot_id": 22},
+            ],
+        )
 
         # Act
         options = iceberg_engine._setup_iceberg_read_opts(fg_alias, "location")
 
         # Assert
-        assert options == {"as-of-timestamp": "1234567890000"}
+        assert options == {"versionAsOf": "11"}
+
+    def test_setup_iceberg_read_opts_time_travel_query_before_first_snapshot(
+        self, mocker
+    ):
+        # Arrange: the end timestamp predates the first snapshot (fresh insert),
+        # so the read falls back to the earliest snapshot id
+        iceberg_engine = _make_engine(mocker)
+        fg_alias = _make_alias(end_timestamp=1234567890000)
+        mocker.patch.object(
+            iceberg_engine,
+            "_read_snapshots",
+            return_value=[
+                {"committed_at": 1234567890123, "snapshot_id": 11},
+                {"committed_at": 1234567891000, "snapshot_id": 22},
+            ],
+        )
+
+        # Act
+        options = iceberg_engine._setup_iceberg_read_opts(fg_alias, "location")
+
+        # Assert
+        assert options == {"versionAsOf": "11"}
+
+    def test_setup_iceberg_read_opts_time_travel_query_no_snapshots(self, mocker):
+        # Arrange: table without snapshots keeps the timestamp bound
+        iceberg_engine = _make_engine(mocker)
+        fg_alias = _make_alias(end_timestamp=1234567890000)
+        mocker.patch.object(iceberg_engine, "_read_snapshots", return_value=[])
+
+        # Act
+        options = iceberg_engine._setup_iceberg_read_opts(fg_alias, "location")
+
+        # Assert
+        assert options == {"timestampAsOf": "2009-02-13 23:31:30.000Z"}
 
     def test_setup_iceberg_read_opts_incremental_query(self, mocker):
         # Arrange
@@ -135,6 +181,56 @@ class TestIcebergEngine:
         assert options == {"start-snapshot-id": "11", "end-snapshot-id": "22"}
 
     def test_setup_iceberg_read_opts_incremental_query_no_start_snapshot(self, mocker):
+        # The window starts before the first snapshot (rolling monitoring window
+        # on a fresh table): fall back to the table state at the end bound,
+        # pinned by snapshot id (the snapshot at or before end_ts).
+        # Arrange
+        iceberg_engine = _make_engine(mocker)
+        fg_alias = _make_alias(
+            start_timestamp=1234567890000, end_timestamp=1234567892500
+        )
+        mocker.patch.object(
+            iceberg_engine, "_resolve_snapshot_id_at", return_value=None
+        )
+        mocker.patch.object(
+            iceberg_engine,
+            "_read_snapshots",
+            return_value=[{"committed_at": 1234567892000, "snapshot_id": 11}],
+        )
+
+        # Act
+        options = iceberg_engine._setup_iceberg_read_opts(fg_alias, "location")
+
+        # Assert
+        assert options == {"versionAsOf": "11"}
+
+    def test_setup_iceberg_read_opts_incremental_query_no_snapshots_at_all(
+        self, mocker
+    ):
+        # Unresolvable start AND end before the first snapshot: pin the earliest
+        # snapshot, matching the end-only fresh-insert fallback.
+        # Arrange
+        iceberg_engine = _make_engine(mocker)
+        fg_alias = _make_alias(
+            start_timestamp=1234567890000, end_timestamp=1234567891500
+        )
+        mocker.patch.object(
+            iceberg_engine, "_resolve_snapshot_id_at", return_value=None
+        )
+        mocker.patch.object(
+            iceberg_engine,
+            "_read_snapshots",
+            return_value=[{"committed_at": 1234567892000, "snapshot_id": 11}],
+        )
+
+        # Act
+        options = iceberg_engine._setup_iceberg_read_opts(fg_alias, "location")
+
+        # Assert
+        assert options == {"versionAsOf": "11"}
+
+    def test_setup_iceberg_read_opts_incremental_query_no_start_no_end(self, mocker):
+        # Unresolvable start without an end bound reads the latest table state.
         # Arrange
         iceberg_engine = _make_engine(mocker)
         fg_alias = _make_alias(start_timestamp=1000)
@@ -143,11 +239,10 @@ class TestIcebergEngine:
         )
 
         # Act
-        with pytest.raises(FeatureStoreException) as e_info:
-            iceberg_engine._setup_iceberg_read_opts(fg_alias, "location")
+        options = iceberg_engine._setup_iceberg_read_opts(fg_alias, "location")
 
         # Assert
-        assert "no Iceberg snapshot exists" in str(e_info.value)
+        assert options == {}
 
     def test_setup_iceberg_read_opts_merges_options(self, mocker):
         # Arrange
@@ -1586,6 +1681,19 @@ class TestPyIcebergEngine:
         mocker.patch("hopsworks_common.decorators.HAS_PYICEBERG", True)
         return _make_engine(mocker, fg=fg, spark_session=_NO_SPARK)
 
+    def test_get_pyiceberg_location_external_empty_namenode_lb(self, mocker):
+        # Arrange
+        client = mocker.patch("hopsworks_common.client._get_instance")
+        client.return_value._is_external.return_value = True
+        iceberg_engine = _make_engine(mocker, spark_session=_NO_SPARK)
+        iceberg_engine._variable_api._get_loadbalancer_external_domain.return_value = ""
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException) as e:
+            iceberg_engine._get_pyiceberg_location()
+        assert "namenode load balancer" in str(e.value)
+        assert "contact your system administrator" in str(e.value.__cause__)
+
     def test_get_pyiceberg_properties_gcs_sets_credentials_env(
         self, mocker, monkeypatch
     ):
@@ -2024,3 +2132,81 @@ class TestPyIcebergEngine:
         assert version == 3
         rows = table.scan().to_arrow().sort_by("id").to_pydict()
         assert rows["id"] == [2, 3]
+
+
+class TestIcebergMetastoreSync:
+    @staticmethod
+    def _rest_error(status_code):
+        response = mock.MagicMock()
+        response.status_code = status_code
+        response.json.return_value = {}
+        return RestAPIError("url", response)
+
+    def test_sync_calls_the_backend(self, mocker):
+        iceberg_engine = _make_engine(mocker)
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=None)
+
+        iceberg_engine._sync_metastore()
+
+        iceberg_engine._feature_group_api._sync_metastore.assert_called_once_with(
+            iceberg_engine._feature_group
+        )
+
+    def test_sync_skips_glue(self, mocker):
+        iceberg_engine = _make_engine(mocker)
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=mocker.Mock())
+
+        iceberg_engine._sync_metastore()
+
+        iceberg_engine._feature_group_api._sync_metastore.assert_not_called()
+
+    @pytest.mark.parametrize("status_code", [400, 404, 500])
+    def test_sync_failure_does_not_raise(self, mocker, status_code):
+        iceberg_engine = _make_engine(mocker)
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=None)
+        iceberg_engine._feature_group_api._sync_metastore.side_effect = (
+            self._rest_error(status_code)
+        )
+
+        iceberg_engine._sync_metastore()
+
+    def test_sync_connection_failure_does_not_raise(self, mocker):
+        iceberg_engine = _make_engine(mocker)
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=None)
+        iceberg_engine._feature_group_api._sync_metastore.side_effect = (
+            requests.exceptions.ConnectionError("reset")
+        )
+
+        iceberg_engine._sync_metastore()
+
+    def test_optimize_syncs(self, mocker):
+        iceberg_engine = _make_engine(mocker, spark_context=mocker.MagicMock())
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=None)
+        sync = mocker.patch.object(iceberg_engine, "_sync_metastore")
+
+        iceberg_engine._optimize()
+
+        sync.assert_called_once_with()
+
+    def test_update_partition_spec_syncs_only_after_a_commit(self, mocker):
+        iceberg_engine = _make_engine(mocker, spark_context=mocker.MagicMock())
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=None)
+        mocker.patch.object(IcebergEngine, "_spec_expressions", return_value=[])
+        sync = mocker.patch.object(iceberg_engine, "_sync_metastore")
+
+        iceberg_engine._update_partition_spec([], [])
+        sync.assert_not_called()
+
+        iceberg_engine._update_partition_spec(
+            partition_transforms._parse(["hour(ts)"]), []
+        )
+        sync.assert_called_once_with()
+
+    def test_save_empty_table_syncs(self, mocker):
+        iceberg_engine = _make_engine(mocker)
+        mocker.patch.object(iceberg_engine, "_save_empty_iceberg_table_pyspark")
+        sync = mocker.patch.object(iceberg_engine, "_sync_metastore")
+
+        iceberg_engine._save_empty_table()
+
+        sync.assert_called_once_with()

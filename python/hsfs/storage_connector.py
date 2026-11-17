@@ -31,17 +31,33 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from hopsworks_apigen import public
 from hopsworks_common import client, util
-from hopsworks_common.client.exceptions import DataSourceException
+from hopsworks_common.client.exceptions import (
+    DataSourceException,
+    FeatureStoreException,
+    RestAPIError,
+)
+from hopsworks_common.core import trino_catalog_api
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hopsworks_common.core.opensearch_api import OPENSEARCH_CONFIG
 from hopsworks_common.core.rest_endpoint import RestEndpointConfig
 from hsfs import engine
 from hsfs.core import data_source as ds
-from hsfs.core import data_source_api, storage_connector_api
+from hsfs.core import (
+    data_source_api,
+    data_source_credentials_api,
+    elasticsearch_api,
+    sharepoint_api,
+    sharepoint_sync,
+    storage_connector_api,
+)
 
 
 if TYPE_CHECKING:
+    from datetime import date, datetime
+
     from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
+    from hopsworks_common.job import Job
+    from hopsworks_common.tag import Tag
 
     if HAS_NUMPY:
         import numpy as np
@@ -75,29 +91,44 @@ class StorageConnector(ABC):
     GOOGLE_SHEETS = "GOOGLE_SHEETS"
     REST = "REST"
     ORACLE = "ORACLE"
+    CLICKHOUSE = "CLICKHOUSE"
+    TERADATA = "TERADATA"
+    SQLSERVER = "SQLSERVER"
     UNITY_CATALOG = "UNITY_CATALOG"
     SAP_HANA = "SAP_HANA"
     MONGODB = "MONGODB"
     GLUE = "GLUE"
+    ELASTICSEARCH = "ELASTICSEARCH"
+    HOPSWORKS = "HOPSWORKS"
+    SHAREPOINT = "SHAREPOINT"
+    GMAIL = "GMAIL"
+    OUTLOOK = "OUTLOOK"
 
     NOT_FOUND_ERROR_CODE = 270042
 
+    # Must match the backend's JsonSubTypes names exactly, case included: any other spelling
+    # deserialises as the base DTO, and creating the data source fails with a ClassCastException.
     _DTO_TYPE = {
         HOPSFS: "featurestoreHopsfsConnectorDTO",
         S3: "featurestoreS3ConnectorDTO",
         REDSHIFT: "featurestoreRedshiftConnectorDTO",
-        ADLS: "featurestoreAdlsConnectorDTO",
+        ADLS: "featurestoreADLSConnectorDTO",
         SNOWFLAKE: "featurestoreSnowflakeConnectorDTO",
         SAP_HANA: "featureStoreSapHanaConnectorDTO",
         MONGODB: "featurestoreMongoConnectorDTO",
         GLUE: "featurestoreGlueConnectorDTO",
         JDBC: "featurestoreJdbcConnectorDTO",
-        KAFKA: "featurestoreKafkaConnectorDTO",
+        KAFKA: "featureStoreKafkaConnectorDTO",
         GCS: "featureStoreGcsConnectorDTO",
         BIGQUERY: "featurestoreBigqueryConnectorDTO",
         SQL: "featurestoreSqlConnectorDTO",
         ORACLE: "featurestoreSqlConnectorDTO",
-        OPENSEARCH: "featurestoreOpenSearchConnectorDTO",
+        OPENSEARCH: "featurestoreOpensearchConnectorDTO",
+        ELASTICSEARCH: "featurestoreElasticsearchConnectorDTO",
+        HOPSWORKS: "featurestoreHopsworksConnectorDTO",
+        SHAREPOINT: "featurestoreSharePointConnectorDTO",
+        GMAIL: "featurestoreGmailConnectorDTO",
+        OUTLOOK: "featurestoreOutlookConnectorDTO",
         CRM: "featurestoreCRMConnectorDTO",
         GOOGLE_SHEETS: "featurestoreGoogleSheetsConnectorDTO",
         UNITY_CATALOG: "featurestoreUnityCatalogConnectorDTO",
@@ -118,7 +149,11 @@ class StorageConnector(ABC):
         self._featurestore_id = featurestore_id
 
         self._storage_connector_api = storage_connector_api.StorageConnectorApi()
+        self._trino_catalog_api = trino_catalog_api.TrinoCatalogApi()
         self._data_source_api = data_source_api.DataSourceApi()
+        # Set by from_response_json and update_from_response_json: the subclasses call this constructor without
+        # their **kwargs, so the response key would not reach it.
+        self._missing_mandatory_tags: list[dict[str, Any]] = []
 
     @classmethod
     def from_response_json(
@@ -139,18 +174,55 @@ class StorageConnector(ABC):
         | SapHanaConnector
         | MongoDBConnector
         | GlueConnector
+        | ElasticsearchConnector
+        | HopsworksConnector
+        | SharePointConnector
+        | GmailConnector
+        | OutlookConnector
     ):
+        if isinstance(json_dict, list) or "items" in json_dict:
+            return cls._from_response_json_list(json_dict)
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
         sc_type = json_decamelized.get("storage_connector_type")
         for subcls in cls.__subclasses__():
             if subcls.type == sc_type:
                 _ = json_decamelized.pop("storage_connector_type")
-                return subcls(**json_decamelized)
+                connector = subcls(**json_decamelized)
+                connector._missing_mandatory_tags = (
+                    json_decamelized.get("missing_mandatory_tags") or []
+                )
+                return connector
         raise ValueError(
             f"Unknown storage_connector_type {sc_type!r}; expected one of "
-            f"{sorted({s.type for s in cls.__subclasses__()})}."
+            f"{sorted({s.type for s in cls.__subclasses__() if isinstance(s.type, str)})}."
         )
+
+    @classmethod
+    def _from_response_json_list(
+        cls, json_list: list[dict[str, Any]] | dict[str, Any]
+    ) -> list[StorageConnector]:
+        """Deserialize a list of connectors, skipping those of a type this client does not know.
+
+        A newer backend may hold connector types this client predates, and one of them must not make every connector of the feature store unreadable.
+        """
+        items = json_list if isinstance(json_list, list) else json_list["items"] or []
+        known = {subcls.type for subcls in cls.__subclasses__()}
+        connectors = []
+        for item in items:
+            sc_type = item.get(
+                "storageConnectorType", item.get("storage_connector_type")
+            )
+            if sc_type not in known:
+                warnings.warn(
+                    f"Skipping data source {item.get('name')!r} of type {sc_type!r}, "
+                    "which this version of the hopsworks client does not support; "
+                    "upgrade the client to use it.",
+                    stacklevel=2,
+                )
+                continue
+            connectors.append(cls.from_response_json(item))
+        return connectors
 
     def update_from_response_json(
         self, json_dict: dict[str, Any]
@@ -170,15 +242,32 @@ class StorageConnector(ABC):
         | SapHanaConnector
         | MongoDBConnector
         | GlueConnector
+        | ElasticsearchConnector
+        | HopsworksConnector
+        | SharePointConnector
+        | GmailConnector
+        | OutlookConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
         if self.type == json_decamelized["storage_connector_type"]:
             _ = json_decamelized.pop("storage_connector_type")
+            known_missing = self._missing_mandatory_tags
             self.__init__(**json_decamelized)
+            # Only the getters ask for the mandatory tags; a refetch without them keeps what the getter read.
+            missing = json_decamelized.get("missing_mandatory_tags")
+            self._missing_mandatory_tags = known_missing if missing is None else missing
         else:
             raise ValueError("Failed to update storage connector information.")
         return self
+
+    def _require_credentials(self) -> None:
+        """Refuse to use the data source while the caller still has to provide credentials for it."""
+        return
+
+    def _check_new(self) -> None:
+        """Refuse to create the data source when its fields cannot be stored as given."""
+        return
 
     def to_dict(self) -> dict[str, int | str | None]:
         return {
@@ -191,7 +280,10 @@ class StorageConnector(ABC):
         }
 
     @public
-    def save(self) -> StorageConnector:
+    def save(
+        self,
+        tags: Tag | dict[str, Any] | list[Tag | dict[str, Any]] | None = None,
+    ) -> StorageConnector:
         """Persist this storage connector to the feature store.
 
         Example:
@@ -208,13 +300,25 @@ class StorageConnector(ABC):
                 bucket="my-bucket",
                 region="eu-north-1",
             )
-            sc.save()
+            sc.save(tags=[{"name": "data_owner", "value": "email@hopsworks.ai"}])
             ```
+
+        Parameters:
+            tags:
+                Tags to attach to the data source as it is created, in the same request.
+                Each tag names its tag schema and carries a value that the schema validates.
+                Tags that are mandatory for data sources must be passed here, since the data source is not created without them.
 
         Returns:
             The saved storage connector with its assigned id.
+
+        Raises:
+            ValueError: If a SQL data source with provided credentials is given a username, password, wallet or wallet password, since each member sets their own with `set_credentials()`.
+            hopsworks.client.exceptions.FeatureStoreException: If `tags` are passed to a Hopsworks backend older than 5.3, which cannot store data source tags.
+            hopsworks.client.exceptions.RestAPIError: If a tag that is mandatory for data sources is missing from `tags`, if a tag value does not match its schema, or if the backend encounters another error when handling the request.
         """
-        return self._storage_connector_api._create(self)
+        self._check_new()
+        return self._storage_connector_api._create(self, tags)
 
     @public
     def update(self) -> StorageConnector:
@@ -234,8 +338,122 @@ class StorageConnector(ABC):
 
         Returns:
             The updated storage connector.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the data source lacks a tag that is mandatory for data sources, which has to be added with [`add_tag`][hsfs.storage_connector.StorageConnector.add_tag] first, or if the backend encounters another error when handling the request.
         """
         return self._storage_connector_api._update(self)
+
+    @public
+    def get_trino_catalog_template(self) -> dict[str, Any]:
+        """A Trino catalog proposed from this data source, to review before creating it.
+
+        Nothing is created by asking for this.
+        The connector type and properties are derived from what this data source already holds.
+        Credential properties come back as a reference to a Hopsworks secret or credential-file bundle rather than a value, so no credential is sent to the caller.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+            fs = project.get_feature_store()
+
+            sc = fs.get_data_source("my_snowflake_connector").storage_connector
+            template = sc.get_trino_catalog_template()
+            if template["supported"]:
+                print(template["connectorType"], template["properties"])
+            else:
+                print("cannot be mapped:", template["reason"])
+            ```
+
+        Returns:
+            `supported`, and `reason` when it is false. Otherwise `suggestedName`,
+            `connectorType`, `properties` and `scope`, which is `PRIVATE` for a data source whose credentials each member provides.
+        """
+        return self._trino_catalog_api.get_catalog_template(
+            self._name, self._featurestore_id
+        )
+
+    @public
+    def create_trino_catalog(
+        self,
+        name: str | None = None,
+        properties: dict[str, str] | None = None,
+        test_connection: bool = True,
+    ) -> dict[str, Any]:
+        """Make this data source queryable from the query engine, as a Trino catalog.
+
+        The catalog is derived from this data source, so nothing has to be supplied: credentials are read from the data source when the catalog is created and stored as a reference, never as a plaintext copy.
+        It becomes queryable once the query engine restarts, on the cluster's schedule or immediately via `project.get_trino_catalog_api().restart()` as an administrator.
+
+        A data source whose credentials each member provides (`credentials_mode="PROVIDED"`) always yields a private catalog, named `_<username>__...` and owned by the caller.
+        It is available in every project the caller belongs to, it reads with the caller's own credentials, and only the caller can use it, so each member creates their own.
+        Its connection is secured with the caller's own wallet, kept in their personal credential-file store.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+            fs = project.get_feature_store()
+
+            sc = fs.get_data_source("my_snowflake_connector").storage_connector
+            catalog = sc.create_trino_catalog()
+            print(catalog["name"], catalog["status"])
+            ```
+
+        Parameters:
+            name: Catalog name, which must start with `<project>__` in lowercase, or with `_<username>__` for a data source whose credentials each member provides.
+                Defaults to the name the template suggests, derived from this data source's own name.
+            properties: Replace the derived properties entirely; keys are not merged with the template's.
+                Start from the template's `properties` and apply your edits.
+            test_connection: Verify the definition can reach the source before creating it, where the cluster supports it.
+                On failure nothing is created and the engine's own error is raised, so an unreachable source is caught now rather than after a restart.
+
+        Returns:
+            The created catalog, including the `status` it is waiting in.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If this data source cannot be mapped
+                to a Trino catalog; the message says why.
+            hopsworks.client.exceptions.RestAPIError: If the connection test fails, or the backend
+                encounters an error when handling the request.
+        """
+        template = self.get_trino_catalog_template()
+        if not template.get("supported"):
+            raise FeatureStoreException(
+                f"Data source '{self._name}' cannot be mapped to a Trino catalog: "
+                f"{template.get('reason')}"
+            )
+
+        catalog_name = name if name is not None else template["suggestedName"]
+        catalog_properties = (
+            properties if properties is not None else template["properties"]
+        )
+        connector_type = template["connectorType"]
+        scope = template.get("scope")
+
+        if test_connection and self._trino_catalog_api.get_capabilities().get(
+            "testConnectionAvailable"
+        ):
+            self._trino_catalog_api.test_connection(
+                catalog_name,
+                connector_type,
+                catalog_properties,
+                data_source_name=self._name,
+                featurestore_id=self._featurestore_id,
+                scope=scope,
+            )
+
+        return self._trino_catalog_api.create_catalog(
+            catalog_name,
+            connector_type,
+            catalog_properties,
+            data_source_name=self._name,
+            featurestore_id=self._featurestore_id,
+            scope=scope,
+        )
 
     @public
     @property
@@ -260,6 +478,15 @@ class StorageConnector(ABC):
     def description(self) -> str | None:
         """User provided description of the storage connector."""
         return self._description
+
+    @public
+    @property
+    def missing_mandatory_tags(self) -> list[dict[str, Any]]:
+        """Mandatory tags this data source does not carry, as reported when it was last fetched.
+
+        Adding a tag does not update this list on the object in hand; fetch the data source again to see the change.
+        """
+        return self._missing_mandatory_tags
 
     @public
     @abstractmethod
@@ -455,6 +682,112 @@ class StorageConnector(ABC):
         return []
 
     @public
+    def add_tag(self, name: str, value: Any) -> None:
+        """Attach a tag to the storage connector.
+
+        A tag consists of a name-value pair.
+        Tag names are unique identifiers across the whole cluster.
+        The value of a tag can be any valid json -- primitives, arrays or json objects.
+        Attaching a tag that is already attached replaces its value.
+        Only a data owner of the project that owns the feature store can attach tags, and the online feature store connectors cannot be tagged.
+
+        Example:
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            sc = fs.get_data_source("conn_name").storage_connector
+
+            sc.add_tag(name="example_tag", value={"owner": "risk"})
+            ```
+
+        Parameters:
+            name: Name of the tag to be added.
+            value: Value of the tag to be added.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        self._storage_connector_api._add_tag(self, name, value)
+
+    @public
+    def delete_tag(self, name: str) -> None:
+        """Delete a tag attached to the storage connector.
+
+        The tag is removed for every data source that uses this connector, not only for this object.
+        Only a data owner of the project that owns the feature store can delete tags.
+
+        Parameters:
+            name: Name of the tag to be removed.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        self._storage_connector_api._delete_tag(self, name)
+
+    @public
+    def get_tag(self, name: str) -> Any | None:
+        """Get the value of a tag attached to the storage connector.
+
+        Parameters:
+            name: Name of the tag to get.
+
+        Returns:
+            Tag value or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        attached = self.get_tag_metadata(name)
+        return attached.value if attached is not None else None
+
+    @public
+    def get_tags(self) -> dict[str, Any]:
+        """Retrieve all tags attached to the storage connector.
+
+        Returns:
+            The dictionary of tag names and values.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return {
+            tag_name: attached.value
+            for tag_name, attached in self.get_tags_metadata().items()
+        }
+
+    @public
+    def get_tag_metadata(self, name: str) -> Tag | None:
+        """Get a tag with its metadata, including the time it was attached.
+
+        Unlike [`StorageConnector.get_tag`][hsfs.storage_connector.StorageConnector.get_tag], which returns only the tag's value, this returns the [`Tag`][hopsworks.tag.Tag] object, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Parameters:
+            name: Name of the tag to get.
+
+        Returns:
+            The tag object or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._storage_connector_api._get_tags_metadata(self, name).get(name)
+
+    @public
+    def get_tags_metadata(self) -> dict[str, Tag]:
+        """Retrieve all tags attached to the storage connector, with their metadata.
+
+        Unlike [`StorageConnector.get_tags`][hsfs.storage_connector.StorageConnector.get_tags], which returns only the tag values, this keeps the [`Tag`][hopsworks.tag.Tag] objects, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Returns:
+            The dictionary of tag names to tag objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._storage_connector_api._get_tags_metadata(self)
+
+    @public
     def get_databases(self) -> list[str]:
         """Retrieve the list of available databases.
 
@@ -475,8 +808,12 @@ class StorageConnector(ABC):
             StorageConnector.CRM,
             StorageConnector.GOOGLE_SHEETS,
             StorageConnector.REST,
+            StorageConnector.SHAREPOINT,
+            StorageConnector.GMAIL,
+            StorageConnector.OUTLOOK,
         ]:
             raise ValueError("This connector type does not support fetching databases.")
+        self._require_credentials()
         return self._data_source_api._get_databases(self)
 
     @public
@@ -503,8 +840,14 @@ class StorageConnector(ABC):
             A list of DataSource objects representing the tables.
             For Google Sheets connectors, each entry represents a sheet name.
         """
-        if self.type == StorageConnector.REST:
+        if self.type in [
+            StorageConnector.REST,
+            StorageConnector.SHAREPOINT,
+            StorageConnector.GMAIL,
+            StorageConnector.OUTLOOK,
+        ]:
             raise ValueError("This connector type does not support fetching tables.")
+        self._require_credentials()
         if not database and self.type != StorageConnector.CRM:
             if self.type == StorageConnector.REDSHIFT:
                 database = self.database_name
@@ -518,13 +861,14 @@ class StorageConnector(ABC):
                     # (or TNS alias when using a wallet), not a schema, while
                     # the backend filters tables by OWNER (schema).
                     # Default to the connecting user's own schema.
-                    if not self.user:
+                    user = self.user
+                    if not user:
                         raise ValueError(
                             "A schema/owner is required for Oracle connectors "
                             "without a configured user. Pass it as the "
                             "`database` argument to get_tables()."
                         )
-                    database = self.user.upper()
+                    database = user.upper()
                 else:
                     database = self.database
             elif self.type == StorageConnector.UNITY_CATALOG:
@@ -551,10 +895,13 @@ class StorageConnector(ABC):
                         "explicit `database` to get_tables()."
                     )
                 database = self.database
+            elif self.type == StorageConnector.HOPSWORKS:
+                database = self._default_feature_store()
             elif self.type in [
                 StorageConnector.S3,
                 StorageConnector.GCS,
                 StorageConnector.GOOGLE_SHEETS,
+                StorageConnector.ELASTICSEARCH,
             ]:
                 pass
             else:
@@ -579,7 +926,12 @@ class StorageConnector(ABC):
         return self._data_source_api._get_tables(self, database)
 
     @public
-    def get_data(self, data_source: ds.DataSource, use_cached=True) -> DataSourceData:
+    def get_data(
+        self,
+        data_source: ds.DataSource,
+        use_cached: bool = True,
+        file_columns: list[str] | None = None,
+    ) -> DataSourceData | None:
         """Retrieve the data from the data source.
 
         Example:
@@ -596,10 +948,20 @@ class StorageConnector(ABC):
         Parameters:
             data_source (DataSource): The data source to retrieve data from.
             use_cached (bool): Whether to use cached data if available. Only supported for CRM, Google Sheets, and REST connectors. Defaults to `True`.
+            file_columns: SQL Server only: `varbinary(max)` or `image` columns to store as files, besides the FILESTREAM columns; `[]` for the FILESTREAM columns alone.
+                Leave it `None` to read the source schema, as for an external feature group.
+                Each file column is returned as a string path feature and a bigint `<column>_size` feature, and the preview shows its size instead of the bytes.
 
         Returns:
-            An object containing the data retrieved from the data source.
+            An object containing the data retrieved from the data source, or `None` when the backend answered with an empty body.
+
+        Raises:
+            hopsworks.client.exceptions.DataSourceException: If the schema fetch failed for the data source.
         """
+        if self.type in (StorageConnector.GMAIL, StorageConnector.OUTLOOK):
+            raise ValueError(
+                "Mail data sources are not previewed; copy the mailbox with sync() and read its feature group."
+            )
         if self.type in [
             StorageConnector.REST,
             StorageConnector.CRM,
@@ -612,7 +974,15 @@ class StorageConnector(ABC):
             if self.type == StorageConnector.REST and data_source.rest_endpoint is None:
                 data_source.rest_endpoint = RestEndpointConfig()
             return self._get_no_sql_data(data_source, use_cached)
-        return self._data_source_api._get_data(data_source)
+        self._require_credentials()
+        data = self._data_source_api._get_data(data_source, file_columns=file_columns)
+        # When the source refuses the read, the backend still answers 200 and reports the failure
+        # in schemaFetchFailed, so the UI can render the source's own message.
+        # Read the features off that reply and the schema is simply empty, with the reason in a
+        # field nobody looked at, so raise it here as the NoSQL path does.
+        if data is not None:
+            self._raise_if_schema_fetch_failed(data, data_source)
+        return data
 
     @public
     def get_data_batch(
@@ -683,7 +1053,8 @@ class StorageConnector(ABC):
                 f"{name}:\n{data.schema_fetch_logs}" for name, data in failed.items()
             )
             raise DataSourceException(
-                f"Schema fetch failed for {len(failed)} of {len(results)} resource(s):\n{details}"
+                f"Schema fetch failed for {len(failed)} of {len(results)} resource(s)"
+                f" on data source '{self.name}':\n{details}"
             )
         _logger.info("Schema fetch succeeded for all %d resources.", len(results))
         return results
@@ -714,6 +1085,8 @@ class StorageConnector(ABC):
             StorageConnector.REST,
             StorageConnector.CRM,
             StorageConnector.GOOGLE_SHEETS,
+            StorageConnector.GMAIL,
+            StorageConnector.OUTLOOK,
         ]:
             raise ValueError("This connector type does not support fetching metadata.")
         return self._data_source_api._get_metadata(data_source)
@@ -746,13 +1119,19 @@ class StorageConnector(ABC):
             preview_data: Pre-fetched preview data to skip a server round-trip; if `None`, a preview is fetched via `get_data`.
 
         Returns:
-            An object containing the suggested feature renames, types, descriptions, primary key, and event time.
+            An object containing the suggested feature renames, types, descriptions, primary key, event time, and feature group description.
 
         Raises:
             hopsworks.client.exceptions.PlatformIntelligenceException: If platform intelligence is not enabled on the cluster, or the LLM call fails.
+            hopsworks.client.exceptions.DataSourceException: If the schema fetch failed for the data source, or it returned no data to infer from.
         """
         if preview_data is None:
             preview_data = self.get_data(data_source)
+        if preview_data is None:
+            raise DataSourceException(
+                f"No data was returned for {self._describe_source(data_source)},"
+                " so there is nothing to infer metadata from."
+            )
         return self._data_source_api._infer_metadata(self, preview_data)
 
     def _get_no_sql_data(
@@ -767,11 +1146,26 @@ class StorageConnector(ABC):
             data = self._data_source_api._get_no_sql_data(self, data_source)
             _logger.info("Schema fetch in progress...")
 
-        if data.schema_fetch_failed:
-            raise DataSourceException(f"Schema fetch failed:\n{data.schema_fetch_logs}")
+        self._raise_if_schema_fetch_failed(data, data_source)
         _logger.info("Schema fetch succeeded.")
 
         return data
+
+    def _describe_source(self, data_source: ds.DataSource) -> str:
+        """Name a data source for an error message, by the resource it reads and this connector."""
+        described = data_source._describe()
+        if described is None:
+            return f"data source '{self.name}'"
+        return f"{described} on data source '{self.name}'"
+
+    def _raise_if_schema_fetch_failed(
+        self, data: DataSourceData, data_source: ds.DataSource
+    ) -> None:
+        if data.schema_fetch_failed:
+            raise DataSourceException(
+                f"Schema fetch failed for {self._describe_source(data_source)}:"
+                f"\n{data.schema_fetch_logs}"
+            )
 
 
 @public
@@ -1679,7 +2073,12 @@ class SnowflakeConnector(StorageConnector):
     def connector_options(self) -> dict[str, Any] | None:
         """Prepare a Python dictionary with the needed arguments for you to connect to a Snowflake database.
 
-        It is useful for the `snowflake.connector` Python library.
+        It is useful for the `snowflake.connector` Python library, which this client does
+        not depend on and does not install. Install it yourself to use the example below:
+
+        ```bash
+        pip install snowflake-connector-python
+        ```
 
         ```python
         import snowflake.connector
@@ -1698,11 +2097,15 @@ class SnowflakeConnector(StorageConnector):
         }
         if self._password:
             props["password"] = self._password
-        else:
+        elif self._token:
             props["authenticator"] = "oauth"
             props["token"] = self._token
+        elif self._private_key:
+            props["private_key"] = self._private_key_der()
         if self._warehouse:
             props["warehouse"] = self._warehouse
+        if self._role:
+            props["role"] = self._role
         if self._application:
             props["application"] = self._application
         return props
@@ -1734,13 +2137,29 @@ class SnowflakeConnector(StorageConnector):
 
         return props
 
-    def _read_private_key(self) -> str | None:
-        """Reads the private key from the specified key path."""
-        p_key = serialization.load_pem_private_key(
+    def _load_private_key(self):
+        return serialization.load_pem_private_key(
             self._private_key.encode(),
             password=self._passphrase.encode() if self._passphrase else None,
             backend=default_backend(),
         )
+
+    def _private_key_der(self) -> bytes:
+        """Return the private key as unencrypted PKCS#8 DER.
+
+        That is the only form `snowflake.connector.connect` accepts for its
+        `private_key` argument; the spark-snowflake `pem_private_key` option
+        takes the header-stripped string from `_read_private_key` instead.
+        """
+        return self._load_private_key().private_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+
+    def _read_private_key(self) -> str | None:
+        """Reads the private key from the specified key path."""
+        p_key = self._load_private_key()
 
         private_key_bytes = p_key.private_bytes(
             encoding=serialization.Encoding.PEM,
@@ -2569,13 +2988,6 @@ class KafkaConnector(StorageConnector):
         if ssl_key_password is not None:
             config["ssl.key.password"] = ssl_key_password
 
-        if self._external_kafka:
-            warnings.warn(
-                "Getting connection details to externally managed Kafka cluster. "
-                "Make sure that the topic being used exists.",
-                stacklevel=1,
-            )
-
         return config
 
     @public
@@ -2638,7 +3050,9 @@ class KafkaConnector(StorageConnector):
                     "(.+?) .*username=[\"'](.+?)[\"'] .*password=[\"'](.+?)[\"']",
                     value,
                 )
-                if "sasl.mechanisms" not in config:
+                # Java clients take the mechanism from sasl.mechanism, which is passed on as it is below.
+                # The login module only names its family, and SCRAM can be SCRAM-SHA-256 or SCRAM-SHA-512.
+                if "sasl.mechanism" not in kafka_options:
                     mechanism = groups.group(1)
                     mechanism_value = None
                     if (
@@ -2650,13 +3064,13 @@ class KafkaConnector(StorageConnector):
                         mechanism
                         == "org.apache.kafka.common.security.scram.ScramLoginModule"
                     ):
-                        mechanism_value = "SCRAM-SHA-256"  # could also be SCRAM-SHA-512
+                        mechanism_value = "SCRAM-SHA-256"
                     elif (
                         mechanism
                         == "org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule"
                     ):
                         mechanism_value = "OAUTHBEARER"
-                config["sasl.mechanisms"] = mechanism_value
+                    config["sasl.mechanisms"] = mechanism_value
                 config["sasl.username"] = groups.group(2)
                 config["sasl.password"] = groups.group(3)
             elif key == "ssl.endpoint.identification.algorithm":
@@ -3254,19 +3668,51 @@ class SqlConnector(StorageConnector):
     type = StorageConnector.SQL
     JDBC_FORMAT = "jdbc"
 
+    SHARED = "SHARED"
+    PROVIDED = "PROVIDED"
+
     MYSQL = "MYSQL"
     POSTGRESQL = "POSTGRESQL"
     ORACLE = "ORACLE"
+    CLICKHOUSE = "CLICKHOUSE"
+    TERADATA = "TERADATA"
+    SQLSERVER = "SQLSERVER"
 
     _DRIVERS = {
         MYSQL: "com.mysql.cj.jdbc.Driver",
         POSTGRESQL: "org.postgresql.Driver",
         ORACLE: "oracle.jdbc.driver.OracleDriver",
+        CLICKHOUSE: "com.clickhouse.jdbc.ClickHouseDriver",
+        TERADATA: "com.teradata.jdbc.TeraDriver",
+        SQLSERVER: "com.microsoft.sqlserver.jdbc.SQLServerDriver",
     }
+    # Connection settings the connector's own fields supply, so a free-form argument must never be
+    # able to replace them.
+    _RESERVED_CONNECTOR_ARGUMENTS = frozenset(
+        {
+            "host",
+            "port",
+            "dbs_port",
+            "database",
+            "databasename",
+            # SQL Server's JDBC driver reads the host and port under these names too.
+            "server",
+            "servername",
+            "portnumber",
+            "database_type",
+            "user",
+            "username",
+            "password",
+        }
+    )
     _JDBC_SCHEMES = {
         MYSQL: "mysql",
         POSTGRESQL: "postgresql",
         ORACLE: "oracle:thin",
+        # No protocol in the scheme: the 0.9.x driver defaults to HTTP (port 8123).
+        CLICKHOUSE: "clickhouse",
+        TERADATA: "teradata",
+        SQLSERVER: "sqlserver",
     }
 
     def __init__(
@@ -3286,9 +3732,14 @@ class SqlConnector(StorageConnector):
         # Oracle-specific optional fields
         wallet_path: str | None = None,
         wallet_password: str | None = None,
+        credentials_mode: str | None = None,
+        user_credentials: dict[str, Any] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
+        self._data_source_credentials_api = (
+            data_source_credentials_api.DataSourceCredentialsApi()
+        )
         if database_type is not None:
             database_type = database_type.upper()
             if database_type not in self._DRIVERS:
@@ -3312,11 +3763,25 @@ class SqlConnector(StorageConnector):
         # Oracle-specific fields
         self._wallet_path = wallet_path
         self._wallet_password = wallet_password
+        self._credentials_mode = (credentials_mode or self.SHARED).upper()
+        self._user_credentials = user_credentials
+        # Set once this object saves or deletes credentials, which makes the values the runtime started with stale.
+        self._runtime_env_stale = False
 
     @property
     def database_type(self) -> str | None:
         """The database type, e.g. MYSQL or POSTGRESQL."""
         return self._database_type
+
+    @property
+    def credentials_mode(self) -> str:
+        """`SHARED` when every member reads with the credentials stored on the data source, `PROVIDED` when each member brings their own."""
+        return self._credentials_mode
+
+    @property
+    def user_credentials(self) -> dict[str, Any] | None:
+        """Status and account entry names of your own credentials for a data source with provided credentials, never their values."""
+        return self._user_credentials
 
     @property
     def host(self) -> str | None:
@@ -3332,11 +3797,11 @@ class SqlConnector(StorageConnector):
 
     @property
     def user(self) -> str | None:
-        return self._user
+        return self._resolve("USER", self._user)
 
     @property
     def password(self) -> str | None:
-        return self._password
+        return self._resolve("PASSWORD", self._password)
 
     @property
     def arguments(self) -> dict[str, Any]:
@@ -3345,13 +3810,393 @@ class SqlConnector(StorageConnector):
 
     @property
     def wallet_path(self) -> str | None:
-        """Path to Oracle wallet zip file for mTLS connections (only relevant when database_type is ORACLE)."""
-        return self._wallet_path
+        """Path to Oracle wallet zip file for mTLS connections (only relevant when database_type is ORACLE).
+
+        Inside a Hopsworks runtime that mounts your wallet for a data source with provided credentials, this is the local `/hopsfs/...` path of the mounted file rather than its HopsFS path, so it cannot be passed to HopsFS APIs such as the dataset API.
+        """
+        return self._local_wallet_path() or self._hopsfs_wallet_path()
 
     @property
     def wallet_password(self) -> str | None:
         """Password for the Oracle wallet (only relevant when database_type is ORACLE)."""
-        return self._wallet_password
+        return self._resolve("WALLET_PASSWORD", self._wallet_password)
+
+    def _env_name(self) -> str:
+        return re.sub(r"[^A-Z0-9_]", "_", self._name.upper())
+
+    def _env_var(self, suffix: str) -> str:
+        return f"HOPS_DS_{self._env_name()}_{suffix}"
+
+    def _runtime_env(self, suffix: str) -> str | None:
+        """A provided credential injected into a Hopsworks runtime for this very data source.
+
+        Only the runtime's own feature store is injected, so a data source of the same name read from another feature store has a different id and must not pick these values up.
+        """
+        if (
+            self._credentials_mode != self.PROVIDED
+            or self._id is None
+            or self._runtime_env_stale
+        ):
+            return None
+        if os.environ.get(self._env_var("CONNECTOR_ID")) != str(self._id):
+            return None
+        return os.environ.get(self._env_var(suffix)) or None
+
+    # The entry of the caller's binding that names the account entry holding each provided credential.
+    _ACCOUNT_ENTRIES = {
+        "USER": ("username_env_var", data_source_credentials_api.ENV_VAR),
+        "PASSWORD": ("password_secret_name", data_source_credentials_api.SECRET),
+        "WALLET_PASSWORD": (
+            "wallet_password_secret_name",
+            data_source_credentials_api.SECRET,
+        ),
+    }
+
+    def _resolve(self, suffix: str, dto_value: str | None) -> str | None:
+        """A provided credential is read from the caller's own account at each use, so a rotation made anywhere is picked up.
+
+        The backend never returns a provided credential with the data source.
+        The runtime's env var, set when the runtime started, is used only when the account cannot be asked.
+        """
+        if self._credentials_mode != self.PROVIDED:
+            return dto_value
+        key, kind = self._ACCOUNT_ENTRIES[suffix]
+        name = (self._user_credentials or {}).get(key)
+        if name:
+            try:
+                return self._data_source_credentials_api._account_value(kind, name)
+            except Exception as err:  # noqa: BLE001
+                _logger.debug(
+                    "Could not read %s of data source '%s' from your account: %s",
+                    key,
+                    self._name,
+                    err,
+                )
+        return self._runtime_env(suffix)
+
+    def _hopsfs_wallet_path(self) -> str | None:
+        """The bound wallet's HopsFS path, which for provided credentials is in the caller's binding."""
+        bound = (self._user_credentials or {}).get("wallet_path")
+        if self._credentials_mode == self.PROVIDED and bound:
+            return bound
+        return self._wallet_path
+
+    def _local_wallet_path(self) -> str | None:
+        """The wallet mounted into a Hopsworks runtime, which is a local path rather than one in HopsFS.
+
+        Not every runtime mounts HopsFS (Spark does not), so the path is only used when it can be read here.
+        """
+        path = self._runtime_env("WALLET_PATH")
+        if not path or not os.access(path, os.R_OK):
+            return None
+        # A wallet bound after the runtime started has another file name, and the mount would serve the old one.
+        bound = self._hopsfs_wallet_path()
+        if bound and os.path.basename(path) != os.path.basename(bound):
+            return None
+        return path
+
+    def _require_credentials(self) -> None:
+        if self._credentials_mode != self.PROVIDED:
+            return
+        status = (self._user_credentials or {}).get("status")
+        if status != "VALID" and not self._runtime_env("USER"):
+            raise FeatureStoreException(
+                data_source_credentials_api._not_provided_message(self._name, status)
+            )
+
+    def _check_new(self) -> None:
+        if self._credentials_mode != self.PROVIDED or self._id is not None:
+            return
+        given = [
+            name
+            for name, value in (
+                ("user", self._user),
+                ("password", self._password),
+                ("wallet_path", self._wallet_path),
+                ("wallet_password", self._wallet_password),
+            )
+            if value
+        ]
+        if given:
+            raise ValueError(
+                f"Data source '{self._name}' has provided credentials, so it stores no "
+                f"{', '.join(given)}: each member adds their own with "
+                "`set_credentials()` once the data source exists. Create it without them."
+            )
+
+    def _default_secret_name(self, kind: str) -> str:
+        return f"ds_{self._env_name().lower()}_{self._featurestore_id}_{kind}"
+
+    def _credentials_body(
+        self,
+        user: str | None,
+        password: str | None,
+        wallet_path: str | None,
+        wallet_password: str | None,
+        user_env_var: str | None,
+        password_secret: str | None,
+        wallet_password_secret: str | None,
+    ) -> dict[str, Any]:
+        """The CredentialsDTO, where an entry not given keeps the one already bound, and a username falls back to the default env var."""
+        bound = self._user_credentials or {}
+        password_secret = password_secret or (
+            None if password else bound.get("password_secret_name")
+        )
+        if not (password or password_secret):
+            raise ValueError(
+                "A password (`password` or `password_secret`) is required."
+            )
+        body = {
+            "username": _credential_entry(
+                "envVarName",
+                user_env_var
+                or (None if user else bound.get("username_env_var"))
+                or f"DS_{self._env_name()}_{self._featurestore_id}_USER",
+                user,
+            ),
+            "password": _credential_entry(
+                "secretName",
+                password_secret or self._default_secret_name("password"),
+                password,
+            ),
+        }
+        wallet_path = wallet_path or bound.get("wallet_path")
+        if wallet_path:
+            body["walletPath"] = wallet_path
+            wallet_password_secret = wallet_password_secret or (
+                None if wallet_password else bound.get("wallet_password_secret_name")
+            )
+        if wallet_password or wallet_password_secret:
+            body["walletPassword"] = _credential_entry(
+                "secretName",
+                wallet_password_secret or self._default_secret_name("wallet_password"),
+                wallet_password,
+            )
+        return body
+
+    def _validate_credentials(
+        self,
+        user: str | None = None,
+        password: str | None = None,
+        wallet_path: str | None = None,
+        wallet_password: str | None = None,
+        user_env_var: str | None = None,
+        password_secret: str | None = None,
+        wallet_password_secret: str | None = None,
+    ) -> dict[str, Any]:
+        """The backend's verdict on the credentials, with its error code and message when they are rejected."""
+        return self._data_source_credentials_api._validate(
+            self,
+            self._credentials_body(
+                user,
+                password,
+                wallet_path,
+                wallet_password,
+                user_env_var,
+                password_secret,
+                wallet_password_secret,
+            ),
+        )
+
+    @public
+    def validate_credentials(
+        self,
+        user: str | None = None,
+        password: str | None = None,
+        wallet_path: str | None = None,
+        wallet_password: str | None = None,
+        user_env_var: str | None = None,
+        password_secret: str | None = None,
+        wallet_password_secret: str | None = None,
+    ) -> bool:
+        """Test your own credentials against this data source without storing them.
+
+        Only a data source with `credentials_mode` `PROVIDED` takes member credentials.
+        The backend opens a connection with exactly these values and runs `SELECT 1 FROM DUAL`.
+        Nothing is written to your account, so a rejected set of credentials leaves your existing binding untouched.
+
+        Example:
+            ```python
+            sc = fs.get_data_source("oracle_sales").storage_connector
+            if sc.validate_credentials(user="SCOTT", password="..."):
+                sc.set_credentials(user="SCOTT", password="...")
+            ```
+
+        Parameters:
+            user: The database username, stored in your account as an env var when you save it.
+            password: The database password, stored in your account as a secret when you save it.
+            wallet_path:
+                An Oracle wallet zip already uploaded to your home directory in this project, under `/Projects/<project>/Users/<username>/.datasources/<name>/`, where `<name>` is the lower-cased form of `<NAME>`.
+                The wallet has to be in HopsFS for the test to read it.
+                Defaults to the wallet already bound.
+            wallet_password: The password of the wallet, when it has one.
+            user_env_var:
+                The name of an env var in your account to take the username from, or to store it under.
+                Defaults to the env var already bound when no `user` is given, else to `DS_<NAME>_<feature store id>_USER`, where `<NAME>` is this data source's name upper-cased with every character outside `[A-Z0-9_]` replaced by `_`.
+            password_secret:
+                The name of a secret in your account to take the password from, or to store it under.
+                Defaults to the secret already bound when no `password` is given, else to `ds_<name>_<feature store id>_password`.
+            wallet_password_secret:
+                The name of a secret in your account to take the wallet password from, or to store it under.
+                Defaults to the secret already bound when no `wallet_password` is given, else to `ds_<name>_<feature store id>_wallet_password`.
+
+        Returns:
+            Whether the data source accepted the credentials.
+            The reason for a rejection is logged as a warning.
+
+        Raises:
+            ValueError: If no password is given, by value or by account entry name, and none is bound yet.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example because this data source has shared credentials.
+        """
+        result = self._validate_credentials(
+            user,
+            password,
+            wallet_path,
+            wallet_password,
+            user_env_var,
+            password_secret,
+            wallet_password_secret,
+        )
+        if not result.get("valid"):
+            _logger.warning(
+                "Data source '%s' rejected the credentials: %s",
+                self._name,
+                result.get("message"),
+            )
+        return bool(result.get("valid"))
+
+    @public
+    def set_credentials(
+        self,
+        user: str | None = None,
+        password: str | None = None,
+        wallet_path: str | None = None,
+        wallet_password: str | None = None,
+        user_env_var: str | None = None,
+        password_secret: str | None = None,
+        wallet_password_secret: str | None = None,
+    ) -> dict[str, Any]:
+        """Store your own credentials for this data source and bind them to it.
+
+        Only a data source with `credentials_mode` `PROVIDED` takes member credentials.
+        The backend validates the credentials first and stores nothing when they are rejected.
+        On success the password and wallet password become secrets in your account and the username an env var, both private to you, and every external feature group mounted from this data source is re-checked for your access.
+        From then on your reads through this data source use these credentials, starting with this object.
+        The backend never returns the values with the data source: the SDK reads the username, password and wallet password from your account entries each time it builds a connection, so a rotation is picked up at once.
+        Runtimes you start afterwards also receive them as `HOPS_DS_<NAME>_USER`, `HOPS_DS_<NAME>_PASSWORD`, `HOPS_DS_<NAME>_WALLET_PATH` and `HOPS_DS_<NAME>_WALLET_PASSWORD`, next to `HOPS_DS_<NAME>_CONNECTOR_ID`, the id of the data source they belong to.
+        The SDK uses those env vars only when it cannot read your account, and never on an object whose credentials were set or deleted after the runtime started.
+        A name given for an entry that already exists in your account updates that entry.
+        An entry you do not give keeps the one already bound: `set_credentials(password="...")` rotates only the password, and keeps your username, your wallet and its password.
+        A username never bound and not given is read from the default env var `DS_<NAME>_<feature store id>_USER` in your account.
+
+        Example:
+            ```python
+            sc = fs.get_data_source("oracle_sales").storage_connector
+            sc.set_credentials(user="SCOTT", password="...")
+
+            # reuse a secret you already keep in your account
+            sc.set_credentials(user="SCOTT", password_secret="my_oracle_pwd")
+            ```
+
+        Parameters:
+            user: The database username, stored in your account as an env var.
+            password: The database password, stored in your account as a secret.
+            wallet_path:
+                An Oracle wallet zip already uploaded to your home directory in this project, under `/Projects/<project>/Users/<username>/.datasources/<name>/`, where `<name>` is the lower-cased form of `<NAME>`.
+                A wallet anywhere else is refused.
+                Defaults to the wallet already bound; to drop a bound wallet, call `delete_credentials()` first.
+            wallet_password: The password of the wallet, when it has one.
+            user_env_var:
+                The name of an env var in your account to take the username from, or to store it under.
+                Defaults to the env var already bound when no `user` is given, else to `DS_<NAME>_<feature store id>_USER`, where `<NAME>` is this data source's name upper-cased with every character outside `[A-Z0-9_]` replaced by `_`.
+            password_secret:
+                The name of a secret in your account to take the password from, or to store it under.
+                Defaults to the secret already bound when no `password` is given, else to `ds_<name>_<feature store id>_password`.
+            wallet_password_secret:
+                The name of a secret in your account to take the wallet password from, or to store it under.
+                Defaults to the secret already bound when no `wallet_password` is given, else to `ds_<name>_<feature store id>_wallet_password`.
+
+        Returns:
+            Your binding: its `status`, the names of the account entries it references, the wallet path and `validated_at`.
+
+        Raises:
+            ValueError: If no password is given, by value or by account entry name, and none is bound yet.
+            hopsworks.client.exceptions.FeatureStoreException: If the data source rejected the credentials; the message carries the data source's own error.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example because this data source has shared credentials.
+        """
+        body = self._credentials_body(
+            user,
+            password,
+            wallet_path,
+            wallet_password,
+            user_env_var,
+            password_secret,
+            wallet_password_secret,
+        )
+        try:
+            binding = self._data_source_credentials_api._set(self, body)
+        except RestAPIError as err:
+            if (
+                err.error_code
+                == RestAPIError.FeatureStoreErrorCode.DATA_SOURCE_CREDENTIALS_INVALID
+            ):
+                raise FeatureStoreException(
+                    err.user_message
+                    or f"Data source '{self._name}' rejected the credentials."
+                ) from err
+            raise
+        self._user_credentials = humps.decamelize(binding)
+        self._runtime_env_stale = True
+        return self._user_credentials
+
+    @public
+    def get_credentials(self) -> dict[str, Any]:
+        """Your binding for this data source, as names only.
+
+        Only a data source with `credentials_mode` `PROVIDED` has member bindings.
+        Values are never returned: the password and wallet password live in your account's secrets and the username in your account's env vars.
+
+        Example:
+            ```python
+            sc = fs.get_data_source("oracle_sales").storage_connector
+            binding = sc.get_credentials()
+            if binding["status"] != "VALID":
+                sc.set_credentials(user="SCOTT", password="...")
+            ```
+
+        Returns:
+            The binding with its `status` (`VALID`, `MISSING` or `INCOMPLETE`), `username_env_var`, `password_secret_name`, `wallet_path`, `wallet_password_secret_name` and `validated_at`.
+            `INCOMPLETE` means a referenced secret or env var was deleted from your account since you saved the binding.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example because this data source has shared credentials.
+        """
+        self._user_credentials = humps.decamelize(
+            self._data_source_credentials_api._get(self)
+        )
+        return self._user_credentials
+
+    @public
+    def delete_credentials(self) -> None:
+        """Remove your binding for this data source, the wallet file it referenced and its default-named account entries.
+
+        The env var `DS_<NAME>_<feature store id>_USER` and the secrets `ds_<name>_<feature store id>_password` and `ds_<name>_<feature store id>_wallet_password` are deleted from your account.
+        An entry you named yourself with `user_env_var`, `password_secret` or `wallet_password_secret` is kept, since you may use it elsewhere.
+        Your access state on every external feature group mounted from this data source becomes `NO_CREDENTIALS`.
+
+        Example:
+            ```python
+            sc = fs.get_data_source("oracle_sales").storage_connector
+            sc.delete_credentials()
+            ```
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example because this data source has shared credentials.
+        """
+        self._data_source_credentials_api._delete(self)
+        self._runtime_env_stale = True
+        self._user_credentials = {"status": "MISSING"}
+        self._wallet_path = None
 
     def _inline_tns_url(self, wallet_dir: str) -> str:
         """Build a JDBC URL with the TNS descriptor inlined from tnsnames.ora.
@@ -3398,27 +4243,32 @@ class SqlConnector(StorageConnector):
         a single partition so no executor ever needs the wallet files.
         Returns ``None`` when no wallet path is configured.
         """
-        if not self._wallet_path:
-            return None
-        local_path = engine._get_instance()._add_file(
-            self._wallet_path, distribute=False
-        )
+        local_path = self._local_wallet_path()
+        if not local_path:
+            hopsfs_path = self._hopsfs_wallet_path()
+            if not hopsfs_path:
+                return None
+            local_path = engine._get_instance()._add_file(hopsfs_path, distribute=False)
         if local_path.endswith(".zip") and os.path.isfile(local_path):
             return util._extract_zip(local_path)
         return local_path
 
     def to_dict(self) -> dict[str, Any]:
         payload = super().to_dict()
+        # The backend refuses credential fields on a PROVIDED connector, whose credentials live in
+        # each member's account.
+        provided = self._credentials_mode == self.PROVIDED
         payload.update(
             {
                 "databaseType": self._database_type,
                 "host": self._host,
                 "port": self._port,
                 "database": self._database,
-                "user": self._user,
-                "password": self._password,
-                "walletPath": self._wallet_path,
-                "walletPassword": self._wallet_password,
+                "credentialsMode": self._credentials_mode,
+                "user": None if provided else self._user,
+                "password": None if provided else self._password,
+                "walletPath": None if provided else self._wallet_path,
+                "walletPassword": None if provided else self._wallet_password,
                 "arguments": (
                     [{"name": k, "value": v} for k, v in self._arguments.items()]
                     if self._arguments
@@ -3429,8 +4279,17 @@ class SqlConnector(StorageConnector):
         return payload
 
     def spark_options(self) -> dict[str, Any]:
+        self._require_credentials()
+        # The connection settings below are built from the connector's own fields, so an argument
+        # repeating one is dropped rather than forwarded. Spark hands anything it does not
+        # recognise to the JDBC driver as a connection property, where a stray ``dbs_port`` or
+        # ``database`` would contradict the URL that was just built from those same fields.
         opts = {
-            **(self._arguments if self._arguments else {}),
+            **{
+                name: value
+                for name, value in (self._arguments or {}).items()
+                if name.lower() not in self._RESERVED_CONNECTOR_ARGUMENTS
+            },
             "user": self.user,
             "password": self.password,
             "driver": self._DRIVERS.get(
@@ -3445,9 +4304,9 @@ class SqlConnector(StorageConnector):
             # Oracle thin URL uses `:@` instead of `://`, and switches to tcps
             # when a wallet is configured for mTLS.
             if host_port:
-                prefix = "tcps://" if self._wallet_path else ""
+                prefix = "tcps://" if self.wallet_path else ""
                 opts["url"] = f"jdbc:{scheme}:@{prefix}{host_port}/{self._database}"
-            elif self._wallet_path:
+            elif self.wallet_path:
                 # Wallet-only: the database field is a TNS alias resolved via
                 # the wallet's tnsnames.ora — the URL carries only the alias.
                 opts["url"] = f"jdbc:{scheme}:@{self._database}"
@@ -3455,29 +4314,68 @@ class SqlConnector(StorageConnector):
                 raise DataSourceException(
                     "Oracle connector requires either host+port or a wallet."
                 )
+        elif self._database_type == self.TERADATA:
+            # Teradata takes no port after the host and no database path: both are comma-separated
+            # parameters after a single slash, e.g.
+            # jdbc:teradata://host/DATABASE=db,DBS_PORT=1025
+            if not self._host:
+                raise DataSourceException("Teradata connector requires a host.")
+            params = []
+            if self._database:
+                params.append(f"DATABASE={self._database}")
+            if self._port:
+                params.append(f"DBS_PORT={self._port}")
+            opts["url"] = f"jdbc:{scheme}://{self._host}/" + ",".join(params)
+        elif self._database_type == self.SQLSERVER:
+            # The database is a ;-separated property, not a path, braced so a ; or = in it cannot
+            # start another property; }} is a literal } inside braces.
+            database = (self._database or "").replace("}", "}}")
+            opts["url"] = f"jdbc:{scheme}://{host_port};databaseName={{{database}}}"
         else:
             opts["url"] = f"jdbc:{scheme}://{host_port}/{self._database}"
         return opts
 
     def connector_options(self) -> dict[str, Any]:
         """Return options to be passed to an external SQL connector library."""
+        self._require_credentials()
         props = {
             "host": self.host,
             "port": self.port,
             "database": self.database,
             "database_type": self.database_type,
         }
-        if self.user:
-            props["user"] = self.user
-        if self.password:
-            props["password"] = self.password
+        # Each read of a provided credential asks the caller's account, so read it once.
+        user, password = self.user, self.password
+        if user:
+            props["user"] = user
+        if password:
+            props["password"] = password
         if self._database_type == self.ORACLE:
             # Oracle Python drivers (e.g. oracledb) expect ``service_name``.
             props["service_name"] = self.database
-            if self._wallet_path:
-                props["wallet_path"] = self._wallet_path
-            if self._wallet_password:
-                props["wallet_password"] = self._wallet_password
+            wallet_path, wallet_password = self.wallet_path, self.wallet_password
+            if wallet_path:
+                props["wallet_path"] = wallet_path
+            if wallet_password:
+                props["wallet_password"] = wallet_password
+        if self._database_type == self.CLICKHOUSE:
+            # clickhouse-connect's name for the JDBC ``ssl=true`` argument.
+            props["secure"] = str(self._arguments.get("ssl", "false")).lower() == "true"
+        if self._database_type == self.TERADATA:
+            # How the logon happens lives in the arguments (``logmech``, ``sslmode`` and the
+            # certificate settings), and Teradata's Python driver takes them under the same names as
+            # the JDBC one. Spark already receives them through ``spark_options``; without this the
+            # Python engine is the only path still attempting a default TD2 logon, so an LDAP-only
+            # source fails here while Spark reads it.
+            props.update(
+                {
+                    name: value
+                    for name, value in self._arguments.items()
+                    # The fields above own these; an argument repeating one would change which
+                    # database is read, or whose identity it is read as.
+                    if name.lower() not in self._RESERVED_CONNECTOR_ARGUMENTS
+                }
+            )
         return props
 
     @public
@@ -3528,6 +4426,7 @@ class SqlConnector(StorageConnector):
         if self._database_type == self.ORACLE:
             wallet_dir = self._prepare_wallet()
             if wallet_dir:
+                wallet_password = self.wallet_password
                 jks = os.path.join(wallet_dir, "keystore.jks")
                 trust_jks = os.path.join(wallet_dir, "truststore.jks")
                 if os.path.isfile(jks) and os.path.isfile(trust_jks):
@@ -3539,13 +4438,9 @@ class SqlConnector(StorageConnector):
                         options["url"] = self._inline_tns_url(wallet_dir)
                     options["javax.net.ssl.keyStore"] = jks
                     options["javax.net.ssl.trustStore"] = trust_jks
-                    if self._wallet_password:
-                        options["javax.net.ssl.keyStorePassword"] = (
-                            self._wallet_password
-                        )
-                        options["javax.net.ssl.trustStorePassword"] = (
-                            self._wallet_password
-                        )
+                    if wallet_password:
+                        options["javax.net.ssl.keyStorePassword"] = wallet_password
+                        options["javax.net.ssl.trustStorePassword"] = wallet_password
                     return engine._get_instance()._read_jdbc_on_driver(
                         options, dataframe_type
                     )
@@ -3555,14 +4450,22 @@ class SqlConnector(StorageConnector):
                 options["oracle.net.wallet_location"] = (
                     f"(SOURCE=(METHOD=FILE)(METHOD_DATA=(DIRECTORY={wallet_dir})))"
                 )
-                if self._wallet_password:
-                    options["oracle.net.wallet_password"] = self._wallet_password
+                if wallet_password:
+                    options["oracle.net.wallet_password"] = wallet_password
                 return engine._get_instance()._read_jdbc_on_driver(
                     options, dataframe_type
                 )
         return engine._get_instance()._read(
             self, self.JDBC_FORMAT, options, None, dataframe_type
         )
+
+
+def _credential_entry(name_key: str, name: str, value: str | None) -> dict[str, str]:
+    """One CredentialsDTO entry: with a value it creates or updates the account entry, without one it references it."""
+    entry = {name_key: name}
+    if value:
+        entry["value"] = value
+    return entry
 
 
 class OpenSearchConnector(StorageConnector):
@@ -3749,6 +4652,1028 @@ class OpenSearchConnector(StorageConnector):
         )
 
 
+@public
+class ElasticsearchConnector(StorageConnector):
+    """Elasticsearch storage connector.
+
+    Use this connector to browse the indices, aliases and data streams of an Elasticsearch cluster and to register an external feature group on one of them.
+    With the Python engine, external feature groups are read through the Hopsworks Query Service; with the Spark engine, through the `elasticsearch-spark` connector, whose jar must be on the Spark classpath.
+    The password or API key is kept in the Hopsworks secret store.
+
+    Example:
+        ```python
+        fs = ...
+        sc = fs.get_storage_connector("my_elasticsearch")
+        events = sc.get_tables()
+        fg = fs.create_external_feature_group(
+            name="events",
+            version=1,
+            primary_key=["event_id"],
+            data_source=events[0],
+        )
+        fg.save()
+        ```
+    """
+
+    type = StorageConnector.ELASTICSEARCH
+    ELASTICSEARCH_FORMAT = "org.elasticsearch.spark.sql"
+    AUTH_NONE = "NONE"
+    AUTH_BASIC = "BASIC"
+    AUTH_API_KEY = "API_KEY"
+    _FEATURE_NAME_MAX_LENGTH = 63
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int | None,
+        description: str | None = None,
+        host: str | None = None,
+        port: int | None = None,
+        scheme: str | None = None,
+        verify: bool | None = None,
+        auth_type: str | None = None,
+        username: str | None = None,
+        password: str | None = None,
+        api_key: str | None = None,
+        default_index: str | None = None,
+        trust_store_path: str | None = None,
+        trust_store_password: str | None = None,
+        arguments: list[dict[str, Any]] | dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._host = host
+        self._port = port
+        self._scheme = scheme
+        self._verify = verify
+        self._auth_type = auth_type
+        self._username = username
+        self._password = password
+        self._api_key = api_key
+        self._default_index = default_index
+        self._trust_store_path = trust_store_path
+        self._trust_store_password = trust_store_password
+        self._elasticsearch_api = elasticsearch_api.ElasticsearchApi()
+        self._arguments = (
+            {opt["name"]: opt["value"] for opt in arguments}
+            if isinstance(arguments, list)
+            else dict(arguments)
+            if isinstance(arguments, dict)
+            else {}
+        )
+
+    @public
+    @property
+    def host(self) -> str | None:
+        """Hostname or IP address of an Elasticsearch node or load balancer."""
+        return self._host
+
+    @public
+    @property
+    def port(self) -> int | None:
+        """HTTP port of the cluster; 9200 when unset."""
+        return self._port
+
+    @public
+    @property
+    def scheme(self) -> str | None:
+        """`https` (the default) or `http`."""
+        return self._scheme
+
+    @public
+    @property
+    def verify(self) -> bool | None:
+        """Whether the server certificate and hostname are verified; true when unset.
+
+        Spark reads honour `False` only for a single self-signed certificate; use a truststore for a private CA.
+        """
+        return self._verify
+
+    @public
+    @property
+    def auth_type(self) -> str | None:
+        """`NONE`, `BASIC` (username and password) or `API_KEY`."""
+        return self._auth_type
+
+    @public
+    @property
+    def username(self) -> str | None:
+        """Username for `BASIC` authentication."""
+        return self._username
+
+    @public
+    @property
+    def password(self) -> str | None:
+        """Password for `BASIC` authentication, resolved from the secret store."""
+        return self._password
+
+    @public
+    @property
+    def api_key(self) -> str | None:
+        """Encoded API key for `API_KEY` authentication, resolved from the secret store."""
+        return self._api_key
+
+    @public
+    @property
+    def default_index(self) -> str | None:
+        """Index, alias, data stream or pattern read when the data source names none."""
+        return self._default_index
+
+    @public
+    @property
+    def trust_store_path(self) -> str | None:
+        """HopsFS path of a JKS truststore holding the CA of a cluster with a private certificate."""
+        return self._trust_store_path
+
+    @public
+    @property
+    def arguments(self) -> dict[str, Any]:
+        """Extra options, e.g. `page_size` and `request_timeout` for the Query Service, or `es.*` Spark settings."""
+        return self._arguments
+
+    def _ensure_full(self) -> None:
+        """Refetch the connector when it is the basic-info copy a data source or feature group carries.
+
+        The index chosen through ``DataSource.table`` survives the refetch, which reinitialises every field.
+        """
+        if self._host:
+            return
+        index = self._default_index
+        self._refetch()
+        if index:
+            self._default_index = index
+
+    def _base_url(self) -> str:
+        host = self._host or ""
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        return f"{(self._scheme or 'https').lower()}://{host}:{self._port or 9200}"
+
+    def _resolved_auth_type(self) -> str:
+        if self._auth_type:
+            return self._auth_type.upper()
+        if self._username:
+            return self.AUTH_BASIC
+        return self.AUTH_API_KEY if self._api_key else self.AUTH_NONE
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "host": self._host,
+                "port": self._port,
+                "scheme": self._scheme,
+                "verify": self._verify,
+                "authType": self._auth_type,
+                "username": self._username,
+                "password": self._password,
+                "apiKey": self._api_key,
+                "defaultIndex": self._default_index,
+                "trustStorePath": self._trust_store_path,
+                "trustStorePassword": self._trust_store_password,
+                "arguments": [
+                    {"name": k, "value": v} for k, v in self._arguments.items()
+                ]
+                or None,
+            }
+        )
+        return payload
+
+    @public
+    def connector_options(self) -> dict[str, Any]:
+        """Return keyword arguments for the official `elasticsearch` Python client.
+
+        ```python
+        from elasticsearch import Elasticsearch
+
+        sc = fs.get_storage_connector("my_elasticsearch")
+        es = Elasticsearch(**sc.connector_options())
+        ```
+
+        The client library is not a Hopsworks dependency; install the major version that matches the cluster.
+        """
+        self._ensure_full()
+        opts: dict[str, Any] = {"hosts": [self._base_url()]}
+        auth_type = self._resolved_auth_type()
+        if auth_type == self.AUTH_BASIC:
+            opts["basic_auth"] = (self._username, self._password)
+        elif auth_type == self.AUTH_API_KEY:
+            opts["api_key"] = self._api_key
+        if (self._scheme or "https").lower() == "https":
+            if self._verify is False:
+                opts["verify_certs"] = False
+                opts["ssl_show_warn"] = False
+            else:
+                ca_certs = self._create_ca_certs()
+                if ca_certs:
+                    opts["ca_certs"] = ca_certs
+        return opts
+
+    def spark_options(self) -> dict[str, Any]:
+        """Return options for `spark.read.format("org.elasticsearch.spark.sql")`.
+
+        With `verify=False` the Spark connector accepts a single self-signed certificate only; a cluster whose certificate chains to a private CA needs `trust_store_path` instead.
+        """
+        self._ensure_full()
+        # Arguments first, so the address, TLS and secret-backed auth settings below always win.
+        opts: dict[str, Any] = {
+            k: v for k, v in self._arguments.items() if k.startswith("es.")
+        }
+        opts |= {
+            "es.nodes": self._host,
+            "es.port": str(self._port or 9200),
+            # Talk to the given address only: cluster-internal node addresses are rarely reachable from Spark.
+            "es.nodes.wan.only": "true",
+            "es.net.ssl": str((self._scheme or "https").lower() == "https").lower(),
+        }
+        auth_type = self._resolved_auth_type()
+        if auth_type == self.AUTH_BASIC:
+            opts["es.net.http.auth.user"] = self._username
+            opts["es.net.http.auth.pass"] = self._password
+        elif auth_type == self.AUTH_API_KEY:
+            opts["es.net.http.header.Authorization"] = f"ApiKey {self._api_key}"
+        if self._verify is False:
+            opts["es.net.ssl.cert.allow.self.signed"] = "true"
+        elif self._trust_store_path:
+            opts["es.net.ssl.truststore.location"] = (
+                engine._get_instance()._add_file_as_url(self._trust_store_path)
+            )
+            if self._trust_store_password:
+                opts["es.net.ssl.truststore.pass"] = self._trust_store_password
+        return opts
+
+    def _create_ca_certs(self) -> str | None:
+        if getattr(self, "_ca_certs_path", None):
+            return self._ca_certs_path
+        if not self._trust_store_path:
+            return None
+        local_trust_store_path = engine._get_instance()._add_file(
+            self._trust_store_path
+        )
+        self._ca_certs_path, _, _ = client._get_instance()._write_pem(
+            local_trust_store_path,
+            self._trust_store_password,
+            local_trust_store_path,
+            self._trust_store_password,
+            f"elasticsearch_sc_{client._get_instance()._project_id}_{self._id}",
+        )
+        return self._ca_certs_path
+
+    @classmethod
+    def _to_feature_name(cls, path: str) -> str:
+        # Must match flyingduck's elasticsearch_reader.to_feature_name, so Spark and the Query Service agree on names.
+        name = re.sub(r"[^a-z0-9_]", "_", path.lower()).strip("_")
+        name = re.sub(r"__+", "_", name)
+        if not name or not name[0].isalpha():
+            name = "f_" + name
+        return name[: cls._FEATURE_NAME_MAX_LENGTH]
+
+    def _get_mapping(self, index: str, spark_options: dict[str, Any]) -> dict[str, Any]:
+        """Fetch the `_mapping` of every index behind `index`, connecting as the Spark reader does.
+
+        The address, path prefix, headers and credentials come from `spark_options`, so overrides passed to the read apply here too.
+        """
+        node = str(spark_options.get("es.nodes") or self._host).split(",")[0].strip()
+        ssl = str(spark_options.get("es.net.ssl", "true")).lower() == "true"
+        scheme, _, address = node.rpartition("://")
+        scheme = scheme or ("https" if ssl else "http")
+        address = address.rstrip("/")
+        # A node without its own port takes es.port, scheme-qualified or not, as elasticsearch-hadoop does.
+        if re.search(r"(^[^:]*|\])(:\d+)$", address) is None:
+            port = spark_options.get("es.port") or 9200
+            bracketed = ":" in address and not address.startswith("[")
+            address = f"[{address}]:{port}" if bracketed else f"{address}:{port}"
+        node = f"{scheme}://{address}"
+        prefix = str(spark_options.get("es.nodes.path.prefix") or "").strip("/")
+        base_url = node.rstrip("/") + (f"/{prefix}" if prefix else "")
+        user = spark_options.get("es.net.http.auth.user")
+        headers = {
+            key[len("es.net.http.header.") :]: str(value)
+            for key, value in spark_options.items()
+            if key.startswith("es.net.http.header.")
+        }
+        verify: bool | str = True
+        if (
+            ssl
+            and str(
+                spark_options.get("es.net.ssl.cert.allow.self.signed", "false")
+            ).lower()
+            == "true"
+        ):
+            verify = False
+        elif ssl:
+            verify = self._create_ca_certs() or True
+        return self._elasticsearch_api._get_mapping(
+            base_url,
+            index,
+            (user, spark_options.get("es.net.http.auth.pass")) if user else None,
+            headers,
+            verify,
+            engine._get_instance()._run_where_spark_runs,
+        )
+
+    @staticmethod
+    def _object_paths(mapping_response: dict[str, Any]) -> set[str]:
+        """Return the dotted paths mapped as objects with properties in any index, which the Query Service flattens.
+
+        Every other field, `nested` and `geo_point` included, is one feature even when Spark reads it as a struct.
+        """
+        paths: set[str] = set()
+
+        def visit(properties, prefix):
+            for field, spec in properties.items():
+                if "properties" in spec and spec.get("type", "object") == "object":
+                    paths.add(prefix + field)
+                    visit(spec["properties"], prefix + field + ".")
+
+        for index_mapping in mapping_response.values():
+            visit((index_mapping.get("mappings") or {}).get("properties") or {}, "")
+        return paths
+
+    @classmethod
+    def _flatten_columns(cls, dataframe: Any, object_paths: set[str]) -> Any:
+        """Flatten object fields into one column per leaf, named and shaped as the Query Service returns them.
+
+        An object field holding an array of objects gives one array column per leaf, and arrays met along the way are concatenated into one list.
+        Any other struct or array of structs, such as a `nested` or `geo_point` field, becomes a JSON string.
+        """
+        from pyspark.sql import functions as F
+        from pyspark.sql.types import ArrayType, StructType
+
+        columns = []
+        sources: dict[str, str] = {}
+
+        def visit(fields, parents, parent, in_array):
+            # parent is a struct column, or an array of structs once an array has been crossed.
+            for field in fields:
+                parts = [*parents, field.name]
+                path = ".".join(parts)
+                column = (
+                    F.col("`" + field.name.replace("`", "``") + "`")
+                    if parent is None
+                    else parent.getField(field.name)
+                )
+                data_type = field.dataType
+                is_array = isinstance(data_type, ArrayType)
+                element = data_type.elementType if is_array else data_type
+                # Spark nests one array level per array crossed; the Query Service returns one flat list.
+                # flatten() is null when any inner array is, so an element missing the field is dropped first.
+                if in_array and is_array:
+                    column = F.flatten(
+                        F.filter(column, lambda inner: inner.isNotNull())
+                    )
+                if path in object_paths and isinstance(element, StructType):
+                    visit(element.fields, parts, column, in_array or is_array)
+                    continue
+                name = cls._to_feature_name(path)
+                if name in sources:
+                    raise ValueError(
+                        f"Elasticsearch fields '{sources[name]}' and '{path}' both map to "
+                        f"feature name '{name}'; rename one of the fields in Elasticsearch"
+                    )
+                sources[name] = path
+                if in_array:
+                    # The Query Service skips elements without the leaf and gives null when none has it. An
+                    # array-valued leaf already lost its missing elements before flatten(), and keeps explicit nulls.
+                    if not is_array:
+                        column = F.filter(column, lambda value: value.isNotNull())
+                    column = F.when(F.size(column) > 0, column)
+                if isinstance(element, StructType):
+                    column = F.to_json(column)
+                columns.append(column.alias(name))
+
+        visit(dataframe.schema.fields, [], None, False)
+        return dataframe.select(*columns)
+
+    @public
+    def read(
+        self,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str | None = None,
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
+        """Read an index into a dataframe with the Spark engine.
+
+        With the Python engine, create an external feature group on the index and read it with [`FeatureGroup.read`][hsfs.feature_group.FeatureGroup.read].
+
+        Parameters:
+            query: Index, alias, data stream or pattern to read, or a JSON query DSL document (a bare query clause or a body with a `query` key) applied to the default index.
+            data_format: Not used for Elasticsearch.
+            options: Extra `es.*` options for the Spark reader; fields holding arrays must be listed in `es.read.field.as.array.include`.
+                The truststore comes from the connector's `trust_store_path` only.
+            path: Not used for Elasticsearch.
+            dataframe_type: Type of the returned dataframe.
+
+        Returns:
+            `DataFrame` with object fields flattened into `parent_child` columns.
+
+        Raises:
+            NotImplementedError: With the Python engine.
+            ValueError: If neither the query nor the connector names an index, or the options or connector arguments set a truststore.
+        """
+        if engine._get_type() != "spark":
+            raise NotImplementedError(
+                "Reading an Elasticsearch connector directly needs the Spark engine. "
+                "With the Python engine, create an external feature group on the index and use feature_group.read()."
+            )
+        import json
+
+        self._ensure_full()
+        # The mapping request trusts the connector's truststore, so Spark must not be handed another.
+        truststore_overrides = [
+            key
+            for key in ("es.net.ssl.truststore.location", "es.net.ssl.truststore.pass")
+            if key in (options or {}) or key in self._arguments
+        ]
+        if truststore_overrides:
+            raise ValueError(
+                f"Elasticsearch read does not take {', '.join(truststore_overrides)}: "
+                "set trust_store_path and trust_store_password on the connector instead."
+            )
+        merged = {**self.spark_options(), **(options or {})}
+        index = self._default_index
+        text = (query or "").strip()
+        if text.startswith("{"):
+            body = json.loads(text)
+            merged["es.query"] = json.dumps(
+                body if "query" in body else {"query": body}
+            )
+        elif text:
+            index = text
+        if not index:
+            raise ValueError(
+                "Elasticsearch read needs an index: pass it as the query or set a default index on the connector."
+            )
+        merged["es.resource"] = index
+        dataframe = engine._get_instance()._read(
+            self, self.ELASTICSEARCH_FORMAT, merged, None, "spark"
+        )
+        dataframe = self._flatten_columns(
+            dataframe, self._object_paths(self._get_mapping(index, merged))
+        )
+        return engine._get_instance()._return_dataframe_type(dataframe, dataframe_type)
+
+
+@public
+class HopsworksConnector(StorageConnector):
+    """Storage connector to a project on another Hopsworks cluster.
+
+    Use this connector to browse the feature stores and feature groups that the remote project can read, to register an external feature group on one of its feature groups, and to ingest one into a local feature group with a DLTHub ingestion job.
+    External feature groups are read through the Hopsworks Query Service of the remote cluster.
+    The API key is kept in the Hopsworks secret store and needs the `PROJECT` and `FEATURESTORE` scopes on the remote cluster.
+
+    Example:
+        ```python
+        fs = ...
+        sc = fs.get_storage_connector("my_remote_cluster")
+        tables = sc.get_tables("sales_featurestore")
+        fg = fs.create_external_feature_group(
+            name="transactions",
+            version=1,
+            primary_key=["id"],
+            data_source=tables[0],
+        )
+        fg.save()
+        ```
+    """
+
+    type = StorageConnector.HOPSWORKS
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int | None,
+        description: str | None = None,
+        host: str | None = None,
+        port: int | None = None,
+        project: str | None = None,
+        api_key: str | None = None,
+        verify: bool | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._host = host
+        self._port = port
+        self._project = project
+        self._api_key = api_key
+        self._verify = verify
+
+    @public
+    @property
+    def host(self) -> str | None:
+        """Host name or IP address of the remote Hopsworks cluster."""
+        return self._host
+
+    @public
+    @property
+    def port(self) -> int | None:
+        """HTTPS port of the remote cluster; 443 when unset."""
+        return self._port
+
+    @public
+    @property
+    def project(self) -> str | None:
+        """Name of the project on the remote cluster that the API key belongs to."""
+        return self._project
+
+    @public
+    @property
+    def api_key(self) -> str | None:
+        """API key of a user of the remote project, resolved from the secret store."""
+        return self._api_key
+
+    @public
+    @property
+    def verify(self) -> bool | None:
+        """Whether the TLS certificate and host name of the remote cluster are verified; true when unset."""
+        return self._verify
+
+    def _ensure_full(self) -> None:
+        """Refetch the connector when it is the basic-info copy a data source or feature group carries."""
+        if not self._host:
+            self._refetch()
+
+    def _default_feature_store(self) -> str:
+        """Name of the remote project's own feature store, browsed when no database is given."""
+        self._ensure_full()
+        if not self._project:
+            raise ValueError(
+                "Database name is required for Hopsworks connectors without a project. "
+                "Pass the remote feature store name as the `database` argument to get_tables()."
+            )
+        return f"{self._project.lower()}_featurestore"
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "host": self._host,
+                "port": self._port,
+                "project": self._project,
+                "apiKey": self._api_key,
+                "verify": self._verify,
+            }
+        )
+        return payload
+
+    def spark_options(self) -> dict[str, Any]:
+        return {}
+
+    @public
+    def read(
+        self,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str | None = None,
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
+        """Not supported: read a remote feature group through an external feature group instead.
+
+        Create an external feature group on a table from [`get_tables`][hsfs.storage_connector.StorageConnector.get_tables] and read it with [`FeatureGroup.read`][hsfs.feature_group.FeatureGroup.read], which goes through the Hopsworks Query Service.
+
+        Parameters:
+            query: Not used.
+            data_format: Not used.
+            options: Not used.
+            path: Not used.
+            dataframe_type: Not used.
+
+        Raises:
+            NotImplementedError: Always.
+        """
+        raise NotImplementedError(
+            "Cannot read from a Hopsworks connector directly. Create an external feature group "
+            "on one of its tables and use feature_group.read() instead."
+        )
+
+
+@public
+class SharePointConnector(StorageConnector):
+    """SharePoint Online data source.
+
+    Holds the Microsoft Entra ID application credentials, the cloud and the site.
+    It is not read through Spark and backs no feature group; instead it copies folders of the site's document libraries into datasets of the project, once or on a schedule, through [`SharePointSync`][hsfs.core.sharepoint_sync.SharePointSync] objects.
+    The client secret is kept in the Hopsworks secret store and never returned by the backend.
+
+    Each sync runs as a Python job whose script is `DataSources/<connector>/sharepoint_sync.py` in the project, which data owners can edit.
+
+    Example:
+        ```python
+        from hsfs.storage_connector import SharePointConnector
+
+        fs = project.get_feature_store()
+        sc = fs.create_data_source(
+            SharePointConnector(
+                id=None,
+                name="finance_sharepoint",
+                featurestore_id=fs.id,
+                tenant_id="...",
+                client_id="...",
+                client_secret="...",
+                site_url="https://contoso.sharepoint.com/sites/Finance",
+            )
+        ).storage_connector
+        drive = sc.list_drives()[0]
+        sync = sc.create_sync(drive_id=drive["id"], folder_path="Reports/2026")
+        ```
+    """
+
+    type = StorageConnector.SHAREPOINT
+    CLOUD_GLOBAL = "GLOBAL"
+    CLOUD_US_GOV = "US_GOV"
+    CLOUD_CHINA = "CHINA"
+    AUTH_APP = "APP"
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int | None,
+        description: str | None = None,
+        cloud: str | None = None,
+        auth_mode: str | None = None,
+        tenant_id: str | None = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+        client_secret_set: bool | None = None,
+        site_url: str | None = None,
+        site_id: str | None = None,
+        pinned: bool | None = None,
+        script_path: str | None = None,
+        script_template_version: int | None = None,
+        script_modified: bool | None = None,
+        current_template_version: int | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._cloud = cloud
+        self._auth_mode = auth_mode
+        self._tenant_id = tenant_id
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._client_secret_set = client_secret_set
+        self._site_url = site_url
+        self._site_id = site_id
+        self._pinned = pinned
+        self._script_path = script_path
+        self._script_template_version = script_template_version
+        self._script_modified = script_modified
+        self._current_template_version = current_template_version
+        self._sharepoint_api = sharepoint_api.SharePointApi()
+
+    @public
+    @property
+    def cloud(self) -> str | None:
+        """Microsoft cloud of the tenant: `GLOBAL` (the default when unset), `US_GOV` or `CHINA`."""
+        return self._cloud
+
+    @public
+    @property
+    def auth_mode(self) -> str | None:
+        """How the data source signs in to Microsoft Graph; `APP` (application credentials) when unset."""
+        return self._auth_mode
+
+    @public
+    @property
+    def tenant_id(self) -> str | None:
+        """Directory (tenant) id of the Microsoft Entra ID tenant; fixed while the data source has syncs."""
+        return self._tenant_id
+
+    @public
+    @property
+    def client_id(self) -> str | None:
+        """Application (client) id of the Entra ID app registration."""
+        return self._client_id
+
+    @public
+    @property
+    def client_secret(self) -> str | None:
+        """Client secret of the app registration, to send with the next `save()` or `update()`.
+
+        The backend never returns it, so it is `None` on a fetched data source; see `client_secret_set`.
+        It can be rotated at any time, also while syncs exist.
+        """
+        return self._client_secret
+
+    @client_secret.setter
+    def client_secret(self, client_secret: str | None) -> None:
+        self._client_secret = client_secret
+
+    @public
+    @property
+    def client_secret_set(self) -> bool | None:
+        """Whether the backend holds a client secret for this data source."""
+        return self._client_secret_set
+
+    @public
+    @property
+    def site_url(self) -> str | None:
+        """URL of the SharePoint site, e.g. `https://contoso.sharepoint.com/sites/Finance`; fixed while the data source has syncs."""
+        return self._site_url
+
+    @public
+    @property
+    def site_id(self) -> str | None:
+        """Graph id of the site, for apps granted `Sites.Selected` that cannot look the site up by URL."""
+        return self._site_id
+
+    @public
+    @property
+    def pinned(self) -> bool | None:
+        """Whether syncs exist, which fixes the tenant, cloud and site of the data source."""
+        return self._pinned
+
+    @public
+    @property
+    def script_path(self) -> str | None:
+        """Path of the sync script in the project, shared by every sync of this data source."""
+        return self._script_path
+
+    @public
+    @property
+    def script_template_version(self) -> int | None:
+        """Template version the sync script was written from, `None` when the script was removed."""
+        return self._script_template_version
+
+    @public
+    @property
+    def script_modified(self) -> bool | None:
+        """Whether the sync script differs from the current platform template."""
+        return self._script_modified
+
+    @public
+    @property
+    def current_template_version(self) -> int | None:
+        """Version of the platform template that `reset_script()` writes; newer than `script_template_version` when the script predates a template upgrade."""
+        return self._current_template_version
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "cloud": self._cloud,
+                "authMode": self._auth_mode,
+                "tenantId": self._tenant_id,
+                "clientId": self._client_id,
+                "clientSecret": self._client_secret,
+                "siteUrl": self._site_url,
+                "siteId": self._site_id,
+            }
+        )
+        return payload
+
+    def spark_options(self) -> dict[str, Any]:
+        """Not supported: a SharePoint data source is not read through Spark.
+
+        Raises:
+            NotImplementedError: Always.
+        """
+        raise NotImplementedError(
+            "SharePoint data sources sync files into a dataset; they are not read through Spark"
+        )
+
+    @public
+    def read(
+        self,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str | None = None,
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
+        """Not supported: sync the files into a dataset with `create_sync()` or `copy_folder()` and read them there.
+
+        Parameters:
+            query: Not used.
+            data_format: Not used.
+            options: Not used.
+            path: Not used.
+            dataframe_type: Not used.
+
+        Raises:
+            NotImplementedError: Always.
+        """
+        raise NotImplementedError(
+            "SharePoint data sources sync files into a dataset; use create_sync() "
+            "or copy_folder() and read the files from the dataset."
+        )
+
+    def _sync(self, json_dict: dict[str, Any]) -> sharepoint_sync.SharePointSync:
+        return sharepoint_sync.SharePointSync.from_response_json(
+            json_dict, self._featurestore_id, self._name
+        )
+
+    @public
+    def list_drives(self) -> list[dict[str, Any]]:
+        """List the document libraries of the site.
+
+        Returns:
+            One dict per library with `id`, `name` and `web_url`; pass `id` as `drive_id` to the other methods.
+        """
+        return humps.decamelize(
+            self._sharepoint_api._get_drives(self._featurestore_id, self._name)
+        )
+
+    @public
+    def list_folders(self, drive_id: str, path: str = "") -> list[dict[str, Any]]:
+        """List the child folders of a folder in a document library.
+
+        Parameters:
+            drive_id: Id of the library, from [`list_drives`][hsfs.storage_connector.SharePointConnector.list_drives].
+            path: Folder path inside the library, `""` for the library root.
+
+        Returns:
+            One dict per child folder with its `id`, `name`, `web_url` and `path`, relative to the library root without a leading slash.
+        """
+        return humps.decamelize(
+            self._sharepoint_api._get_folders(
+                self._featurestore_id, self._name, drive_id, path
+            )
+        )
+
+    @public
+    def create_sync(
+        self,
+        drive_id: str,
+        folder_path: str = "",
+        dataset_name: str = "sharepoint",
+        schedule: str | None = "0 0 * ? * *",
+        include: list[str] | None = None,
+        exclude: list[str] | None = None,
+        max_file_size_mb: int = 1024,
+        mirror_deletions: bool | None = None,
+        verify_checksums: bool = False,
+        checksum_every: int = 24,
+        transfers: int | None = None,
+        alert_receiver: str | None = None,
+        run_now: bool = True,
+        index_files: bool = False,
+        index_feature_group: str | None = None,
+    ) -> sharepoint_sync.SharePointSync:
+        """Create a sync that copies a library folder into a new dataset of the project.
+
+        The sync creates the dataset (members read it, data owners write it) and a Python job that copies the folder with rclone.
+        With mirror deletions, each run makes the dataset equal to the folder: files deleted in SharePoint, and files added or changed in Hopsworks, are deleted or restored.
+        Data only flows from SharePoint to Hopsworks.
+        Needs the Data Owner role.
+
+        Parameters:
+            drive_id: Id of the library, from [`list_drives`][hsfs.storage_connector.SharePointConnector.list_drives].
+            folder_path: Folder path inside the library, `""` for the library root.
+            dataset_name: Name of the top-level dataset to create; it must not exist.
+            schedule:
+                Quartz cron expression in UTC, with seconds first; the default is hourly.
+                `None` creates no schedule, so the sync copies only when started.
+            include: Filter patterns, in rclone syntax, of the files to copy; when given, every other file is skipped.
+            exclude: Filter patterns, in rclone syntax, of the files to skip.
+            max_file_size_mb: Files larger than this are skipped; 0 copies files of any size.
+            mirror_deletions:
+                Delete files from the dataset that are not in the folder.
+                Defaults to on with a schedule and off without one.
+            verify_checksums: Compare file contents by checksum on every run, not only size and modification time.
+            checksum_every: Make every this many runs a checksum run when `verify_checksums` is off.
+            transfers: Number of files downloaded in parallel; the cluster default when `None`.
+            alert_receiver: Alert receiver notified when a run fails or is killed.
+            run_now: Start the first run as soon as the sync is created.
+            index_files:
+                Index the dataset's files in a Delta feature group, one row per file, partitioned by the day the file was first indexed.
+                Each run updates it; see [`SharePointSync.get_index_feature_group`][hsfs.core.sharepoint_sync.SharePointSync.get_index_feature_group].
+            index_feature_group: Name of the index feature group; `sharepoint_<dataset_name>` when `None`.
+
+        Returns:
+            The created sync.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the folder does not resolve, the dataset exists, the schedule is more frequent than the cluster allows, or a pattern or the alert receiver is invalid.
+        """
+        if mirror_deletions is None:
+            mirror_deletions = schedule is not None
+        body = {
+            "driveId": drive_id,
+            "folderPath": folder_path,
+            "datasetName": dataset_name,
+            "cronExpression": schedule,
+            "includePatterns": list(include or []),
+            "excludePatterns": list(exclude or []),
+            "maxFileSizeMb": max_file_size_mb,
+            "mirrorDeletions": mirror_deletions,
+            "verifyChecksums": verify_checksums,
+            "checksumEvery": checksum_every,
+            "transfers": transfers,
+            "alertReceiver": alert_receiver,
+            "runNow": run_now,
+            "indexFiles": index_files or index_feature_group is not None,
+            "indexFeatureGroup": index_feature_group,
+        }
+        return self._sync(
+            self._sharepoint_api._create_sync(self._featurestore_id, self._name, body)
+        )
+
+    @public
+    def copy_folder(
+        self,
+        drive_id: str,
+        folder_path: str = "",
+        dataset_name: str = "sharepoint",
+        alert_receiver: str | None = None,
+        index_files: bool = False,
+    ) -> sharepoint_sync.SharePointSync:
+        """Copy a library folder into a new dataset now, without a schedule.
+
+        This is [`create_sync`][hsfs.storage_connector.SharePointConnector.create_sync] with no schedule, no mirror deletions and an immediate run.
+        Refresh the copy later with [`SharePointSync.run`][hsfs.core.sharepoint_sync.SharePointSync.run], or schedule it with [`SharePointSync.set_schedule`][hsfs.core.sharepoint_sync.SharePointSync.set_schedule].
+
+        Parameters:
+            drive_id: Id of the library, from [`list_drives`][hsfs.storage_connector.SharePointConnector.list_drives].
+            folder_path: Folder path inside the library, `""` for the library root.
+            dataset_name: Name of the top-level dataset to create; it must not exist.
+            alert_receiver: Alert receiver notified when the copy fails or is killed.
+            index_files: Index the copied files in a feature group, as [`create_sync`][hsfs.storage_connector.SharePointConnector.create_sync] does.
+
+        Returns:
+            The created sync.
+        """
+        return self.create_sync(
+            drive_id=drive_id,
+            folder_path=folder_path,
+            dataset_name=dataset_name,
+            schedule=None,
+            mirror_deletions=False,
+            alert_receiver=alert_receiver,
+            run_now=True,
+            index_files=index_files,
+        )
+
+    @public
+    def get_syncs(self) -> list[sharepoint_sync.SharePointSync]:
+        """List the syncs of this data source.
+
+        Returns:
+            The syncs, with their status.
+        """
+        return [
+            self._sync(item)
+            for item in self._sharepoint_api._get_syncs(
+                self._featurestore_id, self._name
+            )
+        ]
+
+    @public
+    def get_sync(self, sync_id: int) -> sharepoint_sync.SharePointSync:
+        """Get one sync of this data source.
+
+        Parameters:
+            sync_id: Id of the sync.
+
+        Returns:
+            The sync, with its status.
+        """
+        return self._sync(
+            self._sharepoint_api._get_sync(self._featurestore_id, self._name, sync_id)
+        )
+
+    @public
+    def reset_script(self) -> None:
+        """Overwrite the sync script in the project with the current platform template.
+
+        Warning: Discards edits to the script
+            Every sync of this data source runs the script, so changes a data owner made to it are lost for all of them.
+            Copy the file first to keep them.
+        """
+        self.update_from_response_json(
+            self._sharepoint_api._reset_script(self._featurestore_id, self._name)
+        )
+
+
 class CRMSource(Enum):
     HUBSPOT = "hubspot"
     FACEBOOK_ADS = "facebook_ads"
@@ -3757,6 +5682,7 @@ class CRMSource(Enum):
     FRESHDESK = "freshdesk"
     GOOGLE_ADS = "google_ads"
     GOOGLE_ANALYTICS = "google_analytics"
+    SHOPIFY = "shopify"
 
 
 class CRMAndAnalyticsConnector(StorageConnector):
@@ -3783,6 +5709,10 @@ class CRMAndAnalyticsConnector(StorageConnector):
         refresh_token: str | None = None,
         headers: dict[str, Any] | None = None,
         parameters: dict[str, Any] | None = None,
+        shop_url: str | None = None,
+        private_app_password: str | None = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
@@ -3800,6 +5730,10 @@ class CRMAndAnalyticsConnector(StorageConnector):
         self._refresh_token = refresh_token
         self._headers = headers or {}
         self._parameters = parameters or {}
+        self._shop_url = shop_url
+        self._private_app_password = private_app_password
+        self._client_id = client_id
+        self._client_secret = client_secret
 
     @property
     def api_key(self):
@@ -3859,14 +5793,36 @@ class CRMAndAnalyticsConnector(StorageConnector):
         """Additional parameters."""
         return self._parameters
 
+    @property
+    def shop_url(self):
+        """Shop URL, for Shopify."""
+        return self._shop_url
+
+    @property
+    def private_app_password(self):
+        """Private app password, for Shopify."""
+        return self._private_app_password
+
+    @property
+    def client_id(self):
+        """App client ID, for Shopify's client-credentials grant."""
+        return self._client_id
+
+    @property
+    def client_secret(self):
+        """App client secret, for Shopify's client-credentials grant."""
+        return self._client_secret
+
     def to_dict(self) -> dict[str, Any]:
+        crm_type = (
+            self._crm_type.value if hasattr(self._crm_type, "value") else self._crm_type
+        )
         payload = super().to_dict()
         payload.update(
             {
                 "apiKey": self._api_key,
-                "crmType": self._crm_type.value
-                if hasattr(self._crm_type, "value")
-                else self._crm_type,
+                # Jackson CRM subtype ids are uppercase, unlike CRMSource values.
+                "crmType": crm_type.upper() if isinstance(crm_type, str) else crm_type,
                 "username": self._username,
                 "password": self._password,
                 "domain": self._domain,
@@ -3879,6 +5835,10 @@ class CRMAndAnalyticsConnector(StorageConnector):
                 "refreshToken": self._refresh_token,
                 "headers": self._headers,
                 "parameters": self._parameters,
+                "shopUrl": self._shop_url,
+                "privateAppPassword": self._private_app_password,
+                "clientId": self._client_id,
+                "clientSecret": self._client_secret,
             }
         )
         return payload
@@ -5082,3 +7042,842 @@ class GoogleSheetsConnector(StorageConnector):
 
     def spark_options(self) -> dict[str, Any]:
         return {}
+
+
+@public
+class MailAccessToken:
+    """A short-lived access token that reads the mailbox of a Gmail or Outlook data source.
+
+    The backend mints it from the data source's stored credentials, which never leave Hopsworks.
+    It is read-only, `gmail.readonly` for Gmail and `Mail.Read` for Outlook, and expires within an hour.
+    """
+
+    def __init__(
+        self,
+        access_token: str,
+        expires_at: int | None = None,
+        mailbox: str | None = None,
+        scope: str | None = None,
+        user_path: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        self._token = access_token
+        self._expires_at = expires_at
+        self._mailbox = mailbox
+        self._scope = scope
+        self._user_path = user_path
+
+    @public
+    @property
+    def token(self) -> str:
+        """The bearer token, sent as `Authorization: Bearer <token>` to the Gmail API or Microsoft Graph."""
+        return self._token
+
+    @public
+    @property
+    def expires_at(self) -> int | None:
+        """When the token expires, in epoch milliseconds."""
+        return self._expires_at
+
+    @public
+    @property
+    def mailbox(self) -> str | None:
+        """The email address of the mailbox the token reads."""
+        return self._mailbox
+
+    @public
+    @property
+    def scope(self) -> str | None:
+        """The OAuth scope the token was requested with."""
+        return self._scope
+
+    @public
+    @property
+    def user_path(self) -> str | None:
+        """For Outlook, the Microsoft Graph path of the mailbox after `/v1.0/`, `users/<mailbox>`; `None` for Gmail."""
+        return self._user_path
+
+    def __repr__(self) -> str:
+        return f"MailAccessToken(mailbox={self._mailbox!r}, expires_at={self._expires_at!r})"
+
+
+@public
+class MailSyncJobConfig:
+    """The configuration of a job that copies a Gmail or Outlook data source into a feature group.
+
+    Returned by `get_sync_job` and `list_sync_jobs` of [`GmailConnector`][hsfs.storage_connector.GmailConnector] and [`OutlookConnector`][hsfs.storage_connector.OutlookConnector].
+    """
+
+    def __init__(
+        self,
+        job_name: str,
+        feature_group_name: str,
+        path: str,
+        query: str | None = None,
+        labels: list[str] | None = None,
+        loading_strategy: str | None = None,
+        initial_value: int | None = None,
+        environment_name: str | None = None,
+        connector_name: str | None = None,
+        mailbox: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        self._job_name = job_name
+        self._feature_group_name = feature_group_name
+        self._path = path
+        self._query = query or ""
+        self._labels = labels or []
+        self._loading_strategy = loading_strategy
+        self._initial_value = initial_value
+        self._environment_name = environment_name
+        self._connector_name = connector_name
+        self._mailbox = mailbox
+
+    @classmethod
+    def from_response_json(cls, json_dict: dict[str, Any]) -> MailSyncJobConfig:
+        return cls(**humps.decamelize(json_dict))
+
+    @public
+    @property
+    def job_name(self) -> str:
+        """Name of the job, as listed on the Jobs page."""
+        return self._job_name
+
+    @public
+    @property
+    def feature_group_name(self) -> str:
+        """Name of the Delta feature group, version 1, that the job upserts the emails into."""
+        return self._feature_group_name
+
+    @public
+    @property
+    def path(self) -> str:
+        """Directory the attachments are written to, relative to the project root."""
+        return self._path
+
+    @public
+    @property
+    def query(self) -> str:
+        """Gmail search query that selects the messages; empty for all of them, and always for Outlook."""
+        return self._query
+
+    @public
+    @property
+    def labels(self) -> list[str]:
+        """Gmail label ids or Outlook folder ids that select the messages copied: a message in any of them is copied, and without any every message is."""
+        return self._labels
+
+    @public
+    @property
+    def loading_strategy(self) -> str | None:
+        """`FULL_LOAD` or `INCREMENTAL_TIMESTAMP`."""
+        return self._loading_strategy
+
+    @public
+    @property
+    def initial_value(self) -> int | None:
+        """Earliest receive time copied, in epoch milliseconds; `None` for the whole mailbox."""
+        return self._initial_value
+
+    @public
+    @property
+    def environment_name(self) -> str | None:
+        """Python environment the job runs in."""
+        return self._environment_name
+
+    @public
+    @property
+    def connector_name(self) -> str | None:
+        """Name of the data source the job copies."""
+        return self._connector_name
+
+    @public
+    @property
+    def mailbox(self) -> str | None:
+        """Email address of the mailbox the job copies."""
+        return self._mailbox
+
+    def __repr__(self) -> str:
+        return (
+            f"MailSyncJobConfig(job_name={self._job_name!r}, "
+            f"feature_group_name={self._feature_group_name!r}, path={self._path!r}, "
+            f"loading_strategy={self._loading_strategy!r})"
+        )
+
+
+class _MailSyncMixin:
+    """The sync jobs and access tokens shared by the Gmail and Outlook data sources; `_SERVICE` is the REST path segment."""
+
+    _SERVICE: str
+    _STRATEGIES = ("FULL_LOAD", "INCREMENTAL_TIMESTAMP")
+    # Quartz expressions; daily runs at 00:00 UTC.
+    _SCHEDULES = {"hourly": "0 0 * ? * * *", "daily": "0 0 0 * * ? *"}
+
+    def _access_token(self) -> MailAccessToken:
+        return MailAccessToken(
+            **humps.decamelize(
+                self._storage_connector_api._get_mail_access_token(
+                    self._featurestore_id, self._name, self._SERVICE
+                )
+            )
+        )
+
+    def _sync(
+        self,
+        feature_group_name: str | None,
+        attachments_path: str | None,
+        query: str | None,
+        labels: list[str] | None,
+        loading_strategy: str,
+        initial_value: str | int | datetime | date | None,
+        schedule: str | None,
+        job_name: str | None,
+        environment: str | None,
+        start: bool,
+    ) -> Job:
+        from hopsworks_common.core import job_api
+
+        strategy = getattr(loading_strategy, "value", loading_strategy).upper()
+        if strategy not in self._STRATEGIES:
+            raise ValueError(
+                f"loading_strategy must be one of {', '.join(self._STRATEGIES)}"
+            )
+        if schedule is not None and schedule.lower() not in self._SCHEDULES:
+            raise ValueError(f"schedule must be one of {', '.join(self._SCHEDULES)}")
+        name = job_name or re.sub(
+            r"[^A-Za-z0-9_-]", "_", f"{self._name}_{self._SERVICE}_sync"
+        )
+        body = {
+            "featureGroupName": feature_group_name,
+            "path": attachments_path,
+            "query": query or "",
+            "labels": list(labels or []),
+            "loadingStrategy": strategy,
+            "initialValue": util._convert_event_time_to_timestamp(initial_value),
+            "environmentName": environment,
+        }
+        self._storage_connector_api._put_mail_sync_job(
+            self._featurestore_id, self._name, self._SERVICE, name, body
+        )
+        job = job_api.JobApi().get(name)
+        if start:
+            job.run(await_termination=False)
+        if schedule is not None:
+            job.schedule(cron_expression=self._SCHEDULES[schedule.lower()])
+        return job
+
+    def _list_sync_jobs(self) -> list[MailSyncJobConfig]:
+        return [
+            MailSyncJobConfig.from_response_json(job)
+            for job in self._storage_connector_api._get_mail_sync_jobs(
+                self._featurestore_id, self._name, self._SERVICE
+            )
+            or []
+        ]
+
+    def _get_sync_job(self, job_name: str) -> MailSyncJobConfig:
+        return MailSyncJobConfig.from_response_json(
+            self._storage_connector_api._get_mail_sync_job(
+                self._featurestore_id, self._name, self._SERVICE, job_name
+            )
+        )
+
+    def _delete_sync_job(self, job_name: str) -> None:
+        self._storage_connector_api._delete_mail_sync_job(
+            self._featurestore_id, self._name, self._SERVICE, job_name
+        )
+
+
+@public
+class GmailConnector(_MailSyncMixin, StorageConnector):
+    """A Gmail mailbox, read with credentials that stay in Hopsworks.
+
+    The data source holds either an OAuth client with a refresh token granted by the mailbox owner, or a Google Workspace service account with domain-wide delegation that impersonates the mailbox.
+    Both need the `https://www.googleapis.com/auth/gmail.readonly` scope.
+    The credentials are write-only: reading the data source back returns `credentials_set` instead, and code that needs to call Gmail asks for a short-lived token with [`get_access_token`][hsfs.storage_connector.GmailConnector.get_access_token].
+
+    Copy the mailbox into a Delta feature group with [`sync`][hsfs.storage_connector.GmailConnector.sync], which creates a job that runs on demand, hourly or daily.
+
+    Example:
+        ```python
+        fs = project.get_feature_store()
+        gmail = GmailConnector(
+            id=None,
+            name="support_inbox",
+            featurestore_id=fs.id,
+            mailbox="support@example.com",
+            auth_type="OAUTH",
+            client_id="...apps.googleusercontent.com",
+            client_secret="...",
+            refresh_token="...",
+        )
+        gmail.save()
+        job = gmail.sync(schedule="hourly")
+        emails = fs.get_feature_group("support_examples", version=1)
+        ```
+    """
+
+    type = StorageConnector.GMAIL
+    _SERVICE = "gmail"
+    OAUTH = "OAUTH"
+    SERVICE_ACCOUNT = "SERVICE_ACCOUNT"
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int | None,
+        description: str | None = None,
+        mailbox: str | None = None,
+        auth_type: str | None = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+        refresh_token: str | None = None,
+        key_path: str | None = None,
+        credentials_set: bool | None = None,
+        service_account_email: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._mailbox = mailbox
+        self._auth_type = auth_type
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._refresh_token = refresh_token
+        self._key_path = key_path
+        self._credentials_set = credentials_set
+        self._service_account_email = service_account_email
+
+    @public
+    @property
+    def mailbox(self) -> str | None:
+        """Email address of the mailbox."""
+        return self._mailbox
+
+    @mailbox.setter
+    def mailbox(self, mailbox: str) -> None:
+        self._mailbox = mailbox
+
+    @public
+    @property
+    def auth_type(self) -> str | None:
+        """`OAUTH` or `SERVICE_ACCOUNT`."""
+        return self._auth_type
+
+    @public
+    @property
+    def client_id(self) -> str | None:
+        """OAuth client id; `None` for a service account."""
+        return self._client_id
+
+    @public
+    @property
+    def credentials_set(self) -> bool | None:
+        """Whether credentials are stored; the credentials themselves are never returned."""
+        return self._credentials_set
+
+    @public
+    @property
+    def service_account_email(self) -> str | None:
+        """The service account that impersonates the mailbox; `None` for OAuth."""
+        return self._service_account_email
+
+    @public
+    def set_credentials(
+        self,
+        auth_type: str,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+        refresh_token: str | None = None,
+        key_path: str | None = None,
+    ) -> None:
+        """Replace the credentials sent by the next [`save`][hsfs.storage_connector.StorageConnector.save] or [`update`][hsfs.storage_connector.StorageConnector.update].
+
+        Parameters:
+            auth_type: `OAUTH` or `SERVICE_ACCOUNT`.
+            client_id: OAuth client id.
+            client_secret: OAuth client secret.
+            refresh_token: OAuth refresh token granted with the `gmail.readonly` scope.
+            key_path: HopsFS path of a service account's JSON key; Hopsworks stores the key's contents, so the file can be deleted afterwards.
+        """
+        self._auth_type = auth_type
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._refresh_token = refresh_token
+        self._key_path = key_path
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update({"mailbox": self._mailbox, "authType": self._auth_type})
+        for key, value in (
+            ("clientId", self._client_id),
+            ("clientSecret", self._client_secret),
+            ("refreshToken", self._refresh_token),
+            ("keyPath", self._key_path),
+        ):
+            if value:
+                payload[key] = value
+        return payload
+
+    def spark_options(self) -> dict[str, Any]:
+        return {}
+
+    def __repr__(self) -> str:
+        return (
+            f"GmailConnector(name={self._name!r}, mailbox={self._mailbox!r}, "
+            f"auth_type={self._auth_type!r}, credentials_set={self._credentials_set!r})"
+        )
+
+    @public
+    def get_access_token(self) -> MailAccessToken:
+        """Get a short-lived, read-only Gmail access token for the mailbox.
+
+        Use it to call the [Gmail API](https://developers.google.com/gmail/api/reference/rest) from your own code without holding the data source's credentials.
+        Ask for a new token when the previous one is about to expire.
+
+        Example:
+            ```python
+            import requests
+
+            gmail = fs.get_data_source("support_inbox").storage_connector
+            token = gmail.get_access_token()
+            labels = requests.get(
+                f"https://gmail.googleapis.com/gmail/v1/users/{token.mailbox}/labels",
+                headers={"Authorization": f"Bearer {token.token}"},
+            ).json()
+            ```
+
+        Returns:
+            The token, its expiry and the mailbox it reads.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If Google refuses the stored credentials, for example because the refresh token was revoked.
+        """
+        return self._access_token()
+
+    @public
+    def get_labels(self) -> dict[str, str]:
+        """Get the labels of the mailbox that a sync can select, by id.
+
+        System labels, such as `INBOX`, `SENT`, `STARRED` and `CATEGORY_PERSONAL`, come first, then the labels the mailbox's owner created.
+        Spam, trash and drafts are left out, since a sync never copies them.
+
+        Example:
+            ```python
+            gmail = fs.get_data_source("support_inbox").storage_connector
+            print(gmail.get_labels())  # {'INBOX': 'INBOX', 'SENT': 'SENT', ..., 'Label_12': 'receipts'}
+            gmail.sync(labels=["INBOX"], schedule="hourly")
+            ```
+
+        Returns:
+            The label names, keyed by the ids that [`sync`][hsfs.storage_connector.GmailConnector.sync] takes.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If Google refuses the stored credentials or Gmail cannot be reached.
+        """
+        return {
+            label["id"]: label["name"]
+            for label in self._storage_connector_api._get_gmail_labels(
+                self._featurestore_id, self._name
+            )
+            or []
+        }
+
+    @public
+    def sync(
+        self,
+        feature_group_name: str | None = None,
+        attachments_path: str | None = None,
+        query: str | None = None,
+        labels: list[str] | None = None,
+        loading_strategy: Literal[
+            "INCREMENTAL_TIMESTAMP", "FULL_LOAD"
+        ] = "INCREMENTAL_TIMESTAMP",
+        initial_value: str | int | datetime | date | None = None,
+        schedule: Literal["hourly", "daily"] | None = None,
+        job_name: str | None = None,
+        environment: str | None = None,
+        start: bool = True,
+    ) -> Job:
+        """Copy the mailbox into a Delta feature group with a job that runs now, hourly or daily.
+
+        The job upserts one row per email into the feature group, version 1, keyed by `message_id`, with `internal_date`, Gmail's `internalDate`, as its event time.
+        The table is partitioned by `day` (`YYYY-MM-DD`) of `internal_date` in UTC.
+        An hourly job adds about one Parquet file to the current day per run, and the first run after a day ends compacts that day's files into files of up to 192 MiB.
+        Its columns are `message_id`, `thread_id`, `history_id`, `internal_date`, `day`, `hour`, `date_header`, `from_address`, `to_addresses`, `cc_addresses`, `bcc_addresses`, `subject`, `labels`, `snippet`, `size_estimate`, `body_text` and `attachments`.
+        Attachments are written as files under `<attachments_path>/day=YYYY-MM-DD/<message_id>/<filename>`, and `attachments` lists their full `/Projects/...` paths.
+        Spam, trash and drafts are not copied.
+
+        `INCREMENTAL_TIMESTAMP` upserts the messages Gmail received since the previous run; its first run copies everything from `initial_value` on, upserting every 5000 messages as it goes.
+        A scheduled run that starts while the previous one is still copying does nothing, and fails if that one has made no progress for two hours.
+        A run fails after waiting an hour in total on rate limits.
+        `FULL_LOAD` copies every selected message on every run, then removes the rows and attachments of the messages it did not copy.
+        The copy is an archive: an incremental run does not remove messages deleted from Gmail, nor follow label changes.
+
+        Calling `sync` again with the same `job_name` updates the job.
+
+        Example:
+            ```python
+            gmail = fs.get_data_source("support_inbox").storage_connector
+            job = gmail.sync(query="-category:promotions", initial_value="2026-01-01", schedule="hourly")
+            emails = fs.get_feature_group("support_examples", version=1).read()
+            ```
+
+        Parameters:
+            feature_group_name: Name of the feature group; defaults to the mailbox's local part and first domain label, as in `jane_doe_gmails` for `jane.doe@gmail.com`.
+            attachments_path: Directory inside a dataset, relative to the project root, that attachments are written to; defaults to `Resources/gmail/<feature group name>`.
+            query: Gmail search query selecting the messages, written as in the Gmail search box.
+            labels: Gmail label ids selecting the messages to copy, such as `["INBOX", "SENT"]`; a message carrying any of them is copied, and without labels every message is. [`get_labels`][hsfs.storage_connector.GmailConnector.get_labels] lists the mailbox's labels.
+            loading_strategy: `INCREMENTAL_TIMESTAMP` or `FULL_LOAD`.
+            initial_value: Earliest receive time to copy, as a date or datetime, a date string, or epoch milliseconds.
+            schedule: `hourly`, at the top of every hour, or `daily`, at 00:00 UTC; `None` leaves the job's schedule as it is.
+            job_name: Name of the job; defaults to `<data source name>_gmail_sync`.
+            environment: Python environment for a new job; defaults to `python-feature-pipeline`, and an update without it keeps the job's environment.
+            start: Whether to start a run now, without waiting for it.
+
+        Returns:
+            The job, which can be run, scheduled and monitored like any other.
+
+        Raises:
+            ValueError: If `loading_strategy` or `schedule` is not one of the values above.
+            hopsworks.client.exceptions.RestAPIError: If the backend refuses the job, for example because another sync job already writes to the feature group or the attachments path.
+        """
+        return self._sync(
+            feature_group_name,
+            attachments_path,
+            query,
+            labels,
+            loading_strategy,
+            initial_value,
+            schedule,
+            job_name,
+            environment,
+            start,
+        )
+
+    @public
+    def list_sync_jobs(self) -> list[MailSyncJobConfig]:
+        """List the sync jobs of this data source.
+
+        Returns:
+            One configuration per sync job.
+        """
+        return self._list_sync_jobs()
+
+    @public
+    def get_sync_job(self, job_name: str) -> MailSyncJobConfig:
+        """Get the configuration of one sync job of this data source.
+
+        Parameters:
+            job_name: Name of the sync job.
+
+        Returns:
+            The job's configuration.
+        """
+        return self._get_sync_job(job_name)
+
+    @public
+    def delete_sync_job(self, job_name: str) -> None:
+        """Delete a sync job of this data source, with its schedule; the copied emails stay.
+
+        Parameters:
+            job_name: Name of the sync job.
+        """
+        self._delete_sync_job(job_name)
+
+
+@public
+class OutlookConnector(_MailSyncMixin, StorageConnector):
+    """An Outlook mailbox, on Outlook.com or Microsoft 365, read through Microsoft Graph with credentials that stay in Hopsworks.
+
+    The data source holds an app registration in Microsoft Entra ID with either:
+
+    - `OAUTH`: a refresh token granted by the mailbox's owner with the delegated `Mail.Read` and `offline_access` permissions, for the owner's own mailbox, personal or work;
+    - `CLIENT_CREDENTIALS`: a client secret with the application permission `Mail.Read`, granted by a tenant admin, for any mailbox of the tenant the admin allows.
+
+    The credentials are write-only: reading the data source back returns `credentials_set` instead, and code that needs to call Graph asks for a short-lived token with [`get_access_token`][hsfs.storage_connector.OutlookConnector.get_access_token].
+    Microsoft replaces a refresh token each time it is used, and Hopsworks stores the new one, so a data source that syncs at least every 90 days keeps working.
+
+    Copy the mailbox into a Delta feature group with [`sync`][hsfs.storage_connector.OutlookConnector.sync], which creates a job that runs on demand, hourly or daily.
+
+    Example:
+        ```python
+        fs = project.get_feature_store()
+        outlook = OutlookConnector(
+            id=None,
+            name="support_outlook",
+            featurestore_id=fs.id,
+            mailbox="support@contoso.com",
+            auth_type="CLIENT_CREDENTIALS",
+            tenant_id="contoso.onmicrosoft.com",
+            client_id="00000000-0000-0000-0000-000000000000",
+            client_secret="...",
+        )
+        outlook.save()
+        job = outlook.sync(schedule="hourly")
+        emails = fs.get_feature_group("support_contosos", version=1)
+        ```
+    """
+
+    type = StorageConnector.OUTLOOK
+    _SERVICE = "outlook"
+    OAUTH = "OAUTH"
+    CLIENT_CREDENTIALS = "CLIENT_CREDENTIALS"
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int | None,
+        description: str | None = None,
+        mailbox: str | None = None,
+        auth_type: str | None = None,
+        tenant_id: str | None = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+        refresh_token: str | None = None,
+        credentials_set: bool | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._mailbox = mailbox
+        self._auth_type = auth_type
+        self._tenant_id = tenant_id
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._refresh_token = refresh_token
+        self._credentials_set = credentials_set
+
+    @public
+    @property
+    def mailbox(self) -> str | None:
+        """Email address of the mailbox."""
+        return self._mailbox
+
+    @mailbox.setter
+    def mailbox(self, mailbox: str) -> None:
+        self._mailbox = mailbox
+
+    @public
+    @property
+    def auth_type(self) -> str | None:
+        """`OAUTH` or `CLIENT_CREDENTIALS`."""
+        return self._auth_type
+
+    @public
+    @property
+    def tenant_id(self) -> str | None:
+        """Microsoft Entra tenant: its id or domain, or `common`, `consumers` or `organizations` for a delegated token."""
+        return self._tenant_id
+
+    @public
+    @property
+    def client_id(self) -> str | None:
+        """Application (client) id of the app registration."""
+        return self._client_id
+
+    @public
+    @property
+    def credentials_set(self) -> bool | None:
+        """Whether credentials are stored; the credentials themselves are never returned."""
+        return self._credentials_set
+
+    @public
+    def set_credentials(
+        self,
+        auth_type: str,
+        client_id: str,
+        tenant_id: str | None = None,
+        client_secret: str | None = None,
+        refresh_token: str | None = None,
+    ) -> None:
+        """Replace the credentials sent by the next [`save`][hsfs.storage_connector.StorageConnector.save] or [`update`][hsfs.storage_connector.StorageConnector.update].
+
+        Parameters:
+            auth_type: `OAUTH` or `CLIENT_CREDENTIALS`.
+            client_id: Application (client) id.
+            tenant_id: Tenant id or domain; defaults to `common` for `OAUTH`, and `CLIENT_CREDENTIALS` needs the mailbox's tenant.
+            client_secret: Client secret; required for `CLIENT_CREDENTIALS`, and for `OAUTH` unless the app is a public client.
+            refresh_token: For `OAUTH`, a refresh token granted with `Mail.Read offline_access`.
+        """
+        self._auth_type = auth_type
+        self._client_id = client_id
+        self._tenant_id = tenant_id
+        self._client_secret = client_secret
+        self._refresh_token = refresh_token
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update({"mailbox": self._mailbox, "authType": self._auth_type})
+        for key, value in (
+            ("tenantId", self._tenant_id),
+            ("clientId", self._client_id),
+            ("clientSecret", self._client_secret),
+            ("refreshToken", self._refresh_token),
+        ):
+            if value:
+                payload[key] = value
+        return payload
+
+    def spark_options(self) -> dict[str, Any]:
+        return {}
+
+    def __repr__(self) -> str:
+        return (
+            f"OutlookConnector(name={self._name!r}, mailbox={self._mailbox!r}, "
+            f"auth_type={self._auth_type!r}, credentials_set={self._credentials_set!r})"
+        )
+
+    @public
+    def get_access_token(self) -> MailAccessToken:
+        """Get a short-lived, read-only Microsoft Graph access token for the mailbox.
+
+        Use it to call [Microsoft Graph](https://learn.microsoft.com/graph/api/resources/mail-api-overview) from your own code without holding the data source's credentials.
+        Ask for a new token when the previous one is about to expire.
+
+        Example:
+            ```python
+            import requests
+
+            outlook = fs.get_data_source("support_outlook").storage_connector
+            token = outlook.get_access_token()
+            inbox = requests.get(
+                f"https://graph.microsoft.com/v1.0/{token.user_path}/mailFolders/inbox",
+                headers={"Authorization": f"Bearer {token.token}"},
+            ).json()
+            ```
+
+        Returns:
+            The token, its expiry, the mailbox it reads and the Graph path of that mailbox.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If Microsoft refuses the stored credentials, for example because the refresh token expired or was revoked.
+        """
+        return self._access_token()
+
+    @public
+    def get_folders(self) -> dict[str, str]:
+        """Get the mail folders of the mailbox that a sync can select, by id.
+
+        Example:
+            ```python
+            outlook = fs.get_data_source("support_outlook").storage_connector
+            folders = outlook.get_folders()  # {'AAMk...': 'Inbox', 'AAMl...': 'Inbox/Projects', ...}
+            inbox = [i for i, path in folders.items() if path == "Inbox"]
+            outlook.sync(folders=inbox, schedule="hourly")
+            ```
+
+        Returns:
+            The folder paths, such as `Inbox/Projects`, keyed by the ids that [`sync`][hsfs.storage_connector.OutlookConnector.sync] takes.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If Microsoft refuses the stored credentials or Graph cannot be reached.
+        """
+        return {
+            folder["id"]: folder.get("path") or folder["name"]
+            for folder in self._storage_connector_api._get_outlook_folders(
+                self._featurestore_id, self._name
+            )
+            or []
+        }
+
+    @public
+    def sync(
+        self,
+        feature_group_name: str | None = None,
+        attachments_path: str | None = None,
+        folders: list[str] | None = None,
+        loading_strategy: Literal[
+            "INCREMENTAL_TIMESTAMP", "FULL_LOAD"
+        ] = "INCREMENTAL_TIMESTAMP",
+        initial_value: str | int | datetime | date | None = None,
+        schedule: Literal["hourly", "daily"] | None = None,
+        job_name: str | None = None,
+        environment: str | None = None,
+        start: bool = True,
+    ) -> Job:
+        """Copy the mailbox into a Delta feature group with a job that runs now, hourly or daily.
+
+        The job upserts one row per email into the feature group, version 1, keyed by `message_id`, the message's immutable Graph id, with `internal_date`, its `receivedDateTime`, as the event time.
+        The feature group has the columns of a Gmail data source's, so the same queries search both.
+        `labels` holds the path of the message's folder, such as `Inbox/Projects`, then its categories; `thread_id` is the conversation id and `snippet` the body preview.
+        The table is partitioned by `day` (`YYYY-MM-DD`) of `internal_date` in UTC.
+        An hourly job adds about one Parquet file to the current day per run, and the first run after a day ends compacts that day's files into files of up to 192 MiB.
+        Attachments are written as files under `<attachments_path>/day=YYYY-MM-DD/<message_id>/<filename>`, and `attachments` lists their full `/Projects/...` paths.
+        Drafts are never copied, and without `folders` neither are Deleted Items, Junk Email and Outbox, nor the folders below them, such as a folder deleted in Outlook.
+
+        `INCREMENTAL_TIMESTAMP` upserts the messages received since the previous run; its first run copies everything from `initial_value` on, upserting every 5000 messages as it goes.
+        A scheduled run that starts while the previous one is still copying does nothing, and fails if that one has made no progress for two hours.
+        A run fails after waiting an hour in total on rate limits.
+        `FULL_LOAD` copies every selected message on every run, then removes the rows and attachments of the messages it did not copy.
+        The copy is an archive: an incremental run does not remove messages deleted from Outlook, nor follow moves between folders.
+
+        Calling `sync` again with the same `job_name` updates the job.
+
+        Example:
+            ```python
+            outlook = fs.get_data_source("support_outlook").storage_connector
+            job = outlook.sync(initial_value="2026-01-01", schedule="hourly")
+            emails = fs.get_feature_group("support_contosos", version=1).read()
+            ```
+
+        Parameters:
+            feature_group_name: Name of the feature group; defaults to the mailbox's local part and first domain label, as in `jane_doe_outlooks` for `jane.doe@outlook.com`.
+            attachments_path: Directory inside a dataset, relative to the project root, that attachments are written to; defaults to `Resources/outlook/<feature group name>`.
+            folders: Folder ids selecting the messages to copy; a message in any of them is copied. [`get_folders`][hsfs.storage_connector.OutlookConnector.get_folders] lists the mailbox's folders. A chosen folder's subfolders are not included unless chosen too.
+            loading_strategy: `INCREMENTAL_TIMESTAMP` or `FULL_LOAD`.
+            initial_value: Earliest receive time to copy, as a date or datetime, a date string, or epoch milliseconds.
+            schedule: `hourly`, at the top of every hour, or `daily`, at 00:00 UTC; `None` leaves the job's schedule as it is.
+            job_name: Name of the job; defaults to `<data source name>_outlook_sync`.
+            environment: Python environment for a new job; defaults to `python-feature-pipeline`, and an update without it keeps the job's environment.
+            start: Whether to start a run now, without waiting for it.
+
+        Returns:
+            The job, which can be run, scheduled and monitored like any other.
+
+        Raises:
+            ValueError: If `loading_strategy` or `schedule` is not one of the values above.
+            hopsworks.client.exceptions.RestAPIError: If the backend refuses the job, for example because another sync job already writes to the feature group or the attachments path.
+        """
+        return self._sync(
+            feature_group_name,
+            attachments_path,
+            None,
+            folders,
+            loading_strategy,
+            initial_value,
+            schedule,
+            job_name,
+            environment,
+            start,
+        )
+
+    @public
+    def list_sync_jobs(self) -> list[MailSyncJobConfig]:
+        """List the sync jobs of this data source.
+
+        Returns:
+            One configuration per sync job.
+        """
+        return self._list_sync_jobs()
+
+    @public
+    def get_sync_job(self, job_name: str) -> MailSyncJobConfig:
+        """Get the configuration of one sync job of this data source.
+
+        Parameters:
+            job_name: Name of the sync job.
+
+        Returns:
+            The job's configuration.
+        """
+        return self._get_sync_job(job_name)
+
+    @public
+    def delete_sync_job(self, job_name: str) -> None:
+        """Delete a sync job of this data source, with its schedule; the copied emails stay.
+
+        Parameters:
+            job_name: Name of the sync job.
+        """
+        self._delete_sync_job(job_name)

@@ -36,8 +36,9 @@ from hsfs.transformation_function import TransformationType
 
 
 pytestmark = pytest.mark.skipif(
-    os.name == "nt",
-    reason="Skip on Windows — Spark + Great Expectations dependency conflict",
+    os.name == "nt"
+    or tuple(int(part) for part in pd.__version__.split(".")[:2]) < (2, 2),
+    reason="Skip on unsupported Spark runtime: Windows, or pandas < 2.2 for PySpark 4.1.",
 )
 
 

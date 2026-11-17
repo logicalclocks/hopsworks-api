@@ -607,3 +607,115 @@ class TestExecution:
 
         # Act + Assert
         assert ex.app_url is None
+
+
+class TestJobDescription:
+    def _job(self, mocker, **kwargs):
+        mocker.patch("hopsworks_common.client._get_instance")
+        return job.Job(
+            id=1,
+            name="test",
+            creation_time=None,
+            config={"appPath": "app.py"},
+            job_type="PYTHON",
+            creator=None,
+            **kwargs,
+        )
+
+    def test_description_from_constructor(self, mocker):
+        j = self._job(mocker, description="scalar description")
+
+        assert j.description == "scalar description"
+
+    def test_description_falls_back_to_config(self, mocker):
+        # An old server does not send the scalar field; the config carries it.
+        j = self._job(mocker)
+        j._config["description"] = "config description"
+
+        assert j.description == "config description"
+
+    def test_description_none_when_absent_everywhere(self, mocker):
+        j = self._job(mocker)
+
+        assert j.description is None
+
+    def test_description_setter_writes_config_too(self, mocker):
+        # save() persists the config, so the setter must write it there.
+        j = self._job(mocker)
+
+        j.description = "new description"
+
+        assert j._description == "new description"
+        assert j._config["description"] == "new description"
+
+    def test_config_setter_survives(self, mocker):
+        # A duplicate `config` property definition used to shadow this setter.
+        j = self._job(mocker)
+
+        j.config = {"appPath": "other.py"}
+
+        assert j.config == {"appPath": "other.py"}
+
+
+class TestJobTags:
+    def _job(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mock_job_api = mocker.patch("hopsworks_common.core.job_api.JobApi")
+        j = job.Job(
+            id=1,
+            name="test",
+            creation_time=None,
+            config={},
+            job_type="PYTHON",
+            creator=None,
+        )
+        return j, mock_job_api.return_value
+
+    def test_add_tag_delegates(self, mocker):
+        j, api = self._job(mocker)
+
+        j.add_tag("meta", {"k": "v"})
+
+        api._add_tag.assert_called_once_with(j, "meta", {"k": "v"})
+
+    def test_delete_tag_delegates(self, mocker):
+        j, api = self._job(mocker)
+
+        j.delete_tag("meta")
+
+        api._delete_tag.assert_called_once_with(j, "meta")
+
+    def test_get_tag_delegates(self, mocker):
+        j, api = self._job(mocker)
+        api._get_tag.return_value = "v"
+
+        assert j.get_tag("meta") == "v"
+        api._get_tag.assert_called_once_with(j, "meta")
+
+    def test_get_tags_delegates(self, mocker):
+        j, api = self._job(mocker)
+        api._get_tags.return_value = {"meta": "v"}
+
+        assert j.get_tags() == {"meta": "v"}
+
+    def test_get_tag_metadata_delegates(self, mocker):
+        j, api = self._job(mocker)
+        tag_obj = mocker.Mock()
+        api._get_tags_metadata.return_value = {"meta": tag_obj}
+
+        assert j.get_tag_metadata("meta") is tag_obj
+        api._get_tags_metadata.assert_called_once_with(j, "meta")
+
+    def test_get_tag_metadata_missing_is_none(self, mocker):
+        j, api = self._job(mocker)
+        api._get_tags_metadata.return_value = {}
+
+        assert j.get_tag_metadata("meta") is None
+
+    def test_get_tags_metadata_delegates(self, mocker):
+        j, api = self._job(mocker)
+        tag_obj = mocker.Mock()
+        api._get_tags_metadata.return_value = {"meta": tag_obj}
+
+        assert j.get_tags_metadata() == {"meta": tag_obj}
+        api._get_tags_metadata.assert_called_once_with(j)

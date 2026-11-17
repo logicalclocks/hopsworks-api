@@ -19,7 +19,13 @@ from typing import TYPE_CHECKING, Any
 
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import util
-from hsfs.core import feature_group_api, kafka_api, storage_connector_api, tags_api
+from hsfs.core import (
+    feature_group_api,
+    kafka_api,
+    keywords_api,
+    storage_connector_api,
+    tags_api,
+)
 
 
 if TYPE_CHECKING:
@@ -34,6 +40,9 @@ class FeatureGroupBaseEngine:
     def __init__(self, feature_store_id):
         self._feature_store_id = feature_store_id
         self._tags_api = tags_api.TagsApi(feature_store_id, self.ENTITY_TYPE)
+        self._keywords_api = keywords_api.KeywordsApi(
+            feature_store_id, self.ENTITY_TYPE
+        )
         self._feature_group_api = feature_group_api.FeatureGroupApi()
         self._storage_connector_api = storage_connector_api.StorageConnectorApi()
         self._kafka_api = kafka_api.KafkaApi()
@@ -90,6 +99,37 @@ class FeatureGroupBaseEngine:
         if tags:
             return tags
         return {}
+
+    def _get_tag_metadata(self, feature_group: FeatureGroup, name: str):
+        """Get the tag with a certain name as a Tag object, or None if it does not exist."""
+        return self._tags_api._get_metadata(feature_group, name).get(name)
+
+    def _get_tags_metadata(self, feature_group: FeatureGroup):
+        """Get all tags for a feature group as Tag objects."""
+        return self._tags_api._get_metadata(feature_group)
+
+    def _get_keywords(self, feature_group: FeatureGroup):
+        """Get all keywords of a feature group."""
+        return self._keywords_api._get(feature_group)
+
+    def _get_keywords_metadata(self, feature_group: FeatureGroup):
+        """Get all keywords of a feature group with their attachment times."""
+        return self._keywords_api._get_with_metadata(feature_group)
+
+    def _set_keywords(self, feature_group: FeatureGroup, keywords: list[str]):
+        """Replace the whole keyword set of a feature group."""
+        return self._keywords_api._replace(feature_group, keywords)
+
+    def _add_keywords(self, feature_group: FeatureGroup, keywords: list[str]):
+        """Add keywords to a feature group, keeping the existing ones."""
+        current = self._keywords_api._get(feature_group)
+        return self._keywords_api._replace(
+            feature_group, list(dict.fromkeys(current + keywords))
+        )
+
+    def _delete_keyword(self, feature_group: FeatureGroup, keyword: str):
+        """Remove a single keyword from a feature group."""
+        return self._keywords_api._delete(feature_group, keyword)
 
     def _get_parent_feature_groups(
         self, feature_group: FeatureGroup

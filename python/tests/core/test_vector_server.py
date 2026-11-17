@@ -14,12 +14,15 @@
 #   limitations under the License.
 #
 
+import asyncio
+from copy import deepcopy
 from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import PropertyMock
 
 import pytest
 from hopsworks_common.core.constants import HAS_POLARS
-from hsfs.core.vector_server import VectorServer
+from hsfs.core.vector_server import VectorServer, _with_entry_values
 
 
 class TestVectorServer:
@@ -44,6 +47,52 @@ class TestVectorServer:
             return_value=self.COLS,
         )
         return server
+
+    def test_logging_metadata_rows_stay_parallel_without_request_parameters(
+        self, mocker
+    ):
+        # A logged view with no request parameters used to extend the parallel
+        # request-parameter list with None and raise TypeError, which reached
+        # clients as TRANSFORMATION_FAILED on every prediction.
+        server = VectorServer.__new__(VectorServer)
+        server._feature_view_logging_enabled = True
+        server._fetch_inference_helpers_for_transformations = False
+        server._root_feature_group = SimpleNamespace(event_time="event_time")
+        server._inference_helper_col_name = []
+        entries = [{"customer_id": 1}, {"customer_id": 2}]
+        captured = {}
+
+        mocker.patch.object(
+            VectorServer, "_which_client_and_ensure_initialised", return_value="rest"
+        )
+        mocker.patch.object(VectorServer, "_raise_transformation_warnings")
+        mocker.patch.object(
+            VectorServer, "_validate_entry", side_effect=lambda entry, **kwargs: entry
+        )
+        mocker.patch.object(
+            VectorServer,
+            "rest_client_engine",
+            new_callable=PropertyMock,
+            return_value=mocker.MagicMock(
+                **{"_get_batch_feature_vectors.return_value": [{"a": 1}, {"a": 2}]}
+            ),
+        )
+        mocker.patch.object(VectorServer, "_assemble_feature_vector", return_value=[1])
+        mocker.patch.object(
+            VectorServer,
+            "_handle_feature_vector_return_type",
+            side_effect=lambda vectors, **kwargs: (
+                captured.update(metadata=kwargs.get("logging_meta_data")) or vectors
+            ),
+        )
+
+        server._get_feature_vectors(
+            entries=entries, vector_db_features=[], logging_data=True
+        )
+
+        metadata = captured["metadata"]
+        assert metadata.serving_keys == entries
+        assert metadata.request_parameters == [{}, {}]
 
     def test_handle_return_type_empty_single_vector_pandas_does_not_crash(self, mocker):
         # An online lookup that misses makes assemble_feature_vector return None.
@@ -141,3 +190,998 @@ class TestVectorServer:
         server = VectorServer.__new__(VectorServer)
 
         assert server._handle_timestamp_based_on_dtype(timestamp_value) == expected
+
+    def _echo_server(self, mocker):
+        server = VectorServer.__new__(VectorServer)
+        server._on_demand_feature_names = []
+        server._untransformed_feature_vector_col_name = ["tid", "cc_num", "amount"]
+        mocker.patch.object(
+            VectorServer,
+            "_required_feature_names",
+            new_callable=PropertyMock,
+            return_value={"tid", "cc_num", "amount"},
+        )
+        mocker.patch.object(
+            VectorServer,
+            "return_feature_value_handlers",
+            new_callable=PropertyMock,
+            return_value={},
+        )
+        mocker.patch.object(
+            VectorServer,
+            "model_dependent_transformation_functions",
+            new_callable=PropertyMock,
+            return_value=[],
+        )
+        mocker.patch.object(
+            VectorServer,
+            "on_demand_transformation_functions",
+            new_callable=PropertyMock,
+            return_value=[],
+        )
+        mocker.patch.object(
+            VectorServer,
+            "_all_features_on_demand",
+            new_callable=PropertyMock,
+            return_value=False,
+        )
+        mocker.patch.object(
+            VectorServer,
+            "required_serving_keys",
+            new_callable=PropertyMock,
+            return_value=["tid", "cc_num"],
+        )
+        return server
+
+    def _assemble(self, server, result_dict, entry, allow_missing, passed_values=None):
+        return server._assemble_feature_vector(
+            result_dict=result_dict,
+            passed_values=passed_values,
+            vector_db_result=None,
+            allow_missing=allow_missing,
+            client="sql",
+            transform=False,
+            on_demand_features=False,
+            entry=entry,
+        )
+
+    def test_assemble_echoes_entry_key_missing_from_lookup(self, mocker):
+        server = self._echo_server(mocker)
+
+        vector = self._assemble(
+            server,
+            {"amount": 5.0},
+            {"tid": None, "cc_num": 4},
+            allow_missing=True,
+        )
+
+        assert vector == [None, 4, 5.0]
+
+    def test_assemble_does_not_echo_key_that_is_not_a_vector_feature(self, mocker):
+        server = self._echo_server(mocker)
+        result_dict = {"amount": 5.0}
+
+        vector = self._assemble(
+            server,
+            result_dict,
+            {"trans_id": 123, "cc_num": 4},
+            allow_missing=True,
+        )
+
+        assert vector == [None, 4, 5.0]
+        assert "trans_id" not in result_dict
+
+    def test_assemble_echoed_key_satisfies_missing_feature_check(self, mocker):
+        server = self._echo_server(mocker)
+
+        vector = self._assemble(
+            server,
+            {"tid": 1, "amount": 5.0},
+            {"tid": 1, "cc_num": 4},
+            allow_missing=False,
+        )
+
+        assert vector == [1, 4, 5.0]
+
+    def test_assemble_does_not_overwrite_passed_null(self, mocker):
+        server = self._echo_server(mocker)
+
+        vector = self._assemble(
+            server,
+            {"tid": 1, "amount": 5.0},
+            {"tid": 1, "cc_num": 9},
+            allow_missing=True,
+            passed_values={"cc_num": None},
+        )
+
+        assert vector == [1, None, 5.0]
+
+    def test_assemble_echoes_key_into_null_row_from_rest(self, mocker):
+        server = self._echo_server(mocker)
+
+        vector = self._assemble(
+            server,
+            {"tid": None, "cc_num": None, "amount": None},
+            {"tid": 1, "cc_num": 9},
+            allow_missing=True,
+        )
+
+        assert vector == [1, 9, None]
+
+    def test_assemble_does_not_overwrite_fetched_or_passed_value(self, mocker):
+        server = self._echo_server(mocker)
+
+        vector = self._assemble(
+            server,
+            {"tid": 1, "cc_num": 4, "amount": 5.0},
+            {"tid": 2, "cc_num": 9},
+            allow_missing=False,
+            passed_values={"cc_num": 7},
+        )
+
+        assert vector == [1, 7, 5.0]
+
+    def test_assemble_empty_lookup_is_still_dropped_when_not_allowing_missing(
+        self, mocker
+    ):
+        server = self._echo_server(mocker)
+
+        vector = self._assemble(
+            server, {}, {"tid": 1, "cc_num": 4}, allow_missing=False
+        )
+
+        assert vector is None
+
+
+class TestRequestParametersAreRequestLocal:
+    """A caller's dictionaries are read, never written.
+
+    The entry's values back the on-demand features a retrieved vector does not
+    carry, but merging them used to write into the caller's own dictionary, so
+    one request left its parameters changed for the next and two concurrent
+    requests through one feature view could see each other's.
+    """
+
+    def test_a_single_entry_is_merged_into_a_new_dictionary(self):
+        parameters = {"factor": 2.0}
+        entry = {"id": 1, "amount": 5}
+
+        merged = _with_entry_values(parameters, entry)
+
+        assert merged == {"id": 1, "amount": 5, "factor": 2.0}
+        assert parameters == {"factor": 2.0}, "the caller's parameters were written to"
+        assert merged is not parameters
+
+    def test_a_batch_is_merged_into_new_dictionaries(self):
+        parameters = [{"factor": 2.0}, {"factor": 3.0}]
+        entries = [{"id": 1}, {"id": 2}]
+
+        merged = _with_entry_values(parameters, entries)
+
+        assert merged == [{"id": 1, "factor": 2.0}, {"id": 2, "factor": 3.0}]
+        assert parameters == [{"factor": 2.0}, {"factor": 3.0}]
+
+    def test_one_shared_parameter_dictionary_serves_a_single_entry_batch(self):
+        parameters = {"factor": 2.0}
+        entries = [{"id": 1}]
+
+        assert _with_entry_values(parameters, entries) == {"id": 1, "factor": 2.0}
+        assert parameters == {"factor": 2.0}
+
+    def test_an_explicit_parameter_wins_over_the_entry(self):
+        assert _with_entry_values({"amount": 9}, {"amount": 5}) == {"amount": 9}
+
+    @pytest.mark.parametrize(
+        "parameters, entries",
+        [
+            (None, {"id": 1}),
+            ({}, {"id": 1}),
+            ({"factor": 2.0}, None),
+            ({"factor": 2.0}, []),
+            # lengths that do not line up are left alone, as before
+            ([{"factor": 2.0}], [{"id": 1}, {"id": 2}]),
+        ],
+    )
+    def test_nothing_to_merge_returns_the_parameters_unchanged(
+        self, parameters, entries
+    ):
+        assert _with_entry_values(parameters, entries) is parameters
+
+    def test_a_falsy_serving_key_value_is_still_merged(self):
+        """0, False and the empty string are values, not absences."""
+        merged = _with_entry_values({"factor": 1}, {"a": 0, "b": False, "c": ""})
+
+        assert merged == {"a": 0, "b": False, "c": "", "factor": 1}
+
+
+class TestReadDeadline:
+    """A caller's deadline reaches the dispatcher, which is where the wait was."""
+
+    def _client(self, mocker):
+        from hsfs.core.online_store_sql_engine import OnlineStoreSqlClient
+
+        client = OnlineStoreSqlClient.__new__(OnlineStoreSqlClient)
+        client._async_task_thread = mocker.Mock()
+        client._async_task_thread._submit.return_value = {}
+        client._prepared_statements = {}
+        client._parametrised_prepared_statements = {
+            OnlineStoreSqlClient.SINGLE_VECTOR_KEY: {},
+            OnlineStoreSqlClient.BATCH_VECTOR_KEY: {},
+        }
+        return client
+
+    def test_a_single_read_passes_its_timeout(self, mocker):
+        client = self._client(mocker)
+        mocker.patch.object(client, "_single_vector_result", return_value={})
+
+        client._get_single_feature_vector({"id": 1}, timeout=2.5)
+
+        assert client._single_vector_result.call_args.kwargs["timeout"] == 2.5
+
+    def test_a_batch_read_passes_its_timeout(self, mocker):
+        client = self._client(mocker)
+        mocker.patch.object(client, "_batch_vector_results", return_value=([], None))
+
+        client._get_batch_feature_vectors([{"id": 1}], timeout=2.5)
+
+        assert client._batch_vector_results.call_args.kwargs["timeout"] == 2.5
+
+    def test_no_timeout_still_means_wait(self, mocker):
+        """Unset keeps what a caller that names no timeout got before."""
+        client = self._client(mocker)
+        mocker.patch.object(client, "_single_vector_result", return_value={})
+
+        client._get_single_feature_vector({"id": 1})
+
+        assert client._single_vector_result.call_args.kwargs["timeout"] is None
+
+
+class TestNativeAsyncLookup:
+    """The awaitable drivers reach the client's async methods, not a worker thread."""
+
+    def _server(self, mocker):
+        server = VectorServer.__new__(VectorServer)
+        sql = mocker.MagicMock()
+        mocker.patch.object(
+            VectorServer, "sql_client", new_callable=PropertyMock, return_value=sql
+        )
+        mocker.patch.object(
+            VectorServer,
+            "rest_client_engine",
+            new_callable=PropertyMock,
+            return_value=mocker.MagicMock(),
+        )
+        server._fetch_inference_helpers_for_transformations = False
+        return server, sql
+
+    def test_the_batch_driver_awaits_the_sql_client(self, mocker):
+        import asyncio
+
+        server, sql = self._server(mocker)
+
+        async def awaited(entries, **kwargs):
+            return ([{"a": 1}], None)
+
+        sql._get_batch_feature_vectors_async = awaited
+        mocker.patch.object(VectorServer, "_batch_lookup_arguments", return_value=False)
+
+        def steps(*args, **kwargs):
+            # The body hands out everything the fetch needs, including the two options
+            # that shape it.
+            return (yield ["entry"], "sql", False, False, None)
+
+        mocker.patch.object(VectorServer, "_feature_vectors_steps", steps)
+
+        assert asyncio.run(server._get_feature_vectors_async()) == [{"a": 1}]
+        # The blocking client must not be touched on the awaited path.
+        sql._get_batch_feature_vectors.assert_not_called()
+
+    def test_the_single_driver_awaits_the_sql_client(self, mocker):
+        import asyncio
+
+        server, sql = self._server(mocker)
+
+        async def awaited(entry, **kwargs):
+            return {"a": 1}
+
+        sql._get_single_feature_vector_async = awaited
+        mocker.patch.object(
+            VectorServer, "_single_lookup_arguments", return_value=False
+        )
+
+        def steps(*args, **kwargs):
+            return (yield {"pk": 1}, "sql", False, False, None)
+
+        mocker.patch.object(VectorServer, "_feature_vector_steps", steps)
+
+        assert asyncio.run(server._get_feature_vector_async()) == {"a": 1}
+        sql._get_single_feature_vector.assert_not_called()
+
+    def test_the_return_type_defaults_to_a_list_as_in_the_blocking_call(self, mocker):
+        import asyncio
+
+        server, sql = self._server(mocker)
+
+        async def awaited(entry, **kwargs):
+            return {"a": 1}
+
+        sql._get_single_feature_vector_async = awaited
+        for name, value in {
+            "_which_client_and_ensure_initialised": "sql",
+            "_validate_entry": {"pk": 1},
+            "_prepared_rest_projection": None,
+            "_single_lookup_arguments": False,
+            "_raise_transformation_warnings": None,
+            "_assemble_feature_vector": [1],
+        }.items():
+            mocker.patch.object(VectorServer, name, return_value=value)
+        handle = mocker.patch.object(
+            VectorServer, "_handle_feature_vector_return_type", return_value=[1]
+        )
+        server._feature_view_logging_enabled = False
+
+        asyncio.run(server._get_feature_vector_async(entry={"pk": 1}))
+
+        assert handle.call_args.kwargs["return_type"] == "list"
+
+    def test_the_options_come_from_the_body_not_the_call(self, mocker):
+        # The body already has allow_missing and logging_data bound, so the drivers take
+        # them from the yield. Recovering them from the call instead cost an
+        # inspect.signature bind on every request and could disagree with the body.
+        import asyncio
+
+        server, sql = self._server(mocker)
+        seen = {}
+
+        async def awaited(entries, **kwargs):
+            seen.update(kwargs)
+            return ([{"a": 1}], None)
+
+        sql._get_batch_feature_vectors_async = awaited
+        mocker.patch.object(VectorServer, "_batch_lookup_arguments", return_value=False)
+
+        def steps(*args, **kwargs):
+            return (yield ["entry"], "sql", True, True, None)
+
+        mocker.patch.object(VectorServer, "_feature_vectors_steps", steps)
+
+        asyncio.run(server._get_feature_vectors_async())
+        assert seen["logging_data"] is True
+
+    def test_the_rest_client_runs_off_the_event_loop(self, mocker):
+        """The REST client blocks, so the async driver must not call it on the loop thread."""
+        import asyncio
+        import threading
+
+        server, _ = self._server(mocker)
+        rest = server.rest_client_engine
+        seen = {}
+
+        def blocking(entries, **kwargs):
+            seen["thread"] = threading.current_thread()
+            seen["timeout"] = kwargs["timeout"]
+            return [{"a": 1}]
+
+        rest._get_batch_feature_vectors = blocking
+        mocker.patch.object(VectorServer, "_batch_lookup_arguments", return_value=True)
+
+        def steps(*args, **kwargs):
+            return (yield ["entry"], "rest", False, False, None)
+
+        mocker.patch.object(VectorServer, "_feature_vectors_steps", steps)
+
+        async def run():
+            loop_thread = threading.current_thread()
+            result = await server._get_feature_vectors_async(timeout=3)
+            return loop_thread, result
+
+        loop_thread, result = asyncio.run(run())
+        assert result == [{"a": 1}]
+        assert seen["thread"] is not loop_thread
+        assert seen["timeout"] == 3
+
+    def test_a_body_that_suspends_twice_is_refused(self):
+        from hsfs.core import vector_server
+
+        def steps():
+            yield "first"
+            yield "second"
+
+        gen = steps()
+        next(gen)
+        with pytest.raises(RuntimeError, match="more than once"):
+            vector_server._resume(gen, None)
+
+    def test_the_async_drivers_take_a_timeout(self, mocker):
+        # The public async methods forward every keyword of the blocking ones,
+        # timeout included, and the step bodies do not accept it.
+        import asyncio
+
+        server, sql = self._server(mocker)
+
+        async def awaited(entries, **kwargs):
+            return ([{"a": 1}], None)
+
+        sql._get_batch_feature_vectors_async = awaited
+        mocker.patch.object(VectorServer, "_batch_lookup_arguments", return_value=False)
+
+        def steps(*args, **kwargs):
+            assert "timeout" not in kwargs
+            return (yield ["entry"], "sql", False, False, None)
+
+        mocker.patch.object(VectorServer, "_feature_vectors_steps", steps)
+
+        result = asyncio.run(server._get_feature_vectors_async(timeout=5))
+        assert result == [{"a": 1}]
+
+    def test_a_slow_async_read_raises_timeout_error(self, mocker):
+        import asyncio
+
+        server, sql = self._server(mocker)
+
+        async def slow(entry, **kwargs):
+            await asyncio.sleep(10)
+
+        sql._get_single_feature_vector_async = slow
+        mocker.patch.object(
+            VectorServer, "_single_lookup_arguments", return_value=False
+        )
+
+        def steps(*args, **kwargs):
+            return (yield {"pk": 1}, "sql", False, False, None)
+
+        mocker.patch.object(VectorServer, "_feature_vector_steps", steps)
+
+        with pytest.raises(TimeoutError):
+            asyncio.run(server._get_feature_vector_async(timeout=0.01))
+
+
+class TestRestProjectionEquivalence:
+    """Reading the response by position must return what reading it by name does.
+
+    The projection is a second way through the serving path, so what pins it is
+    not a hand-written expectation but the general path's own answer for the
+    same response.
+    """
+
+    def _features(self):
+        from hsfs import feature_group as fg_mod
+        from hsfs import training_dataset_feature as tdf_mod
+
+        def feature(name, type_="bigint", **flags):
+            feat = tdf_mod.TrainingDatasetFeature(
+                name=name, type=type_, label=flags.get("label", False)
+            )
+            feat.inference_helper_column = flags.get("inference_helper", False)
+            feat.training_helper_column = flags.get("training_helper", False)
+            feat._feature_group = fg_mod.FeatureGroup(
+                name="fg", version=1, featurestore_id=99, primary_key=[], id=11
+            )
+            return feat
+
+        return [
+            feature("id"),
+            feature("when", "date"),
+            feature("trainer", training_helper=True),
+            feature("amount", "double"),
+            feature("helper", inference_helper=True),
+            feature("target", label=True),
+        ]
+
+    def _server(self, mocker, response_rows, detailed_status=None):
+        from hsfs import feature_group as fg_mod
+        from hsfs import serving_key as sk_mod
+        from hsfs.core import online_store_rest_client_engine, vector_server
+
+        features = self._features()
+        server = vector_server.VectorServer(
+            feature_store_id=1,
+            features=features,
+            serving_keys=[
+                sk_mod.ServingKey(
+                    feature_name="id",
+                    join_index=0,
+                    feature_group=fg_mod.FeatureGroup(
+                        name="fg",
+                        version=1,
+                        featurestore_id=99,
+                        primary_key=["id"],
+                        id=11,
+                    ),
+                )
+            ],
+            feature_store_name="fs",
+            feature_view_name="fv",
+            feature_view_version=1,
+        )
+        server._rest_client_engine = (
+            online_store_rest_client_engine.OnlineStoreRestClientEngine(
+                feature_store_name="fs",
+                feature_view_name="fv",
+                feature_view_version=1,
+                features=features,
+            )
+        )
+        server._on_demand_feature_names = []
+        mocker.patch.object(
+            server, "_which_client_and_ensure_initialised", return_value="rest"
+        )
+
+        # Decoding rewrites the row in place, which a real response, freshly
+        # parsed per call, can afford. These fixtures are read twice.
+        def batch_body(*_args, **_kwargs):
+            body = {"features": deepcopy(response_rows)}
+            if detailed_status is not None:
+                body["detailedStatus"] = deepcopy(detailed_status)
+            return body
+
+        def single_body(*_args, **_kwargs):
+            body = {"features": deepcopy(response_rows[0])}
+            if detailed_status is not None:
+                body["detailedStatus"] = deepcopy(detailed_status[0])
+            return body
+
+        mocker.patch(
+            "hsfs.core.online_store_rest_client_api.OnlineStoreRestClientApi"
+            "._get_batch_raw_feature_vectors",
+            side_effect=batch_body,
+        )
+        mocker.patch(
+            "hsfs.core.online_store_rest_client_api.OnlineStoreRestClientApi"
+            "._get_single_raw_feature_vector",
+            side_effect=single_body,
+        )
+        return server
+
+    def _both_ways(self, mocker, call, **kwargs):
+        """The same call with the projection prepared, and with it refused."""
+        projected = call(self._server(mocker, **kwargs))
+        control_server = self._server(mocker, **kwargs)
+        mocker.patch.object(control_server, "_rest_row_projection", return_value=None)
+        return projected, call(control_server)
+
+    ROWS = [[1, "2026-03-04", 7, 2.5, 9], [2, "2026-03-05", 8, 3.5, 10]]
+    OK = [
+        [{"httpStatus": 200, "featureGroupId": 11}],
+        [{"httpStatus": 200, "featureGroupId": 11}],
+    ]
+
+    @pytest.mark.parametrize("allow_missing", [True, False])
+    def test_a_batch_reads_the_same_either_way(self, mocker, allow_missing):
+        def call(server):
+            return server._get_feature_vectors(
+                entries=[{"id": 1}, {"id": 2}],
+                vector_db_features=[],
+                return_type="list",
+                allow_missing=allow_missing,
+                transform=False,
+                on_demand_features=False,
+                force_rest_client=True,
+            )
+
+        projected, control = self._both_ways(
+            mocker, call, response_rows=self.ROWS, detailed_status=self.OK
+        )
+
+        assert projected == control
+        assert projected == [
+            [1, datetime(2026, 3, 4).date(), 2.5],
+            [2, datetime(2026, 3, 5).date(), 3.5],
+        ]
+
+    def test_a_single_vector_reads_the_same_either_way(self, mocker):
+        def call(server):
+            return server._get_feature_vector(
+                entry={"id": 1},
+                return_type="list",
+                allow_missing=False,
+                transform=False,
+                on_demand_features=False,
+                force_rest_client=True,
+            )
+
+        projected, control = self._both_ways(
+            mocker, call, response_rows=self.ROWS, detailed_status=self.OK
+        )
+
+        assert projected == control
+        assert projected == [1, datetime(2026, 3, 4).date(), 2.5]
+
+    def test_passed_features_send_the_batch_the_general_way(self, mocker):
+        """A supplied value has to be merged in, which needs the mapping."""
+
+        def call(server):
+            return server._get_feature_vectors(
+                entries=[{"id": 1}, {"id": 2}],
+                passed_features=[{"amount": 99.0}, {}],
+                vector_db_features=[],
+                return_type="list",
+                allow_missing=True,
+                transform=False,
+                on_demand_features=False,
+                force_rest_client=True,
+            )
+
+        projected, control = self._both_ways(
+            mocker, call, response_rows=self.ROWS, detailed_status=self.OK
+        )
+
+        assert projected == control
+        assert projected[0][2] == 99.0
+
+    def test_an_empty_passed_feature_per_entry_still_projects(self, mocker):
+        """A batch commonly carries one empty mapping per entry, supplying nothing."""
+
+        def call(server):
+            return server._get_feature_vectors(
+                entries=[{"id": 1}, {"id": 2}],
+                passed_features=[{}, {}],
+                vector_db_features=[],
+                return_type="list",
+                allow_missing=True,
+                transform=False,
+                on_demand_features=False,
+                force_rest_client=True,
+            )
+
+        server = self._server(mocker, response_rows=self.ROWS, detailed_status=self.OK)
+        spy = mocker.spy(server, "_assemble_feature_vector")
+
+        assert call(server) == [
+            [1, datetime(2026, 3, 4).date(), 2.5],
+            [2, datetime(2026, 3, 5).date(), 3.5],
+        ]
+        assert spy.call_count == 0
+
+    def test_a_failed_read_sends_the_whole_batch_the_general_way(self, mocker):
+        status = [
+            [{"httpStatus": 200, "featureGroupId": 11}],
+            [{"httpStatus": 500, "featureGroupId": 11}],
+        ]
+
+        def call(server):
+            return server._get_feature_vectors(
+                entries=[{"id": 1}, {"id": 2}],
+                vector_db_features=[],
+                return_type="list",
+                allow_missing=True,
+                transform=False,
+                on_demand_features=False,
+                force_rest_client=True,
+            )
+
+        projected, control = self._both_ways(
+            mocker, call, response_rows=self.ROWS, detailed_status=status
+        )
+
+        assert projected == control
+
+    def test_a_null_row_reads_the_same_either_way(self, mocker):
+        def call(server):
+            return server._get_feature_vectors(
+                entries=[{"id": 1}, {"id": 2}],
+                vector_db_features=[],
+                return_type="list",
+                allow_missing=False,
+                transform=False,
+                on_demand_features=False,
+                force_rest_client=True,
+            )
+
+        projected, control = self._both_ways(
+            mocker, call, response_rows=[None, self.ROWS[1]], detailed_status=self.OK
+        )
+
+        assert projected == control
+        assert projected == [[2, datetime(2026, 3, 5).date(), 3.5]]
+
+
+class TestDefaultCallsUseTheProjection:
+    """An ordinary call on a plain view reads by position.
+
+    `transform` and `on_demand_features` both default to true, and refusing the
+    projection whenever they were true excluded every call that did not opt out.
+    A view with no transformation functions has nothing to apply whichever way
+    the flags are set, and that is the common case.
+    """
+
+    def _server(self, mocker, *, handlers=None, mdts=(), odts=()):
+        from hsfs.core import vector_server
+
+        server = vector_server.VectorServer.__new__(vector_server.VectorServer)
+        server._rest_client_engine = mocker.Mock()
+        server._return_feature_value_handlers = handlers or {}
+        server._model_dependent_transformation_functions = list(mdts)
+        server._on_demand_transformation_functions = list(odts)
+        server._untransformed_feature_vector_col_name = ["a", "b"]
+        server._on_demand_feature_vector_col_name = ["a", "b"]
+        server._transformed_feature_vector_col_name = ["a", "b"]
+        server._VectorServer__rest_projections = {}
+        mocker.patch.object(
+            vector_server.VectorServer,
+            "_rest_row_projection",
+            return_value=(0, 1),
+        )
+        return server
+
+    def _ask(self, server, **overrides):
+        kwargs = {
+            "transform": True,
+            "on_demand_features": True,
+            "passed_features": None,
+            "vector_db_features": None,
+            "logging_meta_data": None,
+        }
+        kwargs.update(overrides)
+        return server._prepared_rest_projection(**kwargs)
+
+    def test_a_plain_view_projects_with_the_public_defaults(self, mocker):
+        assert self._ask(self._server(mocker)) == (0, 1)
+
+    def test_a_view_with_transformations_does_not(self, mocker):
+        server = self._server(mocker, mdts=[object()])
+
+        assert self._ask(server) is None
+
+    def test_transformations_that_are_not_asked_for_do_not_block_it(self, mocker):
+        """`transform=False` means they do not run, so they change nothing here."""
+        server = self._server(mocker, mdts=[object()])
+
+        assert self._ask(server, transform=False) == (0, 1)
+
+    def test_a_handler_for_a_returned_feature_blocks_it(self, mocker):
+        server = self._server(mocker, handlers={"a": lambda v: v})
+
+        assert self._ask(server) is None
+
+    def test_a_handler_for_a_feature_that_is_not_returned_does_not(self, mocker):
+        server = self._server(mocker, handlers={"elsewhere": lambda v: v})
+
+        assert self._ask(server) == (0, 1)
+
+
+class _FakePool:
+    """Stands in for the aiomysql pool, counting how many are open."""
+
+    open_pools: list = []
+
+    def __init__(self):
+        self.closed = False
+        _FakePool.open_pools.append(self)
+
+    def close(self):
+        self.closed = True
+        _FakePool.open_pools.remove(self)
+
+    async def wait_closed(self):
+        pass
+
+
+class TestSqlClientLifecycle:
+    """A server holds at most one online store pool, and a collected server holds none.
+
+    The client, its task thread and the close path are real; only the pool, the prepared statements and the connector lookup are faked.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _fake_online_store(self, mocker):
+        from hsfs.core import online_store_sql_engine
+
+        async def fake_pool(client, default_min_size):
+            return _FakePool()
+
+        def fake_statements(client, *args, **kwargs):
+            client._prepared_statements = {
+                online_store_sql_engine.OnlineStoreSqlClient.SINGLE_VECTOR_KEY: [None]
+            }
+
+        sql_client_class = online_store_sql_engine.OnlineStoreSqlClient
+        mocker.patch.object(sql_client_class, "_get_connection_pool", fake_pool)
+        mocker.patch.object(
+            sql_client_class, "_init_prepared_statements", fake_statements
+        )
+        mocker.patch.object(
+            online_store_sql_engine.storage_connector_api.StorageConnectorApi,
+            "_get_online_connector",
+        )
+        mocker.patch.object(
+            VectorServer, "serving_keys", new_callable=PropertyMock, return_value=set()
+        )
+        _FakePool.open_pools.clear()
+        yield
+        _FakePool.open_pools.clear()
+
+    def _server(self):
+        return VectorServer(feature_store_id=1, features=[])
+
+    def _setup(self, server, mocker):
+        server._setup_sql_client(
+            entity=mocker.MagicMock(), external=False, inference_helper_columns=False
+        )
+        assert server.sql_client._async_task_thread._ready.wait(5)
+
+    def _init_serving(self, server, mocker, init_sql_client):
+        entity = mocker.MagicMock()
+        entity.get_parent_feature_groups.return_value.accessible = [
+            SimpleNamespace(id=1, online_enabled=True)
+        ]
+        mocker.patch.object(server, "_init_transformation")
+        mocker.patch.object(server, "_set_return_feature_value_handlers")
+        mocker.patch.object(server, "_setup_rest_client_and_engine")
+        server._init_serving(
+            entity,
+            training_dataset_version=1,
+            external=False,
+            init_sql_client=init_sql_client,
+            init_rest_client=not init_sql_client,
+        )
+        if init_sql_client:
+            assert server.sql_client._async_task_thread._ready.wait(5)
+
+    def test_reinitialising_keeps_one_pool(self, mocker):
+        server = self._server()
+
+        for _ in range(6):
+            self._init_serving(server, mocker, init_sql_client=True)
+
+        assert len(_FakePool.open_pools) == 1
+        server._close()
+        assert _FakePool.open_pools == []
+
+    def test_a_reinit_failing_before_the_sql_setup_closes_the_old_pool(self, mocker):
+        server = self._server()
+        self._init_serving(server, mocker, init_sql_client=True)
+        mocker.patch.object(
+            server, "_set_default_client", side_effect=RuntimeError("bad options")
+        )
+
+        with pytest.raises(RuntimeError):
+            self._init_serving(server, mocker, init_sql_client=True)
+
+        assert _FakePool.open_pools == []
+        assert server.sql_client is None
+        assert not server._serving_initialized
+
+    def test_reinitialising_without_the_sql_client_closes_it(self, mocker):
+        server = self._server()
+        self._init_serving(server, mocker, init_sql_client=True)
+
+        self._init_serving(server, mocker, init_sql_client=False)
+
+        assert _FakePool.open_pools == []
+        assert server.sql_client is None
+        assert server._serving_initialized
+
+    def test_a_failed_setup_leaves_no_pool_open(self, mocker):
+        from hsfs.core import online_store_sql_engine
+
+        sql_client_class = online_store_sql_engine.OnlineStoreSqlClient
+        start = sql_client_class._init_async_mysql_connection
+
+        def start_then_fail(client, options=None):
+            start(client, options=options)
+            assert client._async_task_thread._ready.wait(5)
+            raise RuntimeError("setup failed after the pool opened")
+
+        server = self._server()
+        self._init_serving(server, mocker, init_sql_client=True)
+        mocker.patch.object(
+            sql_client_class, "_init_async_mysql_connection", start_then_fail
+        )
+
+        with pytest.raises(RuntimeError):
+            self._init_serving(server, mocker, init_sql_client=True)
+
+        assert _FakePool.open_pools == []
+        assert server.sql_client is None
+        assert not server._serving_initialized
+
+    def test_reinitialising_after_an_awaited_lookup_closes_the_loop_pool(self, mocker):
+        server = self._server()
+
+        async def main():
+            self._init_serving(server, mocker, init_sql_client=True)
+            await server.sql_client._loop_connection_pool()
+            assert len(_FakePool.open_pools) == 2
+
+            self._init_serving(server, mocker, init_sql_client=True)
+            # The old loop pool closes in a task on this loop.
+            await asyncio.sleep(0.1)
+            assert len(_FakePool.open_pools) == 1
+
+        asyncio.run(main())
+        server._close()
+        assert _FakePool.open_pools == []
+
+    def test_a_setup_failing_before_the_connection_keeps_its_error(self, mocker):
+        from hsfs.core import online_store_sql_engine
+
+        mocker.patch.object(
+            online_store_sql_engine.OnlineStoreSqlClient,
+            "_init_prepared_statements",
+            side_effect=RuntimeError("no prepared statements"),
+        )
+        server = self._server()
+
+        with pytest.raises(RuntimeError, match="no prepared statements"):
+            self._init_serving(server, mocker, init_sql_client=True)
+
+        assert server.sql_client is None
+
+    def test_a_collected_server_closes_its_pool(self, mocker):
+        import gc
+        import time
+
+        server = self._server()
+        self._setup(server, mocker)
+        thread = server.sql_client._async_task_thread
+
+        del server
+        gc.collect()
+
+        thread.join(timeout=5)
+        deadline = time.monotonic() + 5
+        while _FakePool.open_pools and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert _FakePool.open_pools == []
+        assert not thread.is_alive()
+
+    def test_a_dropped_feature_view_closes_its_pool(self, mocker):
+        """Nothing outside the feature view keeps its server alive once it is dropped."""
+        import gc
+        import time
+
+        from hsfs import feature_group, feature_view
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            time_travel_format="HUDI",
+        )
+        fv = feature_view.FeatureView(
+            name="fv", query=fg.select_all(), featurestore_id=99, labels=[]
+        )
+        self._setup(fv._vector_server, mocker)
+        thread = fv._vector_server.sql_client._async_task_thread
+
+        del fv
+        gc.collect()
+
+        thread.join(timeout=5)
+        deadline = time.monotonic() + 5
+        while _FakePool.open_pools and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert _FakePool.open_pools == []
+
+    def test_a_second_setup_closes_the_client_it_replaces(self, mocker):
+        server = self._server()
+        self._setup(server, mocker)
+        first = server.sql_client
+
+        self._setup(server, mocker)
+
+        assert server.sql_client is not first
+        assert len(_FakePool.open_pools) == 1
+        server._close()
+
+    def test_an_explicitly_closed_server_is_not_closed_again_when_collected(
+        self, mocker
+    ):
+        import gc
+
+        from hsfs.core import online_store_sql_engine
+
+        server = self._server()
+        self._setup(server, mocker)
+        server._close()
+        close = mocker.spy(online_store_sql_engine.OnlineStoreSqlClient, "_close")
+
+        del server
+        gc.collect()
+
+        close.assert_not_called()

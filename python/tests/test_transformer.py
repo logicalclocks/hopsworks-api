@@ -16,8 +16,7 @@
 
 import copy
 
-import pytest
-from hopsworks_common.constants import SCALING_CONFIG
+from hopsworks_common.constants import SCALING_CONFIG, Default
 from hsml import resources, transformer
 from hsml.constants import RESOURCES
 
@@ -195,6 +194,62 @@ class TestTransformer:
         assert t.resources.limits.memory == RESOURCES.MAX_MEMORY
         assert t.resources.limits.gpus == RESOURCES.GPUS
 
+    def test_constructor_default_scaling_configuration_marker(
+        self, mocker, backend_fixtures
+    ):
+        # A non-provided scaling configuration stays None so an in-place edit cannot be silently dropped; the backend synthesizes the mode-appropriate default.
+        # Arrange
+        self._mock_serving_variables(
+            mocker, SERVING_NUM_INSTANCES_NO_LIMIT, force_scale_to_zero=False
+        )
+        json = backend_fixtures["transformer"]["get_transformer_without_resources"][
+            "response"
+        ]
+
+        # Act
+        t = transformer.Transformer(
+            json["script_file"], resources=None, scaling_configuration=Default()
+        )
+
+        # Assert
+        assert t.scaling_configuration is None
+        assert "scaleMetric" not in t.to_dict()
+        assert "minInstances" not in t.to_dict()
+
+    def test_resolve_default_num_instances_standard_mode_needs_one(self, mocker):
+        # A defaulted instance count assumes Knative mode (scale-to-zero) until the owning predictor resolves the mode; Standard mode lifts it to one instance.
+        # Arrange
+        self._mock_serving_variables(
+            mocker, SERVING_NUM_INSTANCES_NO_LIMIT, force_scale_to_zero=True
+        )
+        t = transformer.Transformer(script_file="t.py")
+        assert t.resources.num_instances == 0
+
+        # Act
+        t._resolve_default_num_instances(effective_knative_mode=False)
+
+        # Assert
+        assert t.resources.num_instances == 1
+
+        # Act: resolving back to Knative mode restores the scale-to-zero default
+        t._resolve_default_num_instances(effective_knative_mode=True)
+
+        # Assert
+        assert t.resources.num_instances == 0
+
+    def test_resolve_default_num_instances_keeps_explicit_value(self, mocker):
+        # Arrange
+        self._mock_serving_variables(
+            mocker, SERVING_NUM_INSTANCES_NO_LIMIT, force_scale_to_zero=True
+        )
+        t = transformer.Transformer(script_file="t.py", resources={"num_instances": 0})
+
+        # Act
+        t._resolve_default_num_instances(effective_knative_mode=False)
+
+        # Assert: an explicit zero is left for the backend to reject loudly
+        assert t.resources.num_instances == 0
+
     # validate resources
 
     def test_validate_resources_none(self):
@@ -231,6 +286,8 @@ class TestTransformer:
         assert res == tr
 
     def test_validate_resources_num_instances_one_with_scale_to_zero(self, mocker):
+        # The cluster's scale-to-zero requirement only applies to Knative mode deployments and the transformer cannot know the mode at construction.
+        # One instance must be accepted client-side (standard mode requires it) and the backend validates mode-aware.
         # Arrange
         self._mock_serving_variables(
             mocker, SERVING_NUM_INSTANCES_NO_LIMIT, force_scale_to_zero=True
@@ -238,11 +295,22 @@ class TestTransformer:
         tr = resources.TransformerResources(num_instances=1)
 
         # Act
-        with pytest.raises(ValueError) as e_info:
-            _ = transformer.Transformer._validate_resources(tr)
+        res = transformer.Transformer._validate_resources(tr)
 
         # Assert
-        assert "Scale-to-zero is required" in str(e_info.value)
+        assert res == tr
+
+    def test_init_num_instances_one_with_scale_to_zero_constructs(self, mocker):
+        # Arrange
+        self._mock_serving_variables(
+            mocker, SERVING_NUM_INSTANCES_NO_LIMIT, force_scale_to_zero=True
+        )
+
+        # Act
+        t = transformer.Transformer(script_file="t.py", resources={"num_instances": 1})
+
+        # Assert
+        assert t.resources.num_instances == 1
 
     # default num instances
 
@@ -308,7 +376,7 @@ class TestTransformer:
         json_copy = copy.deepcopy(json)
 
         # Act
-        sf, rc, sc, ev = transformer.Transformer.extract_fields_from_json(json_copy)
+        sf, rc, sc, ev, _ = transformer.Transformer.extract_fields_from_json(json_copy)
 
         # env_vars not present in this fixture
         assert ev is None
@@ -351,13 +419,8 @@ class TestTransformer:
         # Assert
         assert t.script_file == script_file
 
-        assert t.scaling_configuration is not None
-        assert isinstance(t.scaling_configuration, transformer.TransformerScalingConfig)
-        assert t.scaling_configuration.min_instances == 0
-        assert (
-            t.scaling_configuration.scale_metric.value
-            == SCALING_CONFIG.SCALE_METRIC_CONCURRENCY
-        )
+        # A non-provided scaling config stays None: a local default object would invite in-place edits that are silently never serialized, and the backend synthesizes the mode-appropriate default.
+        assert t.scaling_configuration is None
 
     # env vars
 
@@ -420,6 +483,69 @@ class TestTransformer:
         # Assert
         assert "transformerEnvVars" not in d
 
+    def test_to_dict_defaulted_scaling_config_omitted(self, mocker):
+        # Only explicitly provided configs are stored and serialized; the backend synthesizes the mode-appropriate default when the key is absent.
+        # Arrange
+        self._mock_serving_variables(
+            mocker, SERVING_NUM_INSTANCES_NO_LIMIT, force_scale_to_zero=False
+        )
+        t = transformer.Transformer(script_file="t.py", resources=None)
+
+        # Act
+        d = t.to_dict()
+
+        # Assert
+        assert t.scaling_configuration is None
+        assert "transformerScalingConfig" not in d
+
+    def test_to_dict_provided_scaling_config_serialized(self, mocker):
+        # Arrange
+        self._mock_serving_variables(
+            mocker, SERVING_NUM_INSTANCES_NO_LIMIT, force_scale_to_zero=False
+        )
+        t = transformer.Transformer(
+            script_file="t.py",
+            resources=None,
+            scaling_configuration={"min_instances": 2},
+        )
+
+        # Act
+        d = t.to_dict()
+
+        # Assert
+        assert "transformerScalingConfig" in d
+        assert d["transformerScalingConfig"]["minInstances"] == 2
+
+    def test_scaling_config_setter_accepts_dict(self, mocker):
+        # Arrange
+        self._mock_serving_variables(
+            mocker, SERVING_NUM_INSTANCES_NO_LIMIT, force_scale_to_zero=False
+        )
+        t = transformer.Transformer(script_file="t.py", resources=None)
+        t.scaling_configuration = {"min_instances": 4}
+
+        # Act
+        d = t.to_dict()
+
+        # Assert
+        assert isinstance(t.scaling_configuration, transformer.TransformerScalingConfig)
+        assert d["transformerScalingConfig"]["minInstances"] == 4
+
+    def test_to_dict_scaling_config_set_after_construction_serialized(self, mocker):
+        # Arrange
+        self._mock_serving_variables(
+            mocker, SERVING_NUM_INSTANCES_NO_LIMIT, force_scale_to_zero=False
+        )
+        t = transformer.Transformer(script_file="t.py", resources=None)
+        t.scaling_configuration = transformer.TransformerScalingConfig(min_instances=3)
+
+        # Act
+        d = t.to_dict()
+
+        # Assert
+        assert "transformerScalingConfig" in d
+        assert d["transformerScalingConfig"]["minInstances"] == 3
+
     def test_extract_fields_from_json_env_vars(self, mocker, backend_fixtures):
         # Arrange
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
@@ -431,7 +557,7 @@ class TestTransformer:
         json["transformer_env_vars"] = ["FOO=bar"]
 
         # Act
-        sf, rc, sc, ev = transformer.Transformer.extract_fields_from_json(json)
+        sf, rc, sc, ev, _ = transformer.Transformer.extract_fields_from_json(json)
 
         # Assert
         assert ev == {"FOO": "bar"}
@@ -506,9 +632,56 @@ class TestTransformer:
             "transformer_env_vars"
         ]
 
-        _, _, _, ev = transformer.Transformer.extract_fields_from_json(wire)
+        _, _, _, ev, _ = transformer.Transformer.extract_fields_from_json(wire)
 
         assert ev == {"TR_FOO": "bar", "TR_K": "V=with=eq"}
+
+    def test_environment_wire_round_trip(self, mocker, backend_fixtures):
+        import humps
+
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        t = transformer.Transformer(
+            script_file="t.py", resources=None, environment="my-inference-pipeline"
+        )
+        assert t.to_dict()["transformerEnvironment"] == {
+            "name": "my-inference-pipeline"
+        }
+
+        wire = copy.deepcopy(
+            backend_fixtures["transformer"]["get_deployment_with_transformer"][
+                "response"
+            ]
+        )
+        wire["transformer_environment"] = humps.decamelize(t.to_dict())[
+            "transformer_environment"
+        ]
+
+        _, _, _, _, env = transformer.Transformer.extract_fields_from_json(wire)
+
+        assert env == "my-inference-pipeline"
+
+    def test_environment_absent_on_legacy_backend(self, mocker, backend_fixtures):
+        # A backend that predates per-component environments sends no
+        # transformer_environment at all; the transformer ran the deployment-wide
+        # one, which is reported as the predictor's.
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        wire = copy.deepcopy(
+            backend_fixtures["transformer"]["get_deployment_with_transformer"][
+                "response"
+            ]
+        )
+        wire.pop("transformer_environment", None)
+
+        _, _, _, _, env = transformer.Transformer.extract_fields_from_json(wire)
+
+        assert env is None
+
+    def test_environment_omitted_from_wire_when_unset(self, mocker):
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        t = transformer.Transformer(script_file="t.py", resources=None)
+
+        assert t.environment is None
+        assert "transformerEnvironment" not in t.to_dict()
 
     # auxiliary methods
     def _mock_serving_variables(self, mocker, num_instances, force_scale_to_zero=False):

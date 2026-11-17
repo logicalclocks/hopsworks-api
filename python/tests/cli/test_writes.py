@@ -8,12 +8,15 @@ test.
 
 from __future__ import annotations
 
+import inspect
 import json
+from datetime import datetime
 from unittest import mock
 
 import pytest
 from click.testing import CliRunner
 from hopsworks.cli.main import cli
+from hsfs.feature_view import FeatureView
 
 
 # --- fg delete ------------------------------------------------------------
@@ -108,11 +111,15 @@ def test_fg_append_features_rejects_bad_spec(mock_project):
 def test_fg_keywords_table(mock_project):
     fs = mock_project.get_feature_store.return_value
     fg = mock.MagicMock()
-    fg.get_tags.return_value = {"prod": mock.Mock(value="true")}
+    fg.get_keywords_metadata.return_value = {"prod": datetime(2026, 3, 4, 5, 6, 7)}
     fs.get_feature_group.return_value = fg
     result = CliRunner().invoke(cli, ["fg", "keywords", "txn"])
     assert result.exit_code == 0, result.output
     assert "prod" in result.output
+    assert "2026-03-04" in result.output
+    # The semantics notice has to be visible, which is why it goes to stderr
+    # rather than through the warnings module.
+    assert "moved to 'hops fg tags/add-tag/remove-tag'" in result.output
 
 
 def test_fg_add_keyword(mock_project):
@@ -121,7 +128,21 @@ def test_fg_add_keyword(mock_project):
     fs.get_feature_group.return_value = fg
     result = CliRunner().invoke(cli, ["fg", "add-keyword", "txn", "prod"])
     assert result.exit_code == 0, result.output
-    fg.add_tag.assert_called_with(name="prod", value="true")
+    fg.add_keywords.assert_called_with(["prod"])
+    fg.add_tag.assert_not_called()
+
+
+def test_fg_add_keyword_value_is_retired(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fg = mock.MagicMock()
+    fs.get_feature_group.return_value = fg
+    result = CliRunner().invoke(
+        cli, ["fg", "add-keyword", "txn", "prod", "--value", "true"]
+    )
+    assert result.exit_code != 0
+    assert "hops fg add-tag txn prod" in result.output
+    fg.add_keywords.assert_not_called()
+    fg.add_tag.assert_not_called()
 
 
 def test_fg_remove_keyword(mock_project):
@@ -130,7 +151,43 @@ def test_fg_remove_keyword(mock_project):
     fs.get_feature_group.return_value = fg
     result = CliRunner().invoke(cli, ["fg", "remove-keyword", "txn", "prod"])
     assert result.exit_code == 0, result.output
-    fg.delete_tag.assert_called_with("prod")
+    fg.delete_keyword.assert_called_with("prod")
+    fg.delete_tag.assert_not_called()
+
+
+# --- fg tags / add-tag / remove-tag ---------------------------------------
+
+
+def test_fg_tags_table(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fg = mock.MagicMock()
+    fg.get_tags_metadata.return_value = {
+        "owner": {"value": {"team": "risk"}, "createdOn": datetime(2026, 3, 4)}
+    }
+    fs.get_feature_group.return_value = fg
+    result = CliRunner().invoke(cli, ["fg", "tags", "txn"])
+    assert result.exit_code == 0, result.output
+    assert "owner" in result.output
+
+
+def test_fg_add_tag_parses_json_value(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fg = mock.MagicMock()
+    fs.get_feature_group.return_value = fg
+    result = CliRunner().invoke(
+        cli, ["fg", "add-tag", "txn", "owner", "--value", '{"team": "risk"}']
+    )
+    assert result.exit_code == 0, result.output
+    fg.add_tag.assert_called_with(name="owner", value={"team": "risk"})
+
+
+def test_fg_remove_tag(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fg = mock.MagicMock()
+    fs.get_feature_group.return_value = fg
+    result = CliRunner().invoke(cli, ["fg", "remove-tag", "txn", "owner"])
+    assert result.exit_code == 0, result.output
+    fg.delete_tag.assert_called_with("owner")
 
 
 # --- fg stats --------------------------------------------------------------
@@ -273,6 +330,33 @@ def test_td_compute_with_split(mock_project):
     )
     assert result.exit_code == 0, result.output
     fv.create_train_test_split.assert_called_once()
+    # The method raises on a keyword it does not declare.
+    declared = inspect.signature(FeatureView.create_train_test_split).parameters
+    assert set(fv.create_train_test_split.call_args.kwargs) <= set(declared) - {
+        "kwargs"
+    }
+
+
+def test_td_compute_with_split_refuses_a_time_window(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fv = mock.MagicMock()
+    fs.get_feature_view.return_value = fv
+    result = CliRunner().invoke(
+        cli,
+        [
+            "td",
+            "compute",
+            "enriched",
+            "1",
+            "--split",
+            "train:0.8,test:0.2",
+            "--start-time",
+            "2024-01-01",
+        ],
+    )
+    assert result.exit_code == 2, result.output
+    assert "cannot be used with --split" in result.output
+    fv.create_train_test_split.assert_not_called()
 
 
 # --- model register --------------------------------------------------------

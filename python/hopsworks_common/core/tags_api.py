@@ -16,7 +16,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
 from hopsworks_apigen import also_available_as
@@ -64,7 +63,7 @@ class TagsApi:
             name
         ]
         headers = {"content-type": "application/json"}
-        json_value = json.dumps(value)
+        json_value = tag.Tag._encode(value)
         _client._send_request("PUT", path_params, headers=headers, data=json_value)
 
     @usage._method_logger
@@ -120,6 +119,39 @@ class TagsApi:
         return {
             tag._name: tag._value
             for tag in tag.Tag.from_response_json(
+                _client._send_request("GET", path_params)
+            )
+        }
+
+    @usage._method_logger
+    @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
+    def _get_metadata(
+        self,
+        metadata_instance: TrainingDataset | FeatureGroup,
+        name: str | None = None,
+        training_dataset_version=None,
+    ) -> dict[str, tag.Tag]:
+        """Get the tags of a training dataset or feature group as Tag objects.
+
+        Unlike `_get`, keeps the `Tag` objects so callers can read metadata such as `created_on`.
+
+        Parameters:
+            metadata_instance: Metadata object of the instance to get the tags for.
+            name: Tag name.
+            training_dataset_version: Version of the training dataset.
+
+        Returns:
+            Dict of tag name to Tag object.
+        """
+        _client = client._get_instance()
+        path_params = self._get_path(metadata_instance, training_dataset_version)
+
+        if name is not None:
+            path_params.append(name)
+
+        return {
+            t._name: t
+            for t in tag.Tag.from_response_json(
                 _client._send_request("GET", path_params)
             )
         }

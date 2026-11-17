@@ -67,13 +67,18 @@ public class OnlineIngestion extends RestDto<OnlineIngestion> {
     this.featureGroup = onlineIngestion.featureGroup;
   }
 
+  /**
+   * Blocks until every entry of this ingestion is ingested or {@code timeout} seconds have passed.
+   * A {@code timeout} of 0 waits until every entry is ingested; an ingestion without an entry count cannot tell
+   * when that is, so with 0 its wait does not end on its own, and it logs a warning when it starts.
+   */
   public void waitForCompletion(int timeout, int period)
       throws InterruptedException, FeatureStoreException, IOException {
     long startTime = System.currentTimeMillis();
-
-    // Convert to milliseconds
-    timeout = timeout * 1000;
-    period = period * 1000;
+    if (timeout == 0 && numEntries == null) {
+      LOGGER.warn("Online ingestion " + id + " has no entry count, so its completion cannot be detected; "
+          + "with a timeout of 0 this wait does not end on its own.");
+    }
 
     while (true) {
       // Get total number of rows processed
@@ -85,14 +90,14 @@ public class OnlineIngestion extends RestDto<OnlineIngestion> {
       }
 
       // Check if the timeout has been reached (if timeout is 0 we will wait indefinitely)
-      if (timeout != 0 && System.currentTimeMillis() - startTime > timeout) {
+      if (timeout != 0 && System.currentTimeMillis() - startTime > timeout * 1000L) {
         LOGGER.warn("Timeout of " + timeout
-            + " was exceeded while waiting for online ingestion completion.");
+            + " seconds was exceeded while waiting for online ingestion completion.");
         break;
       }
-      
+
       // Sleep for the specified period in seconds
-      Thread.sleep(period);
+      Thread.sleep(period * 1000L);
 
       refresh();
     }

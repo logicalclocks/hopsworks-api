@@ -14,7 +14,6 @@
 #   limitations under the License.
 #
 
-import humps
 from hsml.constants import MODEL
 from hsml.model import Model
 
@@ -70,11 +69,5 @@ class Model(Model):
         )
 
     def update_from_response_json(self, json_dict):
-        json_decamelized = humps.decamelize(json_dict)
-        json_decamelized.pop("framework")
-        if "type" in json_decamelized:  # backwards compatibility
-            _ = json_decamelized.pop("type")
-        if "tags" in json_decamelized:
-            _ = json_decamelized.pop("tags")
-        self.__init__(**json_decamelized)
+        self.__init__(**self._response_kwargs(json_dict, "framework"))
         return self

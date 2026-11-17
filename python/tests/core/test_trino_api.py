@@ -524,6 +524,31 @@ class TestTrinoApi:
         assert connect_args["isolation_level"] == IsolationLevel.READ_COMMITTED
         assert connect_args["timezone"] == "UTC"
 
+    def test_connect_passes_the_callers_extra_credential_through(
+        self, mocker, trino_api
+    ):
+        mocker.patch(
+            "hopsworks_common.core.trino_api.client._is_external", return_value=False
+        )
+        mock_client = Mock()
+        mock_client._get_ca_chain_path.return_value = "/tmp/ca.pem"
+        mocker.patch(
+            "hopsworks_common.core.trino_api.client._get_instance",
+            return_value=mock_client,
+        )
+        mock_trino_connect = mocker.patch(
+            "hopsworks_common.core.trino_api._trino_connect"
+        )
+
+        trino_api.connect(catalog="iceberg")
+        trino_api.connect(extra_credential=[("custom", "x")])
+
+        mock_client._send_request.assert_not_called()
+        assert "extra_credential" not in mock_trino_connect.call_args_list[0].kwargs
+        assert mock_trino_connect.call_args_list[1].kwargs["extra_credential"] == [
+            ("custom", "x")
+        ]
+
     def test_has_trino_when_installed(self):
         """Test that HAS_TRINO is True when trino package is installed."""
         # Arrange & Act

@@ -131,3 +131,42 @@ class TestExecutionPerTable:
         ex._execution_api._get_pod_logs.assert_called_once_with(
             "crm_ingestion", 5, 2, 50, None
         )
+
+    def test_rerun_relaunches_in_place_and_refreshes_the_execution(self, mocker):
+        mock_api = mocker.patch(
+            "hopsworks_common.core.execution_api.ExecutionApi._rerun",
+            return_value={
+                "id": 33,
+                "state": "INITIALIZING",
+                "finalStatus": "UNDEFINED",
+                "submissionTime": "2026-09-09T00:00:00Z",
+                "args": "-start_time 2026-09-09T00:00:00Z",
+                "rerunCount": 1,
+            },
+        )
+        job = mock.Mock()
+        job.name = "daily"
+        ex = Execution(
+            id=33,
+            state="FAILED",
+            final_status="FAILED",
+            submission_time="2026-09-09T00:00:00Z",
+            args="-start_time 2026-09-09T00:00:00Z",
+            job=job,
+        )
+
+        ex.rerun()
+
+        mock_api.assert_called_once_with("daily", 33)
+        assert ex.id == 33
+        assert ex.state == "INITIALIZING"
+        assert ex.final_status == "UNDEFINED"
+        assert ex.submission_time == "2026-09-09T00:00:00Z"
+        assert ex.rerun_count == 1
+        # The refresh must not detach the execution from its job.
+        assert ex.job_name == "daily"
+
+    def test_rerun_count_defaults_to_zero_for_older_backends(self):
+        ex = Execution(id=1, state="FAILED", job=mock.Mock())
+
+        assert ex.rerun_count == 0

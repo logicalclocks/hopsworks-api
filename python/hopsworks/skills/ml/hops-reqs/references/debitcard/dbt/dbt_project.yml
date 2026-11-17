@@ -1,0 +1,14 @@
+name: card_fraud
+version: 1.0.0
+config-version: 2
+
+profile: card_fraud
+model-paths: ["models"]
+macro-paths: ["macros"]
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  card_fraud:
+    # batch_features.py streams each model's compiled SQL from Trino into its feature group.
+    +materialized: ephemeral
+    +on_schema_change: fail

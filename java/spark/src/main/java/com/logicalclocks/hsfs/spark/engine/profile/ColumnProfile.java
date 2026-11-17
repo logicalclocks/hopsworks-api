@@ -34,11 +34,13 @@ class ColumnProfile {
   private final double completeness;
   private final long numRecordsNonNull;
   private final long numRecordsNull;
-  private final double distinctness;
-  private final double entropy;
-  private final double uniqueness;
+  // uniqueness-family stats are null when exactUniqueness is disabled, so the
+  // serializer omits their keys and consumers deserialize them as absent
+  private final Double distinctness;
+  private final Double entropy;
+  private final Double uniqueness;
   private final long approximateNumDistinctValues;
-  private final long exactNumDistinctValues;
+  private final Long exactNumDistinctValues;
 
   private final Double mean;
   private final Double maximum;
@@ -97,15 +99,15 @@ class ColumnProfile {
     return numRecordsNull;
   }
 
-  double getDistinctness() {
+  Double getDistinctness() {
     return distinctness;
   }
 
-  double getEntropy() {
+  Double getEntropy() {
     return entropy;
   }
 
-  double getUniqueness() {
+  Double getUniqueness() {
     return uniqueness;
   }
 
@@ -113,7 +115,7 @@ class ColumnProfile {
     return approximateNumDistinctValues;
   }
 
-  long getExactNumDistinctValues() {
+  Long getExactNumDistinctValues() {
     return exactNumDistinctValues;
   }
 
@@ -160,11 +162,11 @@ class ColumnProfile {
     private double completeness;
     private long numRecordsNonNull;
     private long numRecordsNull;
-    private double distinctness;
-    private double entropy;
-    private double uniqueness;
+    private Double distinctness;
+    private Double entropy;
+    private Double uniqueness;
     private long approximateNumDistinctValues;
-    private long exactNumDistinctValues;
+    private Long exactNumDistinctValues;
     private Double mean;
     private Double maximum;
     private Double minimum;
@@ -200,17 +202,17 @@ class ColumnProfile {
       return this;
     }
 
-    Builder distinctness(double value) {
+    Builder distinctness(Double value) {
       this.distinctness = value;
       return this;
     }
 
-    Builder entropy(double value) {
+    Builder entropy(Double value) {
       this.entropy = value;
       return this;
     }
 
-    Builder uniqueness(double value) {
+    Builder uniqueness(Double value) {
       this.uniqueness = value;
       return this;
     }
@@ -220,7 +222,7 @@ class ColumnProfile {
       return this;
     }
 
-    Builder exactNumDistinctValues(long value) {
+    Builder exactNumDistinctValues(Long value) {
       this.exactNumDistinctValues = value;
       return this;
     }

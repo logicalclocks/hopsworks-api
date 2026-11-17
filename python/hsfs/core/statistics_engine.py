@@ -94,7 +94,9 @@ class StatisticsEngine:
             stats_str = self._profile_statistics_with_config(
                 feature_dataframe, metadata_instance.statistics_config
             )
-            desc_stats = self._parse_deequ_statistics(stats_str)
+            desc_stats = self._parse_deequ_statistics(
+                stats_str, metadata_instance.statistics_config.exact_uniqueness
+            )
             if desc_stats:
                 stats = statistics.Statistics(
                     computation_time=computation_time,
@@ -112,9 +114,12 @@ class StatisticsEngine:
         metadata_instance: feature_group.FeatureGroup
         | training_dataset.TrainingDataset,
         feature_dataframe: TypeVar("pyspark.sql.DataFrame") | pd.DataFrame,
-        window_start_commit_time: int,
-        window_end_commit_time: int,
-        row_percentage: float,
+        window_start_commit_time: int | None = None,
+        window_end_commit_time: int | None = None,
+        window_start_event_time: int | None = None,
+        window_end_event_time: int | None = None,
+        event_time: str | None = None,
+        row_percentage: float = 1.0,
         feature_name: str | list[str] | None = None,
         *,
         histograms: bool = False,
@@ -125,11 +130,17 @@ class StatisticsEngine:
     ) -> statistics.Statistics:
         """Compute statistics for one or more features and send the result to Hopsworks.
 
+        Callers pass either the commit-time bounds or the event-time bounds and
+        `event_time`, never both.
+
         Parameters:
             metadata_instance: Metadata of the entity containing the data.
             feature_dataframe: Spark or Pandas DataFrame to compute the statistics on.
             window_start_commit_time: Window start commit time
             window_end_commit_time: Window end commit time
+            window_start_event_time: Window start event time
+            window_end_event_time: Window end event time
+            event_time: Name of the feature the window is sliced by
             row_percentage: Percentage of rows to include.
             feature_name: Feature name or list of names to compute the statistics on. If not set, statistics are computed on all features.
             histograms: Whether to compute histograms.
@@ -150,7 +161,32 @@ class StatisticsEngine:
             feature_names = feature_name
 
         if engine._get_type() == "spark":
+            has_commit_bounds = (
+                window_start_commit_time is not None
+                or window_end_commit_time is not None
+            )
+            has_event_bounds = (
+                window_start_event_time is not None or window_end_event_time is not None
+            )
+            if has_commit_bounds and (has_event_bounds or event_time is not None):
+                raise ValueError(
+                    "Commit-time and event-time window bounds cannot be combined when registering statistics."
+                )
+            if (event_time is None) != (window_end_event_time is None):
+                raise ValueError(
+                    "Event-time statistics need both the event-time feature name and the window end bound."
+                )
             commit_time = int(float(datetime.now().timestamp()) * 1000)
+            window_start = (
+                window_start_event_time
+                if event_time is not None
+                else window_start_commit_time
+            )
+            window_end = (
+                window_end_event_time
+                if event_time is not None
+                else window_end_commit_time
+            )
 
             if self._is_dataframe_empty(feature_dataframe):
                 entity_name = getattr(
@@ -160,8 +196,8 @@ class StatisticsEngine:
                     "Monitoring statistics registration skipped for entity '%s': "
                     "no data in window [%s, %s] for features %s.",
                     entity_name,
-                    window_start_commit_time,
-                    window_end_commit_time,
+                    window_start,
+                    window_end,
                     feature_names,
                 )
                 empty_fds = [
@@ -174,6 +210,9 @@ class StatisticsEngine:
                     feature_descriptive_statistics=empty_fds,
                     window_start_commit_time=window_start_commit_time,
                     window_end_commit_time=window_end_commit_time,
+                    window_start_event_time=window_start_event_time,
+                    window_end_event_time=window_end_event_time,
+                    event_time=event_time,
                 )
 
             stats_str = self._profile_statistics(
@@ -185,7 +224,7 @@ class StatisticsEngine:
                 kll=kll,
                 histogram_bins=histogram_bins,
             )
-            desc_stats = self._parse_deequ_statistics(stats_str)
+            desc_stats = self._parse_deequ_statistics(stats_str, exact_uniqueness)
 
             stats = statistics.Statistics(
                 computation_time=commit_time,
@@ -193,6 +232,9 @@ class StatisticsEngine:
                 feature_descriptive_statistics=desc_stats,
                 window_end_commit_time=window_end_commit_time,
                 window_start_commit_time=window_start_commit_time,
+                window_start_event_time=window_start_event_time,
+                window_end_event_time=window_end_event_time,
+                event_time=event_time,
             )
             return self._save_statistics(stats, metadata_instance, None)
         # TODO: Only compute statistics with Spark at the moment. This method is expected to be called
@@ -298,7 +340,9 @@ class StatisticsEngine:
                 ),
                 td_metadata_instance.statistics_config,
             )
-            desc_stats = self._parse_deequ_statistics(stats_str)
+            desc_stats = self._parse_deequ_statistics(
+                stats_str, td_metadata_instance.statistics_config.exact_uniqueness
+            )
             statistics_of_splits.append(
                 split_statistics.SplitStatistics(
                     name=split_name,
@@ -365,7 +409,8 @@ class StatisticsEngine:
         stats_str = self._profile_transformation_fn_statistics(
             feature_dataframe, columns, label_encoder_features
         )
-        desc_stats = self._parse_deequ_statistics(stats_str)
+        # _profile_transformation_fn_statistics profiles with exact_uniqueness=False
+        desc_stats = self._parse_deequ_statistics(stats_str, False)
         return statistics.Statistics(
             computation_time=computation_time,
             feature_descriptive_statistics=desc_stats,
@@ -476,27 +521,49 @@ class StatisticsEngine:
         metadata_instance,
         start_commit_time: str | int | datetime | date | None = None,
         end_commit_time: str | int | datetime | date | None = None,
+        start_event_time: str | int | datetime | date | None = None,
+        end_event_time: str | int | datetime | date | None = None,
+        event_time: str | None = None,
         feature_names: list[str] | None = None,
         row_percentage: float | None = None,
     ) -> statistics.Statistics | None:
-        """Get the statistics of an entity based on a commit time window.
+        """Get the statistics of an entity based on a commit or event time window.
+
+        Callers pass either the commit-time bounds or the event-time bounds and
+        `event_time`, never both.
 
         Parameters:
             metadata_instance: Metadata of the entity containing the data.
             start_commit_time: Window start commit time
             end_commit_time: Window end commit time
+            start_event_time: Window start event time
+            end_event_time: Window end event time
+            event_time: Name of the feature the window is sliced by
             feature_names: List of feature names of which statistics are retrieved.
             row_percentage: Percentage of feature values used during statistics computation
 
         Returns:
             Statistics metadata containing a list of single feature descriptive statistics.
         """
+        if (start_commit_time is not None or end_commit_time is not None) and (
+            start_event_time is not None
+            or end_event_time is not None
+            or event_time is not None
+        ):
+            raise ValueError(
+                "Commit-time and event-time window bounds cannot be combined in one statistics lookup."
+            )
         start_commit_time = util._convert_event_time_to_timestamp(start_commit_time)
         end_commit_time = util._convert_event_time_to_timestamp(end_commit_time)
+        start_event_time = util._convert_event_time_to_timestamp(start_event_time)
+        end_event_time = util._convert_event_time_to_timestamp(end_event_time)
         return self._statistics_api._get(
             metadata_instance,
             start_commit_time=start_commit_time,
             end_commit_time=end_commit_time,
+            start_event_time=start_event_time,
+            end_event_time=end_event_time,
+            event_time=event_time,
             feature_names=feature_names,
             row_percentage=row_percentage,
         )
@@ -600,7 +667,9 @@ class StatisticsEngine:
             )
         return stats
 
-    def _parse_deequ_statistics(self, stats) -> list[FeatureDescriptiveStatistics]:
+    def _parse_deequ_statistics(
+        self, stats, exact_uniqueness: bool
+    ) -> list[FeatureDescriptiveStatistics] | None:
         if stats is None:
             warnings.warn(
                 "There is no Deequ statistics to deserialize. A possible cause might be that Deequ did not succeed in the statistics computation.",
@@ -610,6 +679,18 @@ class StatisticsEngine:
             return None
         if isinstance(stats, str):
             stats = json.loads(stats)
+        if not exact_uniqueness:
+            # The JVM deequ profiler emits uniqueness-family metrics even when
+            # the Uniqueness analyzer was not requested; drop them so they stay
+            # None instead of a spurious 0.0.
+            for col_stats in stats["columns"]:
+                for key in (
+                    "uniqueness",
+                    "distinctness",
+                    "entropy",
+                    "exactNumDistinctValues",
+                ):
+                    col_stats.pop(key, None)
         return [
             FeatureDescriptiveStatistics._from_deequ_json(col_stats)
             for col_stats in stats["columns"]

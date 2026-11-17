@@ -1,0 +1,9 @@
+# Installed into both <slug>-jobs-env (a clone of python-feature-pipeline, for
+# the feature and training jobs) and <slug>-inference-env (a clone of
+# minimal-inference-pipeline, for the deployment), so the towers and the ranker
+# are trained and served by the same versions. Both bases ship pandas, numpy and
+# the Hopsworks client with polars. Nothing here uses a GPU, so torch is the CPU
+# build: a fraction of the CUDA wheels the torch bases carry.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.14.1+cpu
+catboost==1.2.10

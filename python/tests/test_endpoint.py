@@ -20,7 +20,10 @@ import pytest
 from hsml import resources
 from hsml.constants import PREDICTOR
 from hsml.python.endpoint import Endpoint
-from hsml.scaling_config import PredictorScalingConfig, TransformerScalingConfig
+from hsml.scaling_config import (
+    PredictorScalingConfig,
+    TransformerScalingConfig,
+)
 
 
 SERVING_NUM_INSTANCES_NO_LIMIT = [-1]
@@ -69,9 +72,9 @@ class TestEndpoint:
 
         assert e.scaling_configuration is not None
         assert isinstance(e.scaling_configuration, PredictorScalingConfig)
-        assert (
-            e.scaling_configuration.scale_metric.value == "CONCURRENCY"
-        )  # the default
+        # No mode given: Standard mode, whose metric the backend defaults (CPU
+        # under KEDA or the HPA), so the client sends none.
+        assert e.scaling_configuration.scale_metric is None
 
     def test_constructor_with_all_parameters(self, mocker, backend_fixtures):
         # Arrange
@@ -101,7 +104,7 @@ class TestEndpoint:
             version=p_json["version"],
             serving_tool=p_json["serving_tool"],
             api_protocol=p_json["api_protocol"],
-            environment=p_json["environment_dto"]["name"],
+            environment=p_json["predictor_environment"]["name"],
             config_file=p_json["config_file"],
             resources=p_json["predictor_resources"],
             transformer={
@@ -127,7 +130,7 @@ class TestEndpoint:
         assert e.model_server == PREDICTOR.MODEL_SERVER_PYTHON
         assert e.serving_tool == p_json["serving_tool"]
         assert e.api_protocol == p_json["api_protocol"]
-        assert e.environment == p_json["environment_dto"]["name"]
+        assert e.environment == p_json["predictor_environment"]["name"]
         assert e.config_file == p_json["config_file"]
         assert isinstance(e.resources, resources.PredictorResources)
         mock_validate_serving_tool.assert_called_once_with(p_json["serving_tool"])

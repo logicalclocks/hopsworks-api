@@ -11,6 +11,8 @@ heads-up warning, since installs can take several minutes.
 
 from __future__ import annotations
 
+import contextlib
+import os
 from typing import Any
 
 import click
@@ -122,28 +124,49 @@ def env_clone(
     "-f",
     "--file",
     "requirements_file",
-    type=click.Path(exists=True, dir_okay=False, readable=True),
     required=True,
-    help="Path to a requirements.txt file to install.",
+    help="requirements.txt: a local file (uploaded to HopsFS) or an existing "
+    "HopsFS path.",
+)
+@click.option(
+    "--upload-dir",
+    default=None,
+    help="HopsFS dir to upload a local requirements file to "
+    "(default: Resources/environments/<env_name>).",
+)
+@click.option(
+    "--overwrite/--no-overwrite",
+    default=True,
+    show_default=True,
+    help="Overwrite the uploaded requirements file if it exists.",
 )
 @click.pass_context
 def env_install(
     ctx: click.Context,
     env_name: str,
     requirements_file: str,
+    upload_dir: str | None,
+    overwrite: bool,
 ) -> None:
     """Install a requirements.txt into ENV_NAME.
 
+    ``--file`` is either a local file — uploaded to HopsFS first, since the
+    backend can only read paths inside the project — or a path that already
+    exists in the project (e.g. ``Users/<username>/requirements.txt``).
+
     Blocks until the install completes. This usually takes several
-    minutes — the file is uploaded, conda/pip resolves the dependencies,
-    and the resulting libraries are committed to the environment image.
+    minutes — conda/pip resolves the dependencies and the resulting
+    libraries are committed to the environment image.
 
     Args:
         ctx: Click context.
         env_name: Environment to install into.
-        requirements_file: Path to a requirements.txt file.
+        requirements_file: Local file to upload, or an existing HopsFS path.
+        upload_dir: HopsFS directory for a local requirements upload.
+        overwrite: Overwrite an existing uploaded requirements file.
     """
-    api = _api(ctx)
+    project = session.get_project(ctx)
+    api = project.get_environment_api()
     try:
         env = api.get_environment(env_name)
     except Exception as exc:  # noqa: BLE001
@@ -152,17 +175,38 @@ def env_install(
         raise click.ClickException(
             f"No environment named '{env_name}'. Run `hops env list` to see what exists."
         )
+
+    # Resolve the requirements path — upload when a local file was given, so the
+    # backend (which resolves against /Projects/<project>/) can read it. Same
+    # convention as `hops job deploy` resolving its script argument.
+    remote_path = requirements_file
+    if os.path.isfile(requirements_file):
+        dataset = project.get_dataset_api()
+        dest_dir = upload_dir or f"Resources/environments/{env_name}"
+        with contextlib.suppress(Exception):  # directory may already exist
+            dataset.mkdir(dest_dir)
+        try:
+            uploaded = dataset.upload(
+                local_path=requirements_file, upload_path=dest_dir, overwrite=overwrite
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise click.ClickException(f"Could not upload requirements: {exc}") from exc
+        remote_path = uploaded or f"{dest_dir}/{os.path.basename(requirements_file)}"
+        output.success(
+            "✓ Uploaded %s -> %s", os.path.basename(requirements_file), remote_path
+        )
+
     output.warn(
         "Installing '%s' into '%s' — this can take several minutes. Waiting for "
         "the backend to finish before returning.",
-        requirements_file,
+        remote_path,
         env_name,
     )
     try:
-        env.install_requirements(requirements_file, await_installation=True)
+        env.install_requirements(remote_path, await_installation=True)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Install failed: {exc}") from exc
     if output.JSON_MODE:
-        output.print_json({"environment": env_name, "installed": requirements_file})
+        output.print_json({"environment": env_name, "installed": remote_path})
     else:
-        output.success(f"Installed '{requirements_file}' into environment '{env_name}'")
+        output.success(f"Installed '{remote_path}' into environment '{env_name}'")

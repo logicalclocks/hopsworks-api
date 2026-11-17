@@ -33,8 +33,10 @@ from hopsworks_common.core.opensearch_api import OPENSEARCH_CONFIG, OpenSearchAp
 from opensearchpy import OpenSearch
 from opensearchpy.exceptions import (
     AuthenticationException,
+    AuthorizationException,
     ConnectionError,
     ConnectionTimeout,
+    NotFoundError,
     RequestError,
 )
 from retrying import retry
@@ -46,45 +48,53 @@ def _is_timeout(exception):
     )
 
 
+def _request_error_exception(
+    e: RequestError, client_wrapper
+) -> VectorDatabaseException:
+    error = e.info.get("error") or {}
+    caused_by = error.get("caused_by")
+    # A knn query with the filter inside reports k out of range at the top level, without caused_by.
+    if not caused_by and error.get("type") == "illegal_argument_exception":
+        caused_by = error
+    if caused_by and caused_by["type"] == "illegal_argument_exception":
+        if client_wrapper and isinstance(client_wrapper, ProjectOpenSearchClient):
+            return client_wrapper._create_vector_database_exception(caused_by["reason"])
+        return VectorDatabaseException(
+            VectorDatabaseException.OTHERS,
+            f"Error in Opensearch request: {caused_by['reason']}",
+            e.info,
+        )
+    return VectorDatabaseException(
+        VectorDatabaseException.OTHERS,
+        f"Error in Opensearch request: {e}",
+        e.info,
+    )
+
+
 def _handle_opensearch_exception(func):
     @wraps(func)
     def error_handler_wrapper(*args, **kw):
+        # args[0] is 'self' - the ProjectOpenSearchClient instance
+        client_wrapper = args[0] if args else None
         try:
             return func(*args, **kw)
         except (ConnectionError, AuthenticationException):
             # OpenSearchConnectionError occurs when connection is closed.
             # OpenSearchAuthenticationException occurs when jwt is expired
-            # args[0] is 'self' - the ProjectOpenSearchClient instance
-            client_wrapper = args[0] if args else None
             if client_wrapper and isinstance(client_wrapper, ProjectOpenSearchClient):
                 client_wrapper._refresh_opensearch_connection()
-            return func(*args, **kw)
+            # A RequestError raised in this handler skips the sibling clause below, so the retried request converts its own.
+            try:
+                return func(*args, **kw)
+            except RequestError as e:
+                raise _request_error_exception(e, client_wrapper) from e
         except RequestError as e:
-            caused_by = e.info.get("error") and e.info["error"].get("caused_by")
-            if caused_by and caused_by["type"] == "illegal_argument_exception":
-                client_wrapper = args[0] if args else None
-                if client_wrapper and isinstance(
-                    client_wrapper, ProjectOpenSearchClient
-                ):
-                    raise client_wrapper._create_vector_database_exception(
-                        caused_by["reason"]
-                    ) from e
-                raise VectorDatabaseException(
-                    VectorDatabaseException.OTHERS,
-                    f"Error in Opensearch request: {caused_by['reason']}",
-                    e.info,
-                ) from e
-            raise VectorDatabaseException(
-                VectorDatabaseException.OTHERS,
-                f"Error in Opensearch request: {e}",
-                e.info,
-            ) from e
+            raise _request_error_exception(e, client_wrapper) from e
         except Exception as e:
             if _is_timeout(e):
                 raise FeatureStoreException(
                     ProjectOpenSearchClient.TIMEOUT_ERROR_MSG
                 ) from e
-            client_wrapper = args[0] if args else None
             # Invalidate the cache for federated connector clients if the error is not a timeout,
             # so that it wont't stuck at a error state.
             if (
@@ -193,6 +203,79 @@ class ProjectOpenSearchClient:
     def _search(self, index=None, body=None, options=None):
         return self._get_opensearch_client().search(
             body=body, index=index, params=OpensearchRequestOption.get_options(options)
+        )
+
+    @retry(
+        wait_exponential_multiplier=1000,
+        stop_max_attempt_number=5,
+        retry_on_exception=_is_timeout,
+    )
+    @_handle_opensearch_exception
+    def _get_field_mapping(self, index: str, field: str) -> dict | None:
+        """The mapping of `field` in `index`, or None when this client may not read it or the index does not exist.
+
+        Both are returned rather than raised, because the error handler closes and replaces a federated client on an exception.
+        """
+        # Not GET <index>/_mapping, which the read role of a shared feature group does not allow.
+        # No request options: opensearch-py before 2.3 sends the timeout as a query parameter, which this endpoint rejects.
+        try:
+            return self._get_opensearch_client().indices.get_field_mapping(
+                fields=field, index=index
+            )
+        except (AuthorizationException, NotFoundError):
+            return None
+
+    @retry(
+        wait_exponential_multiplier=1000,
+        stop_max_attempt_number=5,
+        retry_on_exception=_is_timeout,
+    )
+    @_handle_opensearch_exception
+    def _multi_search_request(self, index=None, body=None, options=None):
+        """Send the batch. Transport failures are the decorated concern; entries are not."""
+        return self._get_opensearch_client().msearch(
+            body=body, index=index, params=OpensearchRequestOption.get_options(options)
+        )
+
+    def _multi_search(self, index=None, body=None, options=None):
+        """Run several searches in one request, answered in the order they were sent.
+
+        Each search is sent verbatim, so a batch means one round trip rather
+        than one per search and nothing about what any of them asks for.
+
+        A search that fails inside a batch is reported the way the same search
+        failing on its own is. OpenSearch answers a multi-search with HTTP 200
+        and puts each failure in its own entry, so a permission error, a shard
+        failure or an overloaded node arrives as a normal response carrying an
+        error, and a caller reading hits out of it would see no results rather
+        than a failure.
+
+        The entries are read outside the transport handler on purpose. One
+        search being refused says nothing about the connection, so it must not
+        drop the client from the cache or be retried as if it were a timeout.
+        """
+        result = self._multi_search_request(index=index, body=body, options=options)
+        for response in result.get("responses", []):
+            self._raise_for_search_error(response)
+        return result
+
+    def _raise_for_search_error(self, response):
+        """Raise for one multi-search entry that did not succeed."""
+        if not isinstance(response, dict):
+            raise VectorDatabaseException(
+                VectorDatabaseException.OTHERS,
+                f"Error in Opensearch request: unreadable response {response!r}",
+                response,
+            )
+        error = response.get("error")
+        if error is None:
+            return
+        reason = error.get("reason") if isinstance(error, dict) else None
+        status = response.get("status")
+        detail = reason or error
+        raise self._create_vector_database_exception(
+            f"Error in Opensearch request{f' (status {status})' if status else ''}: "
+            f"{detail}"
         )
 
     @retry(

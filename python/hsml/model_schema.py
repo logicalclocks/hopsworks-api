@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
-from hopsworks_apigen import public
+from hopsworks_apigen import deprecated, public
 
 
 if TYPE_CHECKING:
@@ -26,8 +26,18 @@ if TYPE_CHECKING:
 
 
 @public
+@deprecated("hsml.python.signature.create_model")
 class ModelSchema:
     """Create a schema for a model.
+
+    Deprecated: a model registered with `create_model(feature_view=...)` gets its
+    input and output schema from the feature view's training dataset, and a
+    deployment describes its requests with the deployment schema; a hand-written
+    model schema will be removed in a future release. The default predictor still
+    reads a legacy model schema to select the model's input columns; a
+    `DefaultPredict` subclass overriding `model_predict` replaces that. For a model
+    without a feature view, name its input columns with `passed_features=` on
+    `deploy()` instead.
 
     Parameters:
         input_schema: Schema to describe the inputs.

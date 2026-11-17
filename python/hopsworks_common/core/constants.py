@@ -44,16 +44,28 @@ HAS_GREAT_EXPECTATIONS: bool = (
 )
 GE_MAJOR: int | None = None
 if HAS_GREAT_EXPECTATIONS:
-    # GE 1.x's _docs_decorators logs an INFO line for every closure it scans
-    # during module init (DataSourceManager._register_* / _bind_asset_factory_*),
-    # producing hundreds of useless lines on every SDK import. Suppress before
-    # the great_expectations import so module-init chatter never fires.
+    # GE 1.x chatters on INFO while its modules initialise: _docs_decorators logs
+    # a line for every closure it scans (DataSourceManager._register_* /
+    # _bind_asset_factory_*), and registry.register_metric one per metric GE
+    # itself declares twice ("Multiple declarations of metric ..."). Both land in
+    # the user's notebook because `hopsworks` puts the root logger at INFO.
+    # Suppress here so it is in place before the validation modules import
+    # great_expectations.
+    import importlib.metadata
     import logging
 
     logging.getLogger("great_expectations._docs_decorators").setLevel(logging.WARNING)
-    import great_expectations as _ge
-
-    GE_MAJOR = int(_ge.__version__.split(".")[0])
+    logging.getLogger("great_expectations.expectations.registry").setLevel(
+        logging.WARNING
+    )
+    # The version comes from package metadata, never from importing the package:
+    # this module sits on the SDK's import spine, and executing GE's module init
+    # here (it pulls altair, scipy and jsonschema) put ~8 seconds on every
+    # `import hopsworks` for a value the dist-info already carries.
+    try:
+        GE_MAJOR = int(importlib.metadata.version("great_expectations").split(".")[0])
+    except (importlib.metadata.PackageNotFoundError, ValueError):
+        GE_MAJOR = None
 great_expectations_not_installed_message = (
     "Great Expectations package not found. "
     "If you want to use data validation with Hopsworks you can install the corresponding extras via "
@@ -91,6 +103,15 @@ polars_not_installed_message = (
     "If you want to use Polars with Hopsworks you can install the corresponding extra via "
     """'`pip install "hopsworks[polars]"`. '"""
     "You can also install polars directly in your environment with `pip install polars`. "
+    "You will need to restart your kernel if applicable."
+)
+
+HAS_OPENAI: bool = importlib.util.find_spec("openai") is not None
+openai_not_installed_message = (
+    "OpenAI package not found. "
+    "If you want to use the OpenAI client with Hopsworks you can install the corresponding extra via "
+    '`pip install "hopsworks[openai]"`. '
+    "You can also install openai directly in your environment with `pip install openai`. "
     "You will need to restart your kernel if applicable."
 )
 

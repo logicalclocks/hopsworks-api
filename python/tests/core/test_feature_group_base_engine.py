@@ -51,6 +51,54 @@ class TestFeatureGroupBaseEngine:
         # Assert
         assert mock_tags_api.return_value._add.call_count == 1
 
+    def test_get_tag_metadata(self, mocker):
+        # Arrange
+        mock_tags_api = mocker.patch("hsfs.core.tags_api.TagsApi")
+        tag_obj = mocker.Mock()
+        mock_tags_api.return_value._get_metadata.return_value = {"meta": tag_obj}
+
+        fg_base_engine = feature_group_base_engine.FeatureGroupBaseEngine(
+            feature_store_id=99
+        )
+
+        # Act & Assert
+        assert fg_base_engine._get_tag_metadata(None, "meta") is tag_obj
+        assert fg_base_engine._get_tag_metadata(None, "missing") is None
+
+    def test_add_keywords_unions_with_existing(self, mocker):
+        # A read-modify-write: the union must keep the existing keywords and
+        # not duplicate re-added ones.
+        # Arrange
+        mock_keywords_api = mocker.patch("hsfs.core.keywords_api.KeywordsApi")
+        mock_keywords_api.return_value._get.return_value = ["a", "b"]
+
+        fg_base_engine = feature_group_base_engine.FeatureGroupBaseEngine(
+            feature_store_id=99
+        )
+
+        # Act
+        fg_base_engine._add_keywords(None, ["b", "c"])
+
+        # Assert
+        mock_keywords_api.return_value._replace.assert_called_once_with(
+            None, ["a", "b", "c"]
+        )
+
+    def test_set_keywords_replaces(self, mocker):
+        # Arrange
+        mock_keywords_api = mocker.patch("hsfs.core.keywords_api.KeywordsApi")
+
+        fg_base_engine = feature_group_base_engine.FeatureGroupBaseEngine(
+            feature_store_id=99
+        )
+
+        # Act
+        fg_base_engine._set_keywords(None, ["a"])
+
+        # Assert
+        mock_keywords_api.return_value._replace.assert_called_once_with(None, ["a"])
+        mock_keywords_api.return_value._get.assert_not_called()
+
     def test_delete_tag(self, mocker):
         # Arrange
         feature_store_id = 99

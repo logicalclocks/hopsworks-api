@@ -1,0 +1,463 @@
+---
+name: hops-online-inference
+description: Use when writing code for model deployment, online inference, predictor scripts, or on-demand transformations in Hopsworks. Auto-invoke when user wants to deploy models, write predictor.py files, retrieve precomputed features for serving, create on-demand transformation functions, or configure model serving. Input registered model + online feature view; output a running KServe endpoint.
+---
+
+# Hopsworks Online Inference — Python SDK Best Practices
+
+An **online inference pipeline** is one of the three FTI pipelines (Feature, Training, Inference): a separate program that runs 24/7 behind a network endpoint, accepts prediction requests, builds feature vectors (precomputed features from the online store + on-demand + passed features), calls `model.predict`, and logs its inputs and outputs for monitoring and debugging. What you deploy is the pipeline, not the model alone. The model is one step inside it.
+Deploy only for predictions requested one at a time, as they happen. Predictions made on a
+schedule are batch inference: the job embeds the model and needs no deployment (see
+[hops-batch-inference](../hops-batch-inference/SKILL.md)).
+
+## Contract
+
+- **Input:** a registered model + an online-serving feature view.
+- **Output:** a running KServe HTTP endpoint serving predictions.
+  Inside a `/hops-build` system the output is also the `inference` block of `system.yaml`
+  (`mode: realtime`, the deployment pinned to `realtime.model_version`): write that
+  block and preserve every other line
+  ([hops-reqs/references/system-yaml.md](../hops-reqs/references/system-yaml.md)).
+- **Pre-condition:** the model is registered in the model registry (**hops-train**), and every feature group backing the feature view is `online_enabled` (unless all features are on-demand).
+
+## Smoke-test (cheap pre/post-flight)
+
+`hops deployment list` / `hops deployment info <name>` / `hops deployment logs <name>` exist, but `list`/`info` currently render a blank Status even for a RUNNING deployment — confirm state with `hops deployment status <name>` (its own command) or the Python `deployment.is_running()` instead. `hops deployment delete <name>` prompts; pass `--yes` for non-interactive cleanup. The CLI `hops deployment predict --data` wants the KServe v2 shape `{"instances": [[...]]}`, not the Python `inputs=[{...}]` dict.
+
+The whole deploy→serve→smoke loop runs from the CLI — this is what the terminal
+kickoff flow uses. The model must already be registered (`hops model list`):
+
+```bash
+hops deployment create <model_name> --name <name> --version 1 --env pandas-inference-pipeline \
+  [--cores 2] [--memory 2048]                                  # limits per instance; default 1 core, 1024 MB
+hops deployment start <name>
+hops deployment status <name>                                   # poll until READY
+hops deployment predict <name> --data '{"instances": [{ <one known-good row> }]}'
+hops deployment delete <name> --yes --force                    # delete prompts; --force skips the running check
+```
+
+A sane number back from `predict` (not an HTTP 500) confirms the udf runs on the
+scalar serving path. `create` requires the model name as the positional and the
+deployment name via `--name`; recreate over a stale deployment with
+`hops deployment delete <name> --yes --force` first (there is no TTY in a job/terminal).
+
+## Ask the user (only when state is ambiguous)
+
+- **Resources:** CPU cores, memory, GPUs for the predictor (requests vs limits).
+- **Environment:** which Python environment the predictor runs in.
+- **Scaling:** min/max instances, the scale metric and its target, and whether it may rest at zero when idle; the choices and their rules are in [hops-autoscaling](../../scaling/hops-autoscaling/SKILL.md).
+- **Before deleting** — `deployment.delete()` / `hops deployment delete --yes` tears down the running endpoint irreversibly; confirm the exact name with the user, and never tear down a deployment you created as a side effect (temp or test ones included) unless they asked.
+
+## Model Deployment Overview
+
+Hopsworks Model Serving deploys an online inference pipeline as an HTTP endpoint using KServe. The endpoint exposes a **deployment API** (serving keys + request parameters + return type), which is the contract clients depend on. Keep it more stable than the model signature: as long as the deployment API is unchanged you can swap the model version or move a precomputed feature to an on-demand one without breaking clients.
+
+Library versions must match across the feature, training, and inference pipelines (e.g. the `joblib` used to pickle the model in training must be able to unpickle it here). The Hopsworks feature/training/inference base container images are version-aligned for this reason; if you customize an environment, install compatible versions.
+
+> **sklearn serving skew.** The KServe sklearn serving image pins a specific scikit-learn (e.g. 1.3.x). A model pickled with a different scikit-learn in your training venv (e.g. 1.8.x) can fail to unpickle on the KServe deployment. Either pin training to the serving image's scikit-learn, or deploy as a `python` deployment with a cloned environment that has your training versions plus your `predictor.py`. Batch and interactive inference run in your own environment, so they have no such skew.
+
+> **`get_model` defaults to v1, not latest.** `mr.get_model("name")` with no `version=` loads version 1 (with a warning), so a deployment keeps serving v1 after you register v2. Pass `version=` explicitly, or `mr.get_best_model("name", metric=..., direction=...)`.
+
+Supported frameworks:
+
+| Framework | Model Server | Requires predictor.py | Notes |
+|---|---|---|---|
+| Scikit-learn | PYTHON | No | Auto-loaded from model files |
+| Python (custom) | PYTHON | **Yes** | Custom pickle/joblib/any model |
+| PyTorch | PYTHON | **Yes** | Custom script required |
+| TensorFlow | TF_SERVING | No | Script not supported |
+| LLM (vLLM) | VLLM | Optional | OpenAI-compatible endpoint, see [OpenAI-compatible clients](#openai-compatible-clients) |
+| Triton (`mr.triton`) | TRITON | No | Opt-in per cluster (`ms.get_triton_image_tags()` empty means not enabled); `config.pbtxt` + numeric version folders, no `name` in `config.pbtxt`; Open Inference Protocol v2 tensors over REST and gRPC; no script, transformer or inference logging |
+
+---
+
+## Default predictor (no script)
+
+A `mr.python` model registered with `feature_view=` and deployed without a `script_file` gets the library's **default predictor**: it validates the request, looks up and transforms the feature vector through the view, runs the model, and logs the request when the view has logging enabled. No `predictor.py` is written.
+
+```python
+model = mr.python.create_model(name="fraud_model", feature_view=fv)  # never model_schema= as well: it is deprecated
+model.save("./model_dir")            # exactly one .pkl / .pickle / .joblib inside
+
+deployment = model.deploy(
+    name="fraud_predictor",
+    passed_features=["amount"],      # sent by the client instead of being looked up
+    environment="inference-pipeline",
+)
+deployment.schema.describe()         # the request contract: group, field, type, nullable
+deployment.start(await_running=600)
+deployment.predict(inputs=[{"cc_num": 4473593503484549, "amount": 12.5}])
+```
+
+- Automatic for `mr.python` models only. For an sklearn model with a feature view pass `default_predictor=True`, or the KServe sklearn server keeps receiving raw vectors; `default_predictor=False` keeps the script-required behaviour.
+- Read or create a training dataset before `create_model` whenever the view has statistics-dependent transformations (`min_max_scaler`, `label_encoder`, ...), or `deploy()` refuses and names the transformation.
+- `passed_features` must be non-label features of the view, and the model's input columns must be transformed columns of the view. Both are checked before anything is uploaded, the second again at pod startup.
+- Nothing is looked up when `passed_features` names every stored non-label feature: the schema then has no serving keys and the view only computes on-demand features and transforms.
+- A model with no feature view deploys with `default_predictor=True, passed_features=[...]` naming its input columns in the model's order. Those are the whole request, their types unresolved, with no lookup, transformation or logging.
+- `fv.deploy()` serves a view with no model at all and answers with the transformed vectors, see below.
+
+Requests that do not match fail client-side with `ModelServingException`, and in the pod with a structured error (400 `SCHEMA_VALIDATION`, 413 `BATCH_TOO_LARGE`, 422 `TRANSFORMATION_FAILED`, ...).
+The contract, the error codes, the discovery endpoint for non-Python clients, enforcement and the logging buffers are in [references/deployment-schema.md](references/deployment-schema.md); subclassing the default predictor is in [references/predictors.md](references/predictors.md).
+
+---
+
+## Deploying a Model
+
+The model comes from the registry (registered by the training pipeline, see
+**hops-train**; `mr.python / sklearn / tensorflow / torch / llm / triton .create_model(...)`
+then `model.save(dir)`).
+
+```python
+import hopsworks
+from hsml.resources import PredictorResources, Resources
+from hsml.scaling_config import PredictorScalingConfig, ScaleMetric
+
+project = hopsworks.login()
+mr = project.get_model_registry()
+model = mr.get_model("fraud_model", version=1)     # version= explicitly, see above
+
+# `script_file` must be a path INSIDE the Hopsworks filesystem, not a local path.
+# Upload predictor.py first (here, next to the model's files), then point at it.
+# A local path fails with HTTP 400 errorCode 240016 "Predictor script does not exist".
+script_dir = f"/Projects/{project.name}/Models/{model.name}/{model.version}/Files"
+project.get_dataset_api().upload("predictor.py", script_dir, overwrite=True)
+
+deployment = model.deploy(
+    name="fraud_predictor",
+    description="Real-time fraud detection",
+    script_file=f"{script_dir}/predictor.py",   # Hopsworks path, not local
+    resources=PredictorResources(
+        requests=Resources(cores=1, memory=1024, gpus=0),
+        limits=Resources(cores=2, memory=2048, gpus=0),
+    ),
+    scaling_configuration=PredictorScalingConfig(
+        min_instances=1,
+        max_instances=3,
+        scale_metric=ScaleMetric.CONCURRENCY,   # concurrent requests per instance; Standard mode measures it at the gateway (KEDA HTTP add-on)
+        target=70,
+    ),
+    environment="pandas-inference-pipeline",  # Python environment name
+)
+
+deployment.start(await_running=600)  # wait up to 600 seconds
+```
+
+### Predict and manage
+
+```python
+result = deployment.predict(inputs=[[1.0, 2.0, 3.0]])                 # one instance
+result = deployment.predict(inputs=[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])  # batch
+result = deployment.predict(data={"instances": [[1.0, 2.0, 3.0]]})    # KServe v2 protocol
+
+deployment.is_running()
+deployment.get_state().status
+deployment.get_logs(component="predictor", tail=50)   # prints; read_logs(...) returns the string
+deployment.get_endpoint_url()                          # base URL
+deployment.get_inference_url()                         # with :predict suffix
+deployment.get_openai_url()                            # vLLM only: this deployment's OpenAI-compatible URL
+deployment.stop(await_stopped=120)
+deployment.delete()
+
+deployment.save()                                      # edit the active version in place
+deployment.save(new_version=True)                      # store the edit as a new version and activate it
+deployment.get_versions()                              # every version, newest first, `.active` on the live one
+deployment.rollback(1)                                 # reactivate version 1; running pods restart
+```
+
+A version holds the predictor, transformer and model artifact settings.
+API protocol, request batching, inference logging, scheduling and Knative mode are not versioned and are kept by a rollback.
+
+## OpenAI-compatible clients
+
+A vLLM deployment serves the OpenAI API.
+The LLM gateway serves the Standard-mode vLLM deployments of the project whose LLM gateway switch is on and that do not scale to zero, through one URL, and the `model` field of the request is the deployment name.
+Knative-mode, scale-to-zero (minimum 0) and switched-off deployments are not served; use `deployment.get_openai_client()` for them.
+It answers 404 until a vLLM deployment of the project is running and the cluster has the LLM gateway enabled; the per-deployment client keeps working meanwhile.
+The client needs `pip install "hopsworks[openai]"`.
+
+```python
+ms = project.get_model_serving()
+client = ms.get_openai_client()                       # LLM gateway, ms.get_openai_url()
+client.chat.completions.create(model="my_llm_deployment", messages=[{"role": "user", "content": "Hello"}])
+
+client = deployment.get_openai_client()               # this deployment only, deployment.get_openai_url()
+```
+
+## Robustness and latency
+
+An online inference pipeline is a 24/7 operational service: make it robust to missing request parameters, missing or delayed precomputed features, and slow/failing third-party calls. Log errors to stdout/stderr (Hopsworks ships them to OpenSearch) and design fallbacks (impute from training statistics, use default or cached last-known values, or fall back to a simpler model) rather than letting the request fail. Set low timeouts on any network/feature lookups.
+
+Total latency is the sum of every step (feature lookup + ODTs + MDTs + `model.predict` + logging + network), so define an SLO (p99 latency, allowed downtime) on the deployment API. For the lowest latency use a single predictor container (a separate transformer container adds a network hop), keep ODTs as low-latency Python UDFs at request time, and rely on the asynchronous logging below.
+
+### Where the time goes
+
+Tracing times the on-demand and model-dependent transformations of the feature view a model (or feature view) deployment serves.
+Create the deployment with tracing to be able to use it; this adds a collector sidecar to each predictor pod, so a deployment created without it has to be updated with tracing, which restarts it.
+A traced deployment serves one worker per replica, so its per-process metrics count every request; size its replicas for that.
+
+```python
+deployment = model.deploy(tracing={"enabled": True, "sampling_percentage": 10})
+
+# an existing deployment: restarts its pods
+deployment.tracing = {"enabled": True}
+deployment.save()
+```
+
+A deployment created with tracing can then be switched off and on, and resampled, while it runs, with no restart; the running pods apply it within about a minute:
+
+```python
+deployment.set_tracing(active=False)                           # no metrics, no traces, no timing code
+deployment.set_tracing(active=True, sampling_percentage=50)
+```
+
+The same over REST: `PUT /hopsworks-api/api/project/{project_id}/serving/{deployment_id}/tracing` with `{"active": false}` or `{"active": true, "samplingPercentage": 50}`; omitted fields keep their values.
+It answers 400 (`240062`) for a deployment created without tracing, and the deployment page has the same switch, and a dropdown for the sampling, on its X-ray latencies section.
+`sampling_percentage` can be a fraction: `0.01` traces one request in 10,000.
+
+Traces are kept only in the online store, in the project's `serving_traces` feature group, and expire after its time to live (36 hours by default; change it with `fg.enable_ttl(ttl=...)` on that feature group); nothing is materialized offline.
+They are bounded: at most 60 traces per minute per predictor pod whatever the sampling, and paused on every model and feature view deployment while less than 20% of the online store's disk tablespace (`deployment.tracing.paused_reason == "DISK_NEARLY_FULL"`) or of its RonDB DataMemory (`"MEMORY_NEARLY_FULL"`) is free; it resumes once both have 10 points more free.
+The cluster administrator sets the limits (`serving_tracing_online_ttl_hours`, `serving_tracing_max_traces_per_minute`, `serving_tracing_pause_free_percent`).
+
+While tracing is on, every request is counted on the predictor's Prometheus endpoint:
+
+| Metric | Labels | Meaning |
+|---|---|---|
+| `hopsworks_transformations_calls_total`, `hopsworks_transformations_seconds_total` | `feature_view`, `feature_view_version`, `kind` | Count and total time of all on-demand (`kind="on_demand"`) or all model-dependent (`kind="model_dependent"`) transformations of one feature vector; the average is `rate(seconds) / rate(calls)` |
+| `hopsworks_transformations_window_min_seconds`, `..._window_max_seconds` | the above | Fastest and slowest feature vector in the last complete 60 s window |
+| `hopsworks_transformation_function_calls_total`, `..._seconds_total`, `..._errors_total`, `..._window_min_seconds`, `..._window_max_seconds` | the above, `transformation`, `outputs` | The same per transformation function; `outputs` names it, since one function can be attached to several features |
+| `hopsworks_transformation_dag_edge` | the above, `depends_on` | 1 per edge of the transformation DAG; `depends_on` is the `outputs` of the function it consumes, empty for a function fed only by features |
+| `hopsworks_prediction_stage_seconds` (histogram), `hopsworks_prediction_stage_window_min_seconds`, `..._window_max_seconds` | `stage`, `name` | Time per request in `feature_lookup` (including transformations), `transformations`, `model_predict` and `feature_log`, of the feature view or model `name` (`<name>:<version>`) |
+
+The time per stage, over the last `1m`, `10m`, `1h`, `6h` or `24h`, is also one call: `GET /hopsworks-api/api/project/{project_id}/serving/{deployment_id}/latency?window=1h` returns one entry per stage and name with `requests`, `minSeconds`, `p50Seconds`, `p95Seconds`, `p99Seconds` and `maxSeconds`; the deployment page shows it as Request time by stage.
+
+The Grafana deployment dashboard ("View in Grafana" in the Metrics section of the deployment page) charts them under "Feature view transformations".
+
+A sample of the requests (10% unless `sampling_percentage` says otherwise) is also traced, and the deployment page shows them in its X-ray latencies section: `predict` > `feature_lookup` > `transformations` (first row only) > `on_demand_transformations` > one span per function in DAG order, then `model_dependent_transformations`, then `model_predict` and `feature_log`, with the background `feature_log_write` and `feature_view.log` in the same trace.
+Traces are written to the online store through a collector sidecar, so keep the sampling low on a busy deployment.
+
+---
+
+## Writing predictor.py Files
+
+A predictor script must define a `Predict` class with `__init__` and `predict` methods. Do the expensive setup once in `__init__`: load the model, `hopsworks.login()`, get the feature view and `fv.init_serving(training_dataset_version=...)`. In `predict`, build the vectors with `fv.get_feature_vectors(entry=inputs, request_parameters=..., passed_features=..., return_type="pandas")` and call the model.
+
+**Loading model files (important).** At serving time the model files mount under
+`MODEL_FILES_PATH`, NOT `ARTIFACT_FILES_PATH` — that variable points at the
+directory holding only the predictor script, so `joblib.load(ARTIFACT_FILES_PATH + "/model.pkl")`
+fails with `FileNotFoundError`. Use a resolver that searches the known mounts and
+call it from `__init__`:
+
+```python
+import os, glob
+
+def load_model_file(name):
+    """Resolve a file saved alongside the model. Model files mount under
+    MODEL_FILES_PATH at serving time (ARTIFACT_FILES_PATH holds only this
+    script); fall back to the standard mount roots."""
+    for root in (os.environ.get("MODEL_FILES_PATH"),
+                 os.environ.get("ARTIFACT_FILES_PATH"),
+                 "/mnt/models", "/mnt/artifacts"):
+        if root:
+            hits = glob.glob(f"{root}/**/{name}", recursive=True)
+            if hits:
+                return hits[0]
+    raise FileNotFoundError(f"{name} not found under the model/artifact mounts")
+```
+
+Include this helper in each `predictor.py`; the skeletons load with
+`joblib.load(load_model_file("model.pkl"))`.
+
+Four concrete `predictor.py` skeletons — basic, feature-store lookup, on-demand features, and passed features — are in [references/predictors.md](references/predictors.md).
+
+### Features at request time
+
+The feature view is the read interface: `get_feature_vector(s)`, `passed_features`,
+`request_parameters`, `get_inference_helper`, `transform=False`, and the value
+priority (`request_parameters` > `passed_features` > online store > on-demand
+computation) are documented in [hops-fv](../hops-fv/SKILL.md). For serving, the
+two things that bite:
+
+- **Every feature group in the view must be `online_enabled`** or `init_serving()` raises. The only exception is a view whose features are all on-demand.
+- **On-demand transformations (ODTs)** compute features at request time from `request_parameters`. They are registered on the **feature group** (not the view) so the same versioned function also runs in the feature pipeline, which is what keeps them equivalent across backfill and serving. `fv.request_parameters` lists what a view needs; a missing parameter fails the request. Annotate the arguments that are request parameters (`def amount_ratio(amount: float, budget: float)`) so a deployment schema records their types; an unannotated one is unresolved and accepts any value. ODTs cannot use training statistics, external feature groups do not support them, and a default-mode `@udf` runs on a **scalar** online, so Series-only methods surface as an HTTP 500 on the first predict. Definition, attachment, context, local testing and the transformation store: [hops-transformations](../hops-transformations/SKILL.md).
+
+```python
+print(fv.request_parameters)             # e.g. ["store_lat", "store_lon"]
+vector = fv.get_feature_vector(
+    entry={"tx_id": 42},
+    request_parameters={"store_lat": 40.7128, "store_lon": -74.0060},
+)
+```
+
+---
+
+## Deployment Configuration
+
+### Resources
+
+```python
+from hsml.resources import PredictorResources, TransformerResources, Resources
+
+predictor_resources = PredictorResources(
+    requests=Resources(cores=1, memory=1024, gpus=0),  # minimum
+    limits=Resources(cores=2, memory=4096, gpus=0),    # maximum
+)
+```
+
+To cap a component's local disk, pass `disk` (GB) to its `limits`, e.g. `Resources(cores=2, memory=4096, gpus=0, disk=50)`; without it the disk is unlimited.
+It is only valid on `limits`, and the same amount is also requested.
+The model files are downloaded to the predictor's local disk, so the predictor's disk must fit them.
+
+### Scaling
+
+The scaling configuration (`min_instances`, `max_instances`, `scale_metric`, `target`, and the KEDA or Knative settings) is the same object for model and agent deployments; the modes, every metric with its unit and default, scale to zero when idle and how to verify that a deployment scales are in [hops-autoscaling](../../scaling/hops-autoscaling/SKILL.md). The short version:
+
+- A new deployment runs in **Standard mode** (a plain Deployment, scaled by KEDA where the cluster has it, else by KServe's own cpu/memory HPA); `knative_mode=True` opts into Knative's autoscaler. The mode changes only while the deployment is stopped.
+- `min_instances=0` means scale to zero when idle in both modes; in Standard mode it needs KEDA and a predictor without a transformer, and the first request after an idle period pays the cold start.
+- Equal `min_instances` and `max_instances` run a fixed replica count with no autoscaler, the default for LLM deployments.
+
+```python
+from hsml.scaling_config import PredictorScalingConfig, ScaleMetric
+
+scaling = PredictorScalingConfig(
+    min_instances=0,                        # rest at zero when idle, wake on the first request
+    max_instances=5,
+    scale_metric=ScaleMetric.CONCURRENCY,   # or CPU / MEMORY; vLLM: QUEUE_DEPTH, KV_CACHE_USAGE, ...
+    target=20,                              # concurrent requests per instance
+    idle_cooldown_seconds=300,              # quiet seconds before the last instance goes
+    cold_start_timeout_seconds=120,         # how long the first request is held while it wakes
+)
+```
+
+### Inference Logger
+
+An online inference pipeline should log its inputs and outputs so the deployment can be monitored and debugged. Logging the model inputs and predictions also gives you the feature/prediction data needed for monitoring drift and model performance over time. Hopsworks logs are written asynchronously so they do not add latency to the prediction response.
+
+```python
+from hsml.inference_logger import InferenceLogger
+
+logger = InferenceLogger(
+    mode="ALL",  # "ALL", "PREDICTIONS", "MODEL_INPUTS", "NONE"
+)
+
+deployment = model.deploy(
+    name="my_deployment",
+    inference_logger=logger,
+    ...
+)
+```
+
+### Inference Batcher
+
+```python
+from hsml.inference_batcher import InferenceBatcher
+
+batcher = InferenceBatcher(
+    enabled=True,
+    max_batch_size=32,
+    max_latency=500,   # ms
+    timeout=2000,      # ms
+)
+```
+
+### Transformer (Pre/Post Processing)
+
+A transformer runs in a separate container and processes requests before the predictor:
+
+```python
+from hsml.transformer import Transformer
+from hsml.resources import TransformerResources, Resources
+
+transformer = Transformer(
+    script_file="transformer.py",
+    resources=TransformerResources(
+        requests=Resources(cores=1, memory=512, gpus=0),
+    ),
+)
+
+deployment = model.deploy(
+    name="my_deployment",
+    transformer=transformer,
+    ...
+)
+```
+
+---
+
+## Deployment Without a Model
+
+### Feature view deployment
+
+`fv.deploy()` serves the view's lookup and transformations with no model: the same request contract as a model deployment of that view, answering with one transformed vector per row and the column names.
+
+```python
+fv.train_test_split(test_size=0.2)   # pins the training dataset the transformations use
+deployment = fv.deploy(passed_features=["amount"], environment="inference-pipeline")
+deployment.start(await_running=600)
+deployment.predict(inputs=[{"cc_num": 4473593503484549, "amount": 12.5}])
+# {"predictions": [[0.31, -1.2, ...]], "columns": ["amount_scaled", "age_days", ...]}
+```
+
+`deployment.get_feature_view()` returns the view, and `has_feature_view`, `feature_view_name`, `feature_view_version` and `training_dataset_version` say what it serves.
+Monitoring is `deployment.create_feature_monitoring(...)`, which attaches to the view's logging feature group, since model monitoring needs a registered model.
+`get_inference_url()` answers `None` when the Istio ingress is not configured; the Hopsworks REST path serves as the fallback.
+A custom script for such a deployment needs the hand-over footer in [references/predictors.md](references/predictors.md).
+From the CLI: `hops fv deploy <name> --passed-feature amount`.
+
+### Custom HTTP server
+
+Deploy a custom server without a model from the registry:
+
+```python
+from hsml.predictor import Predictor
+
+predictor = Predictor.for_server(
+    name="custom_server",
+    script_file="server.py",
+    resources=PredictorResources(...),
+)
+
+deployment = predictor.deploy()
+deployment.start()
+```
+
+---
+
+## Tests
+
+The inference row of [hops-reqs/references/tests.md](../hops-reqs/references/tests.md) for realtime.
+Unit, offline: request to feature vector assembly yields the model's columns in
+order, missing and extra fields are handled as designed, and the response has
+the declared schema. Integration: the benchmark at a short duration returns 200s
+and the schema, and **parity** (`tests/integration/test_parity.py` in the
+template): for a sample of entities at `tests.parity.at`, the offline and online
+stores give the same transformed features, and the downloaded model scoring
+those vectors matches the deployment's predictions, within
+`tests.parity.tolerance` (default `1e-6`, `max_mismatch: 0`). That is the
+training/serving skew check, and it is why the inference environment must hold
+`training.environment.transformation_libraries` at exactly those versions.
+
+Inside a `/hops-build` system the deployment is the registered model with the
+template's `src/<slug_pkg>/predictor.py`, a `DefaultPredict` subclass that keeps
+the default feature lookup, transformations and schema validation but returns
+the positive-class probability for a classifier, the number `evaluate.py` and
+the batch path compute; the default returns class labels, and parity would fail
+on every entity:
+
+```python
+model.deploy(name="telcochurnrt", script_file="src/telco_churn/predictor.py", default_predictor=True)
+```
+
+The predictor container defaults to a 1 GiB limit, which the default predictor
+outgrows even for a small scikit-learn model: an `OOMKilled` restart shows up
+as 502 `connection refused` from `predict`. Raise
+`deployment.resources.limits.memory` within `budget.inference.max_memory_mb`,
+`deployment.save(await_update=...)`, and measure again.
+
+The SLA benchmark, its load protocol and its pass rule: [references/benchmark.md](references/benchmark.md).
+
+## Next Steps
+
+- Train and register the model this serves: **hops-train**.
+- Build the online feature view it looks up: **hops-fv**. On-demand and model-dependent transforms: **hops-transformations**.
+- Predictor dependencies: [hops-environments](../../platform/hops-environments/SKILL.md) — clone an inference env and install requirements.
+- Offline scoring instead of a live endpoint: **hops-batch-inference**.

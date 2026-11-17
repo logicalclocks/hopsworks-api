@@ -551,6 +551,7 @@ class FeatureViewApi:
         feature_view_name: str,
         feature_view_version: int,
         transformed: bool = None,
+        transport: str | None = None,
     ):
         _client = client._get_instance()
         path_params = self._base_path + [
@@ -564,4 +565,6 @@ class FeatureViewApi:
                 path_params += [self._TRANSFORMED_lOG]
             else:
                 path_params += [self._UNTRANSFORMED_LOG]
-        _client._send_request("DELETE", path_params, {})
+        # The emptied logging group is recreated for this transport when named.
+        query_params = {"transport": transport} if transport else {}
+        _client._send_request("DELETE", path_params, query_params)

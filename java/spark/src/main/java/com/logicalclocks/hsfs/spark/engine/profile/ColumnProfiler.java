@@ -39,6 +39,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,30 +48,36 @@ import java.util.Map;
  * Replacement for Deequ's {@code ColumnProfilerRunner} producing JSON wire-compatible with
  * Deequ 2.0.7-spark-3.5 for all keys except {@code kll}.
  *
- * <h3>KLL gating divergence from Deequ</h3>
+ * <h2>KLL gating divergence from Deequ</h2>
  *
  * <p>Deequ always emits {@code kll} for numeric columns regardless of {@code withKLLProfiling()};
- * the toggle is a no-op in 2.0.7-spark-3.5. This implementation emits {@code kll} only when
- * {@code kll=true}, aligning with the Phase-1 API contract. The {@code kll=false} path produces
- * smaller profiles. The golden-parity test (task #6) accounts for this known divergence.
+ * the toggle is a no-op in 2.0.7-spark-3.5.
+ * This implementation emits {@code kll} only when {@code kll=true}, aligning with the Phase-1
+ * API contract.
+ * The {@code kll=false} path produces smaller profiles.
+ * The golden-parity test (task #6) accounts for this known divergence.
  *
- * <h3>Entropy computation</h3>
+ * <h2>Entropy computation</h2>
  *
  * <p>Shannon entropy is derived from the exact per-value frequency distribution via
- * {@code groupBy(col).count()} per column. For numeric columns where all values are unique
- * this equals {@code ln(exactNumDistinctValues)}, but the groupBy is required for correctness
- * when duplicates exist.
+ * {@code groupBy(col).count()} per column.
+ * For numeric columns where all values are unique this equals
+ * {@code ln(exactNumDistinctValues)}, but the groupBy is required for correctness when
+ * duplicates exist.
  *
- * <h3>Uniqueness formula</h3>
+ * <h2>Uniqueness formula</h2>
  *
- * <p>{@code uniqueness = max(0, (2 * exactDistinct - nonNull) / nonNull)} — verified against
- * the Deequ baseline. This formula holds because Deequ defines uniqueness as the fraction of
- * values appearing exactly once, and with random integers most duplicates appear exactly twice.
+ * <p>{@code uniqueness = singletons / nonNull}: Deequ's exact definition (fraction of values
+ * appearing exactly once).
+ * The singleton count comes from the same per-value frequency pass as entropy, so no
+ * additional Spark job is paid for it.
+ * (An earlier shortcut, {@code (2 * exactDistinct - nonNull) / nonNull}, is only equivalent
+ * when no value occurs more than twice and undercounts otherwise.)
  *
- * <h3>stdDev</h3>
+ * <h2>stdDev</h2>
  *
- * <p>Uses Spark's {@code stddev_pop()} (population standard deviation, dividing by n). Deequ's
- * StandardDeviation metric also uses population stddev — verified against the baseline.
+ * <p>Uses Spark's {@code stddev_pop()} (population standard deviation, dividing by n).
+ * Deequ's StandardDeviation metric also uses population stddev; verified against the baseline.
  */
 public class ColumnProfiler {
 
@@ -116,7 +123,12 @@ public class ColumnProfiler {
       }
 
       Row aggRow = computeScalars(df, columns, exactUniqueness);
-      Map<String, Double> entropyMap = computeEntropy(df, columns);
+      // entropy and the uniqueness singleton count are derived from exact per-value
+      // frequencies; only pay for the per-column groupBy when exact uniqueness
+      // stats were requested
+      Map<String, ValueFrequencyStats> frequencyStatsMap = exactUniqueness
+          ? computeValueFrequencyStats(df, columns)
+          : new LinkedHashMap<String, ValueFrequencyStats>();
 
       Map<String, Map<String, Double>> correlationMap =
           new LinkedHashMap<String, Map<String, Double>>();
@@ -126,7 +138,7 @@ public class ColumnProfiler {
 
       List<ColumnProfile> profiles = new ArrayList<ColumnProfile>(columns.size());
       for (ColumnInfo col : columns) {
-        ColumnProfile cp = buildProfile(df, col, aggRow, entropyMap, correlationMap,
+        ColumnProfile cp = buildProfile(df, col, aggRow, frequencyStatsMap, correlationMap,
             histogram, histogramBins, kll, exactUniqueness);
         profiles.add(cp);
       }
@@ -188,7 +200,9 @@ public class ColumnProfiler {
       String nn = col.name;
 
       exprs.add(functions.count(cc).alias(nn + "__nonnull"));
-      exprs.add(functions.sum(functions.when(cc.isNull(), 1).otherwise(0)).alias(nn + "__nullcount"));
+      // count(when(isNull)) rather than sum(when(isNull, 1).otherwise(0)): sum returns NULL
+      // over zero rows, and the read side unboxes this into a long.
+      exprs.add(functions.count(functions.when(cc.isNull(), 1)).alias(nn + "__nullcount"));
       exprs.add(functions.approx_count_distinct(cc).alias(nn + "__approx_distinct"));
       if (exactUniqueness) {
         exprs.add(functions.countDistinct(cc).alias(nn + "__exact_distinct"));
@@ -202,6 +216,13 @@ public class ColumnProfiler {
         // sample stddev. Use stddev_pop to match the Deequ baseline byte-for-byte.
         exprs.add(functions.stddev_pop(cn).alias(nn + "__stddev"));
         exprs.add(functions.sum(cn).alias(nn + "__sum"));
+        // Finite-only copies for the binning: one NaN makes __max NaN and one infinity
+        // makes it infinite, and neither works as a bin edge. The emitted minimum/maximum
+        // keep Spark's values for Deequ parity. Same pass, no extra Spark job.
+        Column finite = functions.when(isFinite(cn), cn);
+        exprs.add(functions.min(finite).alias(nn + "__min_finite"));
+        exprs.add(functions.max(finite).alias(nn + "__max_finite"));
+        exprs.add(functions.count(finite).alias(nn + "__nfinite"));
       }
     }
     Column first = exprs.get(0);
@@ -209,35 +230,98 @@ public class ColumnProfiler {
     return df.agg(first, rest).first();
   }
 
+  /**
+   * True when the equi-width grid of {@code bins} over {@code [min, max]} has strictly
+   * increasing edges - what {@code getCDF} demands of its split points, and what a bin label
+   * needs in order to describe the bound it names.
+   *
+   * <p>Checked literally, edge by edge, because every shortcut has a hole: a finite range
+   * can overflow to infinity, a finite width can underflow to zero, and a width that is
+   * finite and positive can still be smaller than the spacing of doubles at {@code min}, so
+   * that later edges round onto earlier ones. A zero range is fine: the histogram emits a
+   * single bin for it and the bucket grid falls back to a width of 1.
+   */
+  static boolean hasUsableBinGrid(double min, double max, int bins) {
+    double range = max - min;
+    if (!Double.isFinite(range)) {
+      return false;
+    }
+    if (range == 0.0) {
+      return true;
+    }
+    double width = range / bins;
+    double previous = min;
+    for (int i = 1; i < bins; i++) {
+      // The same formula HistogramBuilder and ProfileJsonSerializer use for their edges.
+      double edge = min + i * width;
+      if (!(edge > previous)) {
+        return false;
+      }
+      previous = edge;
+    }
+    return true;
+  }
+
+  /**
+   * Spark predicate selecting the finite values of a double column. Spark orders NaN above
+   * +Infinity, so one comparison excludes NaN and both infinities. Matches what
+   * {@link KllAggregator} feeds its sketch, so the histogram and the buckets bin the same rows.
+   */
+  static Column isFinite(Column doubleCol) {
+    return functions.abs(doubleCol).lt(functions.lit(Double.POSITIVE_INFINITY));
+  }
+
   // ---------------------------------------------------------------------------
-  // Pass 2: entropy — one groupBy per column
+  // Pass 2: per-value frequencies (entropy + uniqueness singletons) — one groupBy per column
   // ---------------------------------------------------------------------------
 
-  private Map<String, Double> computeEntropy(Dataset<Row> df, List<ColumnInfo> columns) {
-    Map<String, Double> result = new LinkedHashMap<String, Double>();
+  /** Per-column stats derived from the exact per-value frequency distribution. */
+  private static final class ValueFrequencyStats {
+    private final double entropy;
+    private final long singletons;
+
+    private ValueFrequencyStats(double entropy, long singletons) {
+      this.entropy = entropy;
+      this.singletons = singletons;
+    }
+  }
+
+  private Map<String, ValueFrequencyStats> computeValueFrequencyStats(Dataset<Row> df,
+      List<ColumnInfo> columns) {
+    Map<String, ValueFrequencyStats> result = new LinkedHashMap<String, ValueFrequencyStats>();
     for (ColumnInfo col : columns) {
-      result.put(col.name, computeColumnEntropy(df, col.name));
+      result.put(col.name, computeColumnValueFrequencyStats(df, col.name));
     }
     return result;
   }
 
-  private double computeColumnEntropy(Dataset<Row> df, String columnName) {
-    Column cc = functions.col(columnName);
-    List<Row> rows = df.filter(cc.isNotNull())
-        .groupBy(cc)
+  private ValueFrequencyStats computeColumnValueFrequencyStats(Dataset<Row> df,
+      String columnName) {
+    // Project to a fixed name before grouping. A feature may legitimately be called
+    // "count" (the name passes the feature-name rules), and grouping on it directly
+    // leaves two "count" columns in the result, so the select below cannot resolve.
+    Column cc = functions.col(columnName).alias("_v");
+    List<Row> rows = df.select(cc)
+        .filter(functions.col("_v").isNotNull())
+        .groupBy(functions.col("_v"))
         .count()
         .select(functions.col("count"))
         .collectAsList();
 
     if (rows.isEmpty()) {
-      return 0.0;
+      return new ValueFrequencyStats(0.0, 0L);
     }
     long total = 0;
+    long singletons = 0;
     for (Row row : rows) {
-      total += row.getLong(0);
+      long count = row.getLong(0);
+      total += count;
+      if (count == 1) {
+        singletons++;
+      }
     }
     if (total == 0) {
-      return 0.0;
+      return new ValueFrequencyStats(0.0, 0L);
     }
     double entropy = 0.0;
     for (Row row : rows) {
@@ -247,7 +331,7 @@ public class ColumnProfiler {
         entropy -= pp * Math.log(pp);
       }
     }
-    return entropy;
+    return new ValueFrequencyStats(entropy, singletons);
   }
 
   // ---------------------------------------------------------------------------
@@ -282,30 +366,30 @@ public class ColumnProfiler {
   // ---------------------------------------------------------------------------
 
   private ColumnProfile buildProfile(Dataset<Row> df, ColumnInfo col, Row aggRow,
-      Map<String, Double> entropyMap,
+      Map<String, ValueFrequencyStats> frequencyStatsMap,
       Map<String, Map<String, Double>> correlationMap,
       boolean histogram, int histogramBins, boolean kll, boolean exactUniqueness) {
     String nn = col.name;
 
-    // count(col) returns Long; sum(when(...).otherwise(0)) returns Long when the sum
-    // fits, but Spark can pass it back as Integer internally — cast via Number for safety.
+    // Both are count()s, so an empty dataframe yields 0 rather than a NULL to unbox.
     long nonNull = aggRow.getAs(nn + "__nonnull");
-    long nullCount = ((Number) aggRow.getAs(nn + "__nullcount")).longValue();
+    long nullCount = aggRow.getAs(nn + "__nullcount");
     long total = nonNull + nullCount;
     long approxDistinct = aggRow.getAs(nn + "__approx_distinct");
     // exactNumDistinctValues + derived stats (distinctness/uniqueness/entropy) are only
-    // meaningful when exactUniqueness=true. When false we leave them at 0; the serializer
-    // still emits the keys (matching Deequ's shape, which is always keys-present).
-    long exactDistinct = exactUniqueness ? (Long) aggRow.getAs(nn + "__exact_distinct") : 0L;
+    // meaningful when exactUniqueness=true. When false they stay null and the serializer
+    // omits their keys, so consumers deserialize them as absent instead of a bogus 0.
+    Long exactDistinct = exactUniqueness ? (Long) aggRow.getAs(nn + "__exact_distinct") : null;
+    ValueFrequencyStats freqStats = frequencyStatsMap.get(nn);
 
     double completeness = total > 0 ? (double) nonNull / total : 0.0;
-    double distinctness = exactUniqueness && nonNull > 0
-        ? (double) exactDistinct / nonNull : 0.0;
-    double uniqueness = exactUniqueness && nonNull > 0
-        ? Math.max(0.0, (double) (2L * exactDistinct - nonNull) / nonNull)
-        : 0.0;
-    double entropy = exactUniqueness && entropyMap.containsKey(nn)
-        ? entropyMap.get(nn) : 0.0;
+    Double distinctness = exactUniqueness
+        ? (nonNull > 0 ? (double) exactDistinct / nonNull : 0.0) : null;
+    Double uniqueness = exactUniqueness
+        ? (nonNull > 0 && freqStats != null ? (double) freqStats.singletons / nonNull : 0.0)
+        : null;
+    Double entropy = exactUniqueness
+        ? (freqStats != null ? freqStats.entropy : 0.0) : null;
 
     ColumnProfile.Builder builder = new ColumnProfile.Builder()
         .columnName(nn)
@@ -354,18 +438,40 @@ public class ColumnProfiler {
       builder.correlations(correlationMap.get(nn));
     }
 
-    if (histogram && minVal != null && maxVal != null) {
-      List<Map<String, Object>> hist = histogramBuilder.buildNumeric(
-          df, nn, minVal, maxVal, histogramBins, nonNullVal);
+    // Bin over the finite values: minVal/maxVal go non-finite as soon as the column holds
+    // one NaN or infinity. All three come from the same agg() pass, and min/max are null
+    // exactly when the column has nothing finite.
+    Double minFinite = aggRow.getAs(nn + "__min_finite");
+    Double maxFinite = aggRow.getAs(nn + "__max_finite");
+    long finiteVal = aggRow.getAs(nn + "__nfinite");
+    boolean binnable = minFinite != null && maxFinite != null
+        && hasUsableBinGrid(minFinite, maxFinite, histogramBins);
+
+    if (histogram) {
+      // An empty list says "binned, nothing to bin"; omitting the key makes the SDK's
+      // FeatureGroup._are_statistics_missing read the registered statistics as incomplete
+      // and relaunch the statistics job on every compute_statistics() call.
+      List<Map<String, Object>> hist = Collections.emptyList();
+      if (binnable) {
+        hist = histogramBuilder.buildNumeric(
+            df, nn, minFinite, maxFinite, histogramBins, finiteVal);
+      }
       builder.histogram(hist);
     }
 
-    if (kll && nonNullVal > 0) {
+    if (kll && finiteVal > 0) {
       byte[] kllBytes = computeKll(df, nn);
-      builder.kllBytes(kllBytes);
       KllDoublesSketch sketch = KllAggregator.heapify(kllBytes);
-      double[] percentiles = sketch.getQuantiles(PERCENTILE_FRACTIONS);
-      builder.approxPercentiles(percentiles);
+      // finiteVal > 0 already implies a non-empty sketch; kept because buildKllBuckets
+      // depends on it directly, not on how the caller happened to gate the call.
+      if (!sketch.isEmpty()) {
+        builder.approxPercentiles(sketch.getQuantiles(PERCENTILE_FRACTIONS));
+        // The buckets, unlike the percentiles, need a usable grid over the sketch's range.
+        if (hasUsableBinGrid(sketch.getMinItem(), sketch.getMaxItem(),
+            ProfileJsonSerializer.KLL_BUCKETS)) {
+          builder.kllBytes(kllBytes);
+        }
+      }
     } else if (!kll && nonNullVal > 0) {
       double[] percentiles = computeApproxPercentiles(df, nn);
       builder.approxPercentiles(percentiles);

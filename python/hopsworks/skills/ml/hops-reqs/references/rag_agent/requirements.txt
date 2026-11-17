@@ -1,0 +1,17 @@
+# Installed into both <slug>-jobs-env (a clone of torch-training-pipeline, for
+# the ingestion and registration jobs) and <slug>-agent-env (a clone of
+# torch-inference-pipeline, for the agent), so documents and queries are
+# embedded by the same library versions. Both bases ship torch, transformers,
+# langgraph and langchain-core 1.6.3.
+sentence-transformers==6.1.0
+pypdf==6.19.0
+python-docx==1.2.0
+odfpy==1.4.1
+# The one python-agent-pipeline ships, which matches langchain-core 1.6.3.
+langchain-openai==1.6.2
+# Traces for the deployment's Metrics and Traces panels: the pod's collector
+# counts OpenInference spans (LLM and TOOL kinds). The SDK and exporter match the
+# opentelemetry-api 1.45.0 the base ships.
+opentelemetry-sdk==1.45.0
+opentelemetry-exporter-otlp-proto-http==1.45.0
+openinference-instrumentation-langchain==0.1.76

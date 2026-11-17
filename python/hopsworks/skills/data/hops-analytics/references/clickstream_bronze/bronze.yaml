@@ -1,0 +1,21 @@
+# The clickstream example's generator, read by `hops factory run analytics-bronze` into system.yaml.
+program: clickstream.py
+environment: python-feature-pipeline
+backfill:
+  args: --mode backfill
+tables:
+  - {name: clickstream_customers, version: 1, primary_key: [customer_id], event_time: updated_at, cadence: daily, rows: 10000}
+  - {name: clickstream_products, version: 1, primary_key: [product_id], event_time: updated_at, cadence: daily, rows: 1000}
+  - {name: clickstream_orders, version: 1, primary_key: [order_id], event_time: updated_at, cadence: daily, rows: 20000}
+  - {name: clickstream_clicks, version: 1, primary_key: [ingest_id], event_time: event_ts, partition_key: [event_date], cadence: hourly, rows: 1000010}
+cadences:
+  hourly:
+    cron: 0 0 * * * ?
+    max_catchup_runs: 48
+    args: --mode clicks
+    tables: [clickstream_clicks]
+  daily:
+    cron: 0 0 0 * * ?
+    max_catchup_runs: 14
+    args: --mode daily
+    tables: [clickstream_customers, clickstream_products, clickstream_orders]

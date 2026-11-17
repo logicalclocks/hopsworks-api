@@ -485,3 +485,112 @@ class TestApp:
         mock_api.return_value._set_public.assert_called_once_with("my_app", False)
         assert app.public_access is False
         assert app.public_url is None
+
+
+class TestAppTables:
+    def _app(self, mocker, **extra):
+        mocker.patch("hopsworks_common.client._get_instance")
+        return App.from_response_json(
+            {"jobId": 7, "name": "reviews", "state": "RUNNING", **extra}
+        )
+
+    def test_managed_fields_from_response(self, mocker):
+        app = self._app(
+            mocker, managedDb=True, tablePrefix="app_reviews__", tableCount=2
+        )
+        assert app.managed_db is True
+        assert app.table_prefix == "app_reviews__"
+        assert app.table_count == 2
+
+    def test_older_app_is_not_managed(self, mocker):
+        app = self._app(mocker)
+        assert app.managed_db is False
+        assert app.table_prefix is None
+        assert app.table_count == 0
+
+    def test_register_table_adds_missing_prefix(self, mocker):
+        app = self._app(mocker, managedDb=True, tablePrefix="app_reviews__")
+        register = mocker.patch.object(
+            AppApi, "_register_table", return_value={"name": "app_reviews__notes"}
+        )
+        assert app.register_table("notes") == "app_reviews__notes"
+        register.assert_called_once_with("reviews", "app_reviews__notes")
+
+    def test_register_table_keeps_a_prefixed_name(self, mocker):
+        app = self._app(mocker, managedDb=True, tablePrefix="app_reviews__")
+        register = mocker.patch.object(
+            AppApi, "_register_table", return_value={"name": "app_reviews__notes"}
+        )
+        app.register_table("app_reviews__notes")
+        register.assert_called_once_with("reviews", "app_reviews__notes")
+
+    def test_get_table_decamelizes_columns(self, mocker):
+        app = self._app(mocker, managedDb=True, tablePrefix="app_reviews__")
+        mocker.patch.object(
+            AppApi,
+            "_get_table",
+            return_value={
+                "name": "app_reviews__notes",
+                "columns": [{"name": "id", "defaultValue": None, "primary": True}],
+            },
+        )
+        table = app.get_table("app_reviews__notes")
+        assert table["columns"][0]["default_value"] is None
+        assert table["columns"][0]["primary"] is True
+
+    def test_get_tables_delegates(self, mocker):
+        app = self._app(mocker, managedDb=True, tablePrefix="app_reviews__")
+        get_tables = mocker.patch.object(
+            AppApi, "_get_tables", return_value=[{"name": "app_reviews__notes"}]
+        )
+        assert app.get_tables() == [{"name": "app_reviews__notes"}]
+        get_tables.assert_called_once_with("reviews")
+
+    def test_preview_table_delegates_with_limit(self, mocker):
+        app = self._app(mocker, managedDb=True, tablePrefix="app_reviews__")
+        preview = mocker.patch.object(
+            AppApi, "_preview_table", return_value={"columns": ["id"], "rows": [["1"]]}
+        )
+        assert app.preview_table("app_reviews__notes", limit=5)["rows"] == [["1"]]
+        preview.assert_called_once_with("reviews", "app_reviews__notes", 5)
+
+    def test_refresh_copies_table_metadata(self, mocker):
+        app = self._app(mocker, managedDb=True, tablePrefix="app_reviews__")
+        assert app.table_count == 0
+        mocker.patch.object(
+            AppApi,
+            "get_app",
+            return_value=App.from_response_json(
+                {
+                    "jobId": 7,
+                    "name": "reviews",
+                    "state": "RUNNING",
+                    "managedDb": True,
+                    "tablePrefix": "app_reviews__",
+                    "tableCount": 1,
+                }
+            ),
+        )
+        app._refresh()
+        assert app.table_count == 1
+        assert app.managed_db is True
+        assert app.table_prefix == "app_reviews__"
+
+    def test_create_table_sends_the_definition_with_the_prefixed_name(self, mocker):
+        app = self._app(mocker, managedDb=True, tablePrefix="app_reviews__")
+        register = mocker.patch.object(
+            AppApi, "_register_table", return_value={"name": "app_reviews__notes"}
+        )
+        name = app.create_table("notes", "id BIGINT PRIMARY KEY, note TEXT")
+        assert name == "app_reviews__notes"
+        register.assert_called_once_with(
+            app.name, "app_reviews__notes", "id BIGINT PRIMARY KEY, note TEXT"
+        )
+
+    def test_alter_table_sends_the_alteration(self, mocker):
+        app = self._app(mocker, managedDb=True, tablePrefix="app_reviews__")
+        alter = mocker.patch.object(AppApi, "_alter_table", return_value={})
+        app.alter_table("notes", "ADD COLUMN score DOUBLE")
+        alter.assert_called_once_with(
+            app.name, "app_reviews__notes", "ADD COLUMN score DOUBLE"
+        )

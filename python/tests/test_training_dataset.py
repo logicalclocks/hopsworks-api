@@ -15,7 +15,6 @@
 #
 
 
-import pytest
 from hsfs import (
     statistics_config,
     storage_connector,
@@ -26,6 +25,30 @@ from hsfs import (
 
 
 class TestTrainingDataset:
+    def test_spine_anchored_round_trips(self, mocker):
+        # The frame a spine-anchored dataset was built from is not recorded, only the fact, and
+        # the fact has to reach the backend on create and come back on every fetch.
+        mocker.patch("hopsworks_common.client._get_instance")
+        td = training_dataset.TrainingDataset(
+            name="test", version=1, data_format="parquet", featurestore_id=99
+        )
+        assert td.spine_anchored is False
+        assert td.to_dict()["spineAnchored"] is False
+
+        td.spine_anchored = True
+        assert td.to_dict()["spineAnchored"] is True
+
+        fetched = training_dataset.TrainingDataset.from_response_json_single(
+            {
+                "name": "test",
+                "version": 1,
+                "dataFormat": "parquet",
+                "featurestoreId": 99,
+                "spineAnchored": True,
+            }
+        )
+        assert fetched.spine_anchored is True
+
     def test_from_response_json(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
@@ -255,38 +278,3 @@ class TestTrainingDataset:
         # remain serialisable for subsequent requests.
         payload = td.to_dict()
         assert payload["lookback"]["defaultLookback"]["lookbackKey"] == "PARTITION_KEY"
-
-    def test_training_dataset_partition_precision(self, mocker):
-        # The precision is fixed at creation and carried in the metadata, so
-        # it must round-trip on the wire; `None` (in-memory, or created before
-        # the field existed) means no precision is recorded.
-        mocker.patch("hopsworks_common.client._get_instance")
-        td = training_dataset.TrainingDataset(
-            name="td_pp",
-            version=1,
-            data_format="parquet",
-            featurestore_id=1,
-            partition_precision="month",
-        )
-        assert td.partition_precision == "month"
-        assert td.to_dict()["partitionPrecision"] == "month"
-
-        td_default = training_dataset.TrainingDataset(
-            name="td_pp",
-            version=1,
-            data_format="parquet",
-            featurestore_id=1,
-        )
-        assert td_default.partition_precision is None
-        assert td_default.to_dict()["partitionPrecision"] is None
-
-    def test_training_dataset_invalid_partition_precision(self, mocker):
-        mocker.patch("hopsworks_common.client._get_instance")
-        with pytest.raises(ValueError, match="partition precision"):
-            training_dataset.TrainingDataset(
-                name="td_pp",
-                version=1,
-                data_format="parquet",
-                featurestore_id=1,
-                partition_precision="hour",
-            )

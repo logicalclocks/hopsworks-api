@@ -7,6 +7,10 @@ Streamlit apps use ``--path``; git-backed Streamlit apps use ``--git-url`` and
 ``--entrypoint-script``; custom apps use ``--entrypoint-command``. Use
 ``--app-base-path`` to mount the app at ``/`` or a subpath like ``/myapp``,
 and ``--readiness-probe-path`` to override the readiness probe when needed.
+Apps get the project's online feature store database by default (created on
+demand at start, ``MYSQL_*`` env vars injected); pass ``--no-db-access`` to opt
+out. When Trino is enabled, every app also gets the ``TRINO_*`` env vars for the
+offline tables, independently of that flag.
 App metadata can also carry monitoring config (``enabled`` plus optional
 ``routes`` with ``path`` and ``matchType``), and ``hops app info`` prints the
 monitoring state and route list when it is present. Legacy apps that still
@@ -94,7 +98,10 @@ def app_info(ctx: click.Context, name: str) -> None:
         ["Entrypoint script", getattr(a, "entrypoint_script", None) or "-"],
         ["Entrypoint", getattr(a, "entrypoint_command", None) or "-"],
         ["App base path", getattr(a, "app_base_path", None) or "-"],
+        ["Routing", _routing_text(a)],
         ["Readiness", getattr(a, "readiness_probe_path", None) or "Default"],
+        ["Database access", "Yes" if getattr(a, "db_access", True) else "No"],
+        ["Scale to zero when idle", _idle_text(a)],
         ["Monitoring", _monitoring_state_text(a)],
         ["Monitoring routes", _monitoring_routes_text(a)],
         ["Description", getattr(a, "description", None) or "-"],
@@ -242,7 +249,9 @@ def _report_running(name: str, a: Any) -> None:
 )
 @click.option(
     "--app-kind",
-    type=click.Choice(["STREAMLIT", "CUSTOM", "FLASK", "GRADIO"], case_sensitive=False),
+    type=click.Choice(
+        ["STREAMLIT", "FLASK", "GRADIO", "NODEJS", "CUSTOM"], case_sensitive=False
+    ),
     default="STREAMLIT",
     show_default=True,
     help="App type to create.",
@@ -256,7 +265,7 @@ def _report_running(name: str, a: Any) -> None:
     "--app-port",
     type=int,
     default=None,
-    help="Port exposed by custom apps.",
+    help="Port the app listens on, for every kind but STREAMLIT.",
 )
 @click.option(
     "--git-url",
@@ -283,7 +292,7 @@ def _report_running(name: str, a: Any) -> None:
 @click.option(
     "--entrypoint-script",
     default=None,
-    help="Relative .py entrypoint script for Streamlit Git repository apps.",
+    help="App file relative to the repository root, for Git repository apps of every kind but CUSTOM.",
 )
 @click.option(
     "--app-base-path",
@@ -294,6 +303,37 @@ def _report_running(name: str, a: Any) -> None:
     "--readiness-probe-path",
     default=None,
     help="Optional readiness probe path override.",
+)
+@click.option(
+    "--db-access/--no-db-access",
+    default=True,
+    show_default=True,
+    help=(
+        "Give the app access to the project's online feature store database: "
+        "create it on demand at start and inject the MYSQL_* env vars. Trino access "
+        "to the offline tables (TRINO_*) does not depend on this flag."
+    ),
+)
+@click.option(
+    "--idle-scale-to-zero/--no-idle-scale-to-zero",
+    default=None,
+    help=(
+        "Scale the app to zero when idle: the pod goes away after a quiet period and "
+        "comes back on the next request. On by default wherever the cluster has KEDA; "
+        "--no-idle-scale-to-zero keeps the app always on."
+    ),
+)
+@click.option(
+    "--idle-cooldown-seconds",
+    type=int,
+    default=None,
+    help="Seconds without a request before an idle app scales to zero (cluster default: 21600, six hours). Turns the option on.",
+)
+@click.option(
+    "--cold-start-timeout-seconds",
+    type=int,
+    default=None,
+    help="Seconds the first request waits for an idle app to wake (backend default and ceiling: the cluster's). Turns the option on.",
 )
 @click.option(
     "--description",
@@ -330,6 +370,10 @@ def app_create(
     entrypoint_script: str | None,
     app_base_path: str | None,
     readiness_probe_path: str | None,
+    db_access: bool,
+    idle_scale_to_zero: bool | None,
+    idle_cooldown_seconds: int | None,
+    cold_start_timeout_seconds: int | None,
     description: str | None,
     environment: str,
     memory: int,
@@ -347,14 +391,20 @@ def app_create(
         app_path: HopsFS path to the app script.
         app_kind: App type.
         entrypoint_command: Startup command for custom apps.
-        app_port: Port for custom apps.
+        app_port: Port the app listens on, for every kind but Streamlit.
         git_url: Git repository URL for git-backed apps.
         git_provider: Git provider for git-backed apps.
         git_branch: Optional Git branch.
         git_auto_redeploy: Roll the app to the branch HEAD on new commits.
-        entrypoint_script: Relative entrypoint script for Streamlit git apps.
+        entrypoint_script: App file relative to the repository root, for git apps of every kind but custom.
         app_base_path: Public mount path for the app.
         readiness_probe_path: Optional readiness probe path override.
+        db_access: Whether the app gets the project's online feature store
+            database (MYSQL_*). Trino access (TRINO_*) does not depend on it.
+        idle_scale_to_zero: Scale the app to zero when idle and wake it on the next request;
+            None leaves the choice to the cluster (on wherever it has KEDA).
+        idle_cooldown_seconds: Quiet seconds before an idle app scales to zero.
+        cold_start_timeout_seconds: Seconds the first request waits for the app to wake.
         description: Optional app description.
         environment: Python environment name.
         memory: Memory in MB.
@@ -363,25 +413,27 @@ def app_create(
     """
     app_kind = app_kind.upper()
     git_repo_app = bool(git_url)
-    if app_kind == "STREAMLIT":
+    # Every kind but CUSTOM is launched from its app file with a command the backend generates.
+    if app_kind != "CUSTOM":
+        label = app_kind.capitalize() if app_kind != "NODEJS" else "Node.js"
         if entrypoint_command:
             raise click.ClickException(
-                "Streamlit apps do not accept --entrypoint-command."
+                f"{label} apps do not accept --entrypoint-command."
             )
         if git_repo_app:
             if not git_provider:
                 raise click.ClickException(
-                    "Streamlit Git repository apps require --git-provider."
+                    f"{label} Git repository apps require --git-provider."
                 )
             if not entrypoint_script:
                 raise click.ClickException(
-                    "Streamlit Git repository apps require --entrypoint-script."
+                    f"{label} Git repository apps require --entrypoint-script."
                 )
         elif not app_path:
-            raise click.ClickException("Streamlit apps require --path.")
+            raise click.ClickException(f"{label} apps require --path.")
         elif entrypoint_script:
             raise click.ClickException(
-                "--entrypoint-script is only supported for Streamlit Git apps."
+                "--entrypoint-script is only supported for Git repository apps."
             )
     else:
         if not entrypoint_command:
@@ -390,7 +442,7 @@ def app_create(
             raise click.ClickException("Git repository apps require --git-provider.")
         if entrypoint_script:
             raise click.ClickException(
-                "--entrypoint-script is only supported for Streamlit Git apps."
+                "--entrypoint-script is only supported for Git repository apps of the other kinds."
             )
 
     apps = _get_app_api(ctx)
@@ -423,6 +475,21 @@ def app_create(
         create_kwargs["app_base_path"] = app_base_path
     if readiness_probe_path is not None:
         create_kwargs["readiness_probe_path"] = readiness_probe_path
+    if not db_access:
+        create_kwargs["db_access"] = False
+    has_idle_timeouts = (
+        idle_cooldown_seconds is not None or cold_start_timeout_seconds is not None
+    )
+    if idle_scale_to_zero is False and has_idle_timeouts:
+        raise click.ClickException(
+            "--idle-cooldown-seconds and --cold-start-timeout-seconds cannot go with --no-idle-scale-to-zero."
+        )
+    if idle_scale_to_zero is not None:
+        create_kwargs["idle_scale_to_zero"] = idle_scale_to_zero
+    if idle_cooldown_seconds is not None:
+        create_kwargs["idle_cooldown_seconds"] = idle_cooldown_seconds
+    if cold_start_timeout_seconds is not None:
+        create_kwargs["cold_start_timeout_seconds"] = cold_start_timeout_seconds
     create_kwargs = _accepted_kwargs(apps.create_app, create_kwargs)
     try:
         a = apps.create_app(**create_kwargs)
@@ -689,7 +756,12 @@ def _app_to_dict(a: Any) -> dict[str, Any]:
         "latest_commit": getattr(a, "latest_commit", None),
         "entrypoint_script": getattr(a, "entrypoint_script", None),
         "app_base_path": getattr(a, "app_base_path", None),
+        "proxy_path_mode": getattr(a, "proxy_path_mode", None),
         "readiness_probe_path": getattr(a, "readiness_probe_path", None),
+        "db_access": bool(getattr(a, "db_access", True)),
+        "idle_scale_to_zero": bool(getattr(a, "idle_scale_to_zero", False)),
+        "idle_cooldown_seconds": getattr(a, "idle_cooldown_seconds", None),
+        "cold_start_timeout_seconds": getattr(a, "cold_start_timeout_seconds", None),
         "entrypoint_command": getattr(a, "entrypoint_command", None),
         "monitoring": _monitoring_state_text(a),
         "monitoring_config": {
@@ -699,6 +771,26 @@ def _app_to_dict(a: Any) -> dict[str, Any]:
         "description": getattr(a, "description", None),
         "app_url": getattr(a, "app_url", None),
     }
+
+
+def _routing_text(app: Any) -> str:
+    mode = getattr(app, "proxy_path_mode", None)
+    if mode == "ROOT":
+        return "root (the app serves at its base path)"
+    if mode == "PREFIX":
+        return "compatibility prefix (the app receives /hopsworks-api/pythonapp/...)"
+    return "-"
+
+
+def _idle_text(a: Any) -> str:
+    if not getattr(a, "idle_scale_to_zero", False):
+        return "No"
+    cooldown = getattr(a, "idle_cooldown_seconds", None)
+    cold_start = getattr(a, "cold_start_timeout_seconds", None)
+    return (
+        f"Yes (after {cooldown if cooldown is not None else 'default'} s idle, "
+        f"wakes within {cold_start if cold_start is not None else 'default'} s)"
+    )
 
 
 def _auto_redeploy_text(a: Any) -> str:

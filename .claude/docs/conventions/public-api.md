@@ -35,7 +35,7 @@ These are not violations and must not be underscored:
 - Serialization hooks called by name: `json`, `to_dict`, `to_json`, `to_json_dict`, `from_response_json`, `from_response_json_single`, `from_response_json_list`, `from_json`, `from_dict`, `update_from_response_json`, `extract_fields_from_json`, `from_string`, `from_user_input`.
 - Dunders (`__init__`, `__enter__`, …).
 - A method that overrides a `@public` abstract method from a base class (polymorphism — rename the whole interface together or not at all).
-- Framework hooks implementing an external protocol: `json.JSONEncoder.default`, `threading.Thread.run`, importlib's `find_spec`/`create_module`/`exec_module`, a `warnings` `*_formatwarning`.
+- Framework hooks implementing an external protocol: `json.JSONEncoder.default`, `threading.Thread.run`, importlib's `find_spec`/`create_module`/`exec_module`/`get_code`/`get_data`, a `warnings` `*_formatwarning`.
 - **Vendored / third-party-API-mirroring code** (e.g. the KServe adapters under `client/istio/`, generated `*_pb2*.py`). This mirrors an upstream contract; renaming it diverges from upstream and breaks re-vendoring. Treat it like generated code and leave it alone.
 
 The `cli/` and `mcp/` modules are out of scope for this rule.

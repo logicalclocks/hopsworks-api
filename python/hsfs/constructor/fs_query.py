@@ -31,6 +31,8 @@ class FsQuery:
         query_online: str | None = None,
         pit_query: str | None = None,
         pit_query_asof: str | None = None,
+        pushdown_query: str | None = None,
+        spine_applied: bool = False,
         hqs_payload: str | None = None,
         hqs_payload_signature: str | None = None,
         href: str | None = None,
@@ -45,6 +47,8 @@ class FsQuery:
         self._query_online = query_online
         self._pit_query = pit_query
         self._pit_query_asof = pit_query_asof
+        self._pushdown_query = pushdown_query
+        self._spine_applied = bool(spine_applied)
 
         self._hqs_payload = hqs_payload
         self._hqs_payload_signature = hqs_payload_signature
@@ -103,6 +107,24 @@ class FsQuery:
     @property
     def pit_query_asof(self) -> str | None:
         return self._pit_query_asof
+
+    @property
+    def pushdown_query(self) -> str | None:
+        """The whole query as SQL the external source can execute itself.
+
+        Set by the backend only when every feature group in the query is backed by the same
+        pushdown-capable connector.
+        None means the engine reads each feature group separately and joins them locally.
+        """
+        return self._pushdown_query
+
+    @property
+    def spine_applied(self) -> bool:
+        """Whether the backend rendered this query against the inference spine it was sent.
+
+        False from a backend that does not know the field, whose answer is the ordinary batch query.
+        """
+        return self._spine_applied
 
     @property
     def on_demand_fg_aliases(

@@ -18,6 +18,9 @@ from __future__ import annotations
 import base64
 import contextlib
 import json
+import logging
+import time
+import weakref
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -29,11 +32,18 @@ from hopsworks_common.util import _convert_event_time_to_timestamp
 from hsfs.constructor.filter import Filter, Logic
 from hsfs.constructor.join import Join
 from hsfs.core.opensearch import OpenSearchClientSingleton
+from opensearchpy.exceptions import (
+    RequestError,
+    TransportError,
+)
 
 
 if TYPE_CHECKING:
     import hsfs
+    from hopsworks_common.core.opensearch import ProjectOpenSearchClient
     from hsfs.feature import Feature
+
+_logger = logging.getLogger(__name__)
 
 
 class VectorDbClient:
@@ -45,6 +55,15 @@ class VectorDbClient:
     }
     _index_result_limit_k = {}
     _index_result_limit_n = {}
+    # k-NN engines that accept a filter inside the knn clause.
+    # Embedding indices created before Hopsworks 5.1 are on nmslib, which does not.
+    _knn_filter_engines = ("faiss", "lucene")
+    # Token refresh keeps its wrapper; logout and connector invalidation replace it.
+    _field_knn_filter = weakref.WeakKeyDictionary()
+    # Fields whose OpenSearch refused a filter inside the knn clause, and until when (time.monotonic()) to keep the filter outside it.
+    # Bounded so that a field is tried again once its OpenSearch is upgraded in place.
+    _knn_filter_refused_until = weakref.WeakKeyDictionary()
+    _knn_filter_refused_seconds = 300
 
     def __init__(self, query, serving_keys=None):
         self._query = query
@@ -136,32 +155,34 @@ class VectorDbClient:
         filter_clauses = [
             {"exists": {"field": col_name}},
         ] + self._get_query_filter(filter, embedding_feature.embedding_index.col_prefix)
-        query = {
-            "size": k,
-            "query": {
-                "knn": {
-                    col_name: {
-                        "vector": embedding,
-                        "k": k,
-                        "filter": {"bool": {"must": filter_clauses}},
-                    }
-                }
-            },
-            "_source": list(
-                self._fg_vdb_col_fg_col_map.get(
-                    embedding_feature.feature_group.id
-                ).keys()
-            ),
-        }
         if not index_name:
             index_name = embedding_feature.embedding_index.index_name
 
         opensearch_client = OpenSearchClientSingleton(
             feature_store_id=embedding_feature.feature_group.feature_store_id
         )
-        results = opensearch_client._search(
-            body=query, index=index_name, options=options
-        )
+        body = {
+            "size": k,
+            "_source": list(
+                self._fg_vdb_col_fg_col_map.get(
+                    embedding_feature.feature_group.id
+                ).keys()
+            ),
+        }
+
+        def search(knn_k):
+            return self._knn_search(
+                opensearch_client,
+                embedding_feature.feature_group.feature_store_id,
+                index_name,
+                col_name,
+                {"vector": embedding, "k": knn_k},
+                filter_clauses,
+                body,
+                options,
+            )
+
+        results = search(k)
 
         # When using project index (`embedding_feature.embedding_index.col_prefix` is not empty), sometimes the total number of result returned is less than k. Possible reason is that when using project index, some embedding columns have null value if the row is from a different feature group. And opensearch filter out the result where embedding is null after retrieving the top k results. So search 3 times more data if it is using project index and size of result is not k.
         if (
@@ -171,13 +192,10 @@ class VectorDbClient:
             # Get the max number of results allowed to request if it is not available.
             # This is expected to be executed once only.
             if not VectorDbClient._index_result_limit_k.get(index_name):
-                query["query"]["knn"][col_name]["k"] = 2**31 - 1
                 try:
                     # It is expected that this request ALWAYS fails because requested k is too large.
                     # The purpose here is to get the max k allowed from the vector database, and cache it.
-                    opensearch_client._search(
-                        body=query, index=index_name, options=options
-                    )
+                    search(2**31 - 1)
                 except VectorDatabaseException as e:
                     if (
                         e.reason == VectorDatabaseException.REQUESTED_K_TOO_LARGE
@@ -190,11 +208,8 @@ class VectorDbClient:
                         )
                     else:
                         raise e
-            query["query"]["knn"][col_name]["k"] = min(
-                VectorDbClient._index_result_limit_k.get(index_name, k), 3 * k
-            )
-            results = opensearch_client._search(
-                body=query, index=index_name, options=options
+            results = search(
+                min(VectorDbClient._index_result_limit_k.get(index_name, k), 3 * k)
             )
 
         # https://opensearch.org/docs/latest/search-plugins/knn/approximate-knn/#spaces
@@ -211,6 +226,138 @@ class VectorDbClient:
             )
             for item in results["hits"]["hits"]
         ]
+
+    def _knn_search(
+        self,
+        opensearch_client: ProjectOpenSearchClient,
+        feature_store_id: int,
+        index_name: str,
+        col_name: str,
+        knn: dict[str, Any],
+        filter_clauses: list[dict[str, Any]],
+        body: dict[str, Any],
+        options: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Run a k-NN search of `col_name`, with the filters inside the knn clause where its engine takes them.
+
+        OpenSearch 1.x cannot parse a filter inside the knn clause, yet a Hopsworks 5.1 central cluster creates faiss fields on the OpenSearch 1.3 of a 5.0 satellite cluster.
+        A search refused for that is run again with the filters outside the clause, as are the searches of the field for the next few minutes.
+        """
+        key = (feature_store_id, index_name, col_name)
+        refused_fields = VectorDbClient._knn_filter_refused_until.get(
+            opensearch_client, {}
+        )
+        refused_until = refused_fields.get(key)
+        filter_inside = (
+            refused_until is None or time.monotonic() >= refused_until
+        ) and self._supports_knn_filter(
+            opensearch_client, feature_store_id, index_name, col_name
+        )
+        try:
+            return opensearch_client._search(
+                body={
+                    **body,
+                    "query": self._knn_query(
+                        col_name, knn, filter_clauses, filter_inside
+                    ),
+                },
+                index=index_name,
+                options=options,
+            )
+        except VectorDatabaseException as e:
+            if not filter_inside or not self._is_knn_filter_refusal(e):
+                raise
+        _logger.debug(
+            "OpenSearch refused a filter inside the knn clause of %s in %s",
+            col_name,
+            index_name,
+        )
+        refused_fields = VectorDbClient._knn_filter_refused_until.setdefault(
+            opensearch_client, {}
+        )
+        refused_fields[key] = (
+            time.monotonic() + VectorDbClient._knn_filter_refused_seconds
+        )
+        return opensearch_client._search(
+            body={
+                **body,
+                "query": self._knn_query(col_name, knn, filter_clauses, False),
+            },
+            index=index_name,
+            options=options,
+        )
+
+    @staticmethod
+    def _knn_query(
+        col_name: str,
+        knn: dict[str, Any],
+        filter_clauses: list[dict[str, Any]],
+        filter_inside: bool,
+    ) -> dict[str, Any]:
+        if filter_inside:
+            return {
+                "knn": {col_name: {**knn, "filter": {"bool": {"must": filter_clauses}}}}
+            }
+        # The filters apply to the k nearest, so fewer than k can match.
+        # In filter context they do not add to the score, which the returned distance is computed from.
+        return {"bool": {"must": [{"knn": {col_name: knn}}], "filter": filter_clauses}}
+
+    @staticmethod
+    def _is_knn_filter_refusal(exception: VectorDatabaseException) -> bool:
+        # The OpenSearch client wrapper raises the RequestError as a VectorDatabaseException chained to it.
+        cause = exception.__cause__
+        if not isinstance(cause, RequestError) or cause.error != "parsing_exception":
+            return False
+        error = cause.info.get("error") if isinstance(cause.info, dict) else None
+        return isinstance(error, dict) and (
+            "[knn] unknown token [START_OBJECT] after [filter]"
+            in str(error.get("reason", ""))
+        )
+
+    def _supports_knn_filter(
+        self,
+        opensearch_client: ProjectOpenSearchClient,
+        feature_store_id: int,
+        index_name: str,
+        col_name: str,
+    ) -> bool:
+        """Whether the k-NN engine of the field accepts a filter inside the knn clause.
+
+        Decided per field, not per index: a default project index created before Hopsworks 5.1 keeps its nmslib fields and gets faiss fields from feature groups created since.
+        A field without `method` was created by Hopsworks 3.7 and is on nmslib too.
+        When the mapping cannot be read or does not show the field, the filter stays inside the knn clause, as for every field created since 5.1.
+        A refused or missing mapping is remembered, so it is not read again for every search; other failures are not.
+        """
+        key = (feature_store_id, index_name, col_name)
+        fields = VectorDbClient._field_knn_filter.setdefault(opensearch_client, {})
+        if key not in fields:
+            try:
+                response = opensearch_client._get_field_mapping(
+                    index=index_name, field=col_name
+                )
+            except (FeatureStoreException, VectorDatabaseException, TransportError):
+                _logger.debug(
+                    "Could not read the mapping of %s in %s", col_name, index_name
+                )
+                return True
+            if response is None:
+                _logger.debug("No readable mapping of %s in %s", col_name, index_name)
+                fields[key] = True
+                return True
+            mapping = next(
+                (
+                    index_mapping["mappings"][col_name]["mapping"][col_name]
+                    for index_mapping in response.values()
+                    if col_name in index_mapping.get("mappings", {})
+                ),
+                None,
+            )
+            if mapping is None:
+                return True
+            fields[key] = (
+                mapping.get("method", {}).get("engine") in self._knn_filter_engines
+            )
+        return fields[key]
 
     def _convert_to_pandas_type(self, schema, result):
         for feature in schema:
@@ -381,6 +528,64 @@ class VectorDbClient:
                 )
             new_map[new_key] = value
         return new_map
+
+    def _read_many(
+        self,
+        fg_id,
+        schema,
+        key_sets: list[dict],
+        index_name=None,
+    ) -> list[list[dict]]:
+        """Read one exact-key result set per entry, in one round trip.
+
+        The searches are the same `match` queries `_read(keys=...)` builds one
+        at a time, sent together and answered in order, so the results line up
+        with `key_sets` by position and nothing about the matching changes. An
+        entry that matched nothing keeps its place as an empty list.
+        """
+        if not key_sets:
+            return []
+        if fg_id not in self._fg_vdb_col_fg_col_map:
+            raise FeatureStoreException("Provided fg does not have embedding.")
+        if not index_name:
+            index_name = self._get_vector_db_index_name(fg_id)
+        opensearch_client = OpenSearchClientSingleton(
+            feature_store_id=self._fg_embedding_map[
+                fg_id
+            ].feature_group.feature_store_id
+        )
+        source = list(self._fg_vdb_col_fg_col_map.get(fg_id).keys())
+        body = []
+        for keys in key_sets:
+            body.append({"index": index_name})
+            body.append(
+                {
+                    "query": {
+                        "bool": {
+                            "must": [
+                                {"match": {key: value}}
+                                for key, value in self._rewrite_result_key(
+                                    keys, self._fg_col_vdb_col_map[fg_id]
+                                ).items()
+                            ]
+                        }
+                    },
+                    "_source": source,
+                }
+            )
+        responses = opensearch_client._multi_search(body=body)["responses"]
+        return [
+            [
+                self._convert_to_pandas_type(
+                    schema,
+                    self._rewrite_result_key(
+                        item["_source"], self._fg_vdb_col_td_col_map[fg_id]
+                    ),
+                )
+                for item in response.get("hits", {}).get("hits", [])
+            ]
+            for response in responses
+        ]
 
     def _read(
         self,

@@ -16,10 +16,12 @@
 
 from __future__ import annotations
 
+import importlib
+import sys
 from typing import Literal
 
 from hopsworks_apigen import also_available_as
-from hopsworks_common.client import external, hopsworks, istio
+from hopsworks_common.client import external, hopsworks
 from hopsworks_common.constants import HOSTS
 
 
@@ -73,9 +75,19 @@ def _stop() -> None:
     if _client:
         _client._close()
     _client = None
-    if istio._client:
+    # Only touch the istio client if that subpackage was ever imported; importing
+    # it here just to close nothing would pull in grpc and pandas.
+    istio = sys.modules.get("hopsworks_common.client.istio")
+    if istio is not None and istio._client:
         istio._client._close()
-    istio._client = None
+    if istio is not None:
+        istio._client = None
+    # The serving defaults belong to the connection that loaded them; the next
+    # connection reloads them on first use instead of reading the old cluster's.
+    global _kserve_installed, _serving_num_instances_limits, _knative_domain
+    _kserve_installed = None
+    _serving_num_instances_limits = None
+    _knative_domain = None
 
 
 @also_available_as("hopsworks.client._is_saas_connection")
@@ -95,6 +107,8 @@ def _set_kserve_installed(kserve_installed):
 @also_available_as("hopsworks.client._is_kserve_installed")
 def _is_kserve_installed() -> bool:
     global _kserve_installed
+    if _kserve_installed is None:
+        _load_serving_defaults()
     return _kserve_installed
 
 
@@ -110,6 +124,8 @@ def _set_serving_num_instances_limits(num_instances_range):
 @also_available_as("hopsworks.client._get_serving_num_instances_limits")
 def _get_serving_num_instances_limits():
     global _serving_num_instances_limits
+    if _serving_num_instances_limits is None:
+        _load_serving_defaults()
     return _serving_num_instances_limits
 
 
@@ -126,7 +142,28 @@ _knative_domain = None
 @also_available_as("hopsworks.client._get_knative_domain")
 def _get_knative_domain():
     global _knative_domain
+    if _knative_domain is None:
+        _load_serving_defaults()
     return _knative_domain
+
+
+def _load_serving_defaults() -> None:
+    """Fetch the serving defaults from the connected cluster, once, on first use.
+
+    The defaults are the KServe flag, the instance limits, the Knative domain and the istio client.
+    They used to be loaded during login.
+    That cost six requests and the istio import for every caller, including ones that never touch model serving.
+    """
+    if _connection is not None:
+        _connection._load_serving_defaults()
+
+
+def __getattr__(name: str):
+    # ``client.istio`` stays reachable as before, but the subpackage (grpc,
+    # pandas, numpy: ~0.4 s) is imported the first time it is actually used.
+    if name == "istio":
+        return importlib.import_module("hopsworks_common.client.istio")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 @also_available_as("hopsworks.client._set_knative_domain")

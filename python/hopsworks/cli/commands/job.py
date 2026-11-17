@@ -120,6 +120,8 @@ def job_info(ctx: click.Context, name: str) -> None:
         ["Type", getattr(job, "job_type", "-")],
         ["Creator", _user_label(getattr(job, "creator", None))],
         ["Created", _ts_label(getattr(job, "creation_time", None))],
+        ["Description", output.first_line(getattr(job, "description", None))],
+        ["Tags", output.format_mapping(output.read_tags(job))],
     ]
     output.print_table(["FIELD", "VALUE"], rows)
 
@@ -144,6 +146,8 @@ def _job_to_dict(job: Any) -> dict[str, Any]:
         "type": getattr(job, "job_type", None),
         "creator": creator,
         "creation_time": getattr(job, "creation_time", None),
+        "description": getattr(job, "description", None),
+        "tags": output.read_tags(job),
         "config": config.to_dict() if hasattr(config, "to_dict") else config,
     }
 
@@ -163,14 +167,22 @@ def _job_to_dict(job: Any) -> dict[str, Any]:
 @click.option(
     "--app-path", "app_path", required=True, help="HDFS/HopsFS path to the main file."
 )
+@click.option(
+    "--env",
+    "environment",
+    help="Python environment name (sets environmentName; otherwise the type default).",
+)
 @click.option("--args", "app_args", help="Arguments passed to the program.")
+@click.option("--description", help="Free-form description of the job.")
 @click.pass_context
 def job_create(
     ctx: click.Context,
     name: str,
     job_type: str,
     app_path: str,
+    environment: str | None,
     app_args: str | None,
+    description: str | None,
 ) -> None:
     """Create a new job from a ``type`` + ``--app-path``.
 
@@ -179,7 +191,9 @@ def job_create(
         name: Job name.
         job_type: One of ``PYTHON``/``PYSPARK``/``SPARK``/``DOCKER``.
         app_path: HopsFS path to the script or JAR.
+        environment: Python environment the job runs in; the type's default when omitted.
         app_args: Optional argument string passed to the job.
+        description: Optional free-form description.
     """
     project = session.get_project(ctx)
     api = project.get_job_api()
@@ -188,8 +202,12 @@ def job_create(
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not load default config: {exc}") from exc
     config["appPath"] = app_path
+    if environment:
+        config["environmentName"] = environment
     if app_args:
         config["defaultArgs"] = app_args
+    if description:
+        config["description"] = description
     try:
         job = api.create_job(name=name, config=config)
     except Exception as exc:  # noqa: BLE001
@@ -228,7 +246,10 @@ def job_create(
     help="HopsFS dir to upload a local script to (default: Resources/jobs/<name>).",
 )
 @click.option(
-    "--overwrite", is_flag=True, help="Overwrite the uploaded script if it exists."
+    "--overwrite/--no-overwrite",
+    default=True,
+    show_default=True,
+    help="Overwrite the uploaded script if it exists: a redeploy runs the new script.",
 )
 @click.pass_context
 def job_deploy(
@@ -480,6 +501,14 @@ def job_stop(ctx: click.Context, name: str) -> None:
     output.success("✓ Stopped execution %s of %s", getattr(latest, "id", "?"), name)
 
 
+def _log_dir(path: str | None) -> str | None:
+    if path is None:
+        return None
+    path = os.path.expanduser(path)
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
 @job_group.command("logs")
 @click.argument("name")
 @click.option(
@@ -496,6 +525,14 @@ def job_stop(ctx: click.Context, name: str) -> None:
     "directories into the working directory.",
 )
 @click.option(
+    "--dir",
+    "log_dir",
+    type=click.Path(file_okay=False),
+    help="Directory to download into, created if missing; the working directory "
+    "by default. Keep logs out of a git work tree, such as an ML system's "
+    "directory: in the factory, ${HOPSFS_USER_HOME_DIR:-$HOME}/Logs/factory/<slug>.",
+)
+@click.option(
     "--tail",
     type=int,
     help="With --stdout, print only the last N lines of each stream.",
@@ -506,13 +543,14 @@ def job_logs(
     name: str,
     execution_id: int | None,
     to_stdout: bool,
+    log_dir: str | None,
     tail: int | None,
 ) -> None:
     """Read stdout/stderr logs for a job execution.
 
     By default this downloads ``stdout.log`` / ``stderr.log`` into a
-    ``logs-job-<name>-exec-<id>_*`` directory in the working directory and
-    prints the paths. Pass ``--stdout`` to print the content to the terminal
+    ``logs-job-<name>-exec-<id>_*`` directory in the working directory, or in
+    ``--dir``, and prints the paths. Pass ``--stdout`` to print the content to the terminal
     instead, leaving no files behind.
 
     Args:
@@ -520,6 +558,7 @@ def job_logs(
         name: Job name.
         execution_id: Specific execution; latest if omitted.
         to_stdout: Print content to the terminal instead of downloading files.
+        log_dir: Directory to download into instead of the working directory.
         tail: With ``--stdout``, keep only the last N lines of each stream.
     """
     executions = _executions(_get_job(ctx, name))
@@ -551,7 +590,7 @@ def job_logs(
         return
 
     try:
-        stdout_path, stderr_path = target.download_logs()
+        stdout_path, stderr_path = target.download_logs(path=_log_dir(log_dir))
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not download logs: {exc}") from exc
 
@@ -560,14 +599,17 @@ def job_logs(
         return
     output.info("stdout: %s", stdout_path or "<none>")
     output.info("stderr: %s", stderr_path or "<none>")
-    output.info("(downloaded to the working directory; use --stdout to print instead)")
+    if log_dir is None:
+        output.info(
+            "(downloaded to the working directory; use --stdout to print instead)"
+        )
 
 
 @job_group.command("history")
 @click.argument("name")
 @click.pass_context
 def job_history(ctx: click.Context, name: str) -> None:
-    """List past executions of a job (newest first).
+    """List past executions of a job (newest first), with how long each ran.
 
     Args:
         ctx: Click context.
@@ -580,10 +622,17 @@ def job_history(ctx: click.Context, name: str) -> None:
             getattr(e, "state", "?"),
             getattr(e, "final_status", "-"),
             getattr(e, "submission_time", "-"),
+            _duration_s(e),
         ]
         for e in executions
     ]
-    output.print_table(["ID", "STATE", "FINAL", "SUBMITTED"], rows)
+    output.print_table(["ID", "STATE", "FINAL", "SUBMITTED", "DURATION_S"], rows)
+
+
+def _duration_s(execution: Any) -> int | str:
+    """Seconds the execution ran, from the millisecond duration the backend reports."""
+    duration = getattr(execution, "duration", None)
+    return round(duration / 1000) if isinstance(duration, (int, float)) else "-"
 
 
 # Quartz cron (sec min hour day-of-month month day-of-week) for the common
@@ -624,9 +673,10 @@ def _expand_cron_alias(cron: str) -> str:
     type=int,
     default=None,
     help=(
-        "Per-fire offset for HOPS_START_TIME (data window start). Negative looks "
-        "back from the cron fire (e.g. -3600 = window starts 1h before fire). "
-        "Default (omitted) = previous cron fire (last execution time)."
+        "Per-fire offset for HOPS_START_TIME (data window start). Current servers "
+        "refuse negative values ('must be non-negative'); prefer omitting it and "
+        "deriving a look-back in the program from HOPS_END_TIME. Default "
+        "(omitted) = previous cron fire (last execution time)."
     ),
 )
 @click.option(
@@ -635,8 +685,8 @@ def _expand_cron_alias(cron: str) -> str:
     type=int,
     default=None,
     help=(
-        "Per-fire offset for HOPS_END_TIME (data window end). 0 = cron fire time. "
-        "Default (omitted) = cron fire time."
+        "Per-fire offset for HOPS_END_TIME (data window end). Current servers no "
+        "longer honour it; HOPS_END_TIME is the cron fire time."
     ),
 )
 @click.option(
@@ -677,8 +727,10 @@ def job_schedule(
     """Attach (or update) a Quartz cron schedule to ``name``.
 
     The cron interval is the firing cadence. The data window the job
-    consumes per fire is controlled by ``--start-offset-seconds`` /
-    ``--end-offset-seconds`` (relative to the fire time). ``--catchup``
+    consumes per fire is the previous fire to this one; current servers
+    refuse a negative ``--start-offset-seconds`` and ignore
+    ``--end-offset-seconds``, so a program that needs another window derives
+    it from ``HOPS_END_TIME``. ``--catchup``
     replays missed intervals after an outage; ``--max-catchup-runs``
     caps how many missed intervals are replayed.
 
@@ -782,6 +834,87 @@ def job_delete(ctx: click.Context, name: str, yes: bool) -> None:
     output.success("✓ Deleted job %s", name)
 
 
+@job_group.command("tags")
+@click.argument("name")
+@click.pass_context
+def job_tags(ctx: click.Context, name: str) -> None:
+    """Show all tags attached to a job.
+
+    Args:
+        ctx: Click context.
+        name: Job name.
+    """
+    job = _get_job(ctx, name)
+    try:
+        tags = job.get_tags_metadata()
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not read tags: {exc}") from exc
+    output.render_tags(tags)
+
+
+@job_group.command("add-tag")
+@click.argument("name")
+@click.argument("tag")
+@click.option("--value", required=True, help="Tag value, JSON or a plain string.")
+@click.pass_context
+def job_add_tag(ctx: click.Context, name: str, tag: str, value: str) -> None:
+    """Attach a tag (name/value pair) to a job.
+
+    Args:
+        ctx: Click context.
+        name: Job name.
+        tag: Tag name (a registered tag schema).
+        value: Tag value, JSON or a plain string.
+    """
+    job = _get_job(ctx, name)
+    try:
+        job.add_tag(name=tag, value=output.parse_tag_value(value))
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not add tag: {exc}") from exc
+    output.success("✓ Added tag '%s' to %s", tag, name)
+
+
+@job_group.command("remove-tag")
+@click.argument("name")
+@click.argument("tag")
+@click.pass_context
+def job_remove_tag(ctx: click.Context, name: str, tag: str) -> None:
+    """Remove a tag from a job.
+
+    Args:
+        ctx: Click context.
+        name: Job name.
+        tag: Tag name.
+    """
+    job = _get_job(ctx, name)
+    try:
+        job.delete_tag(tag)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not remove tag: {exc}") from exc
+    output.success("✓ Removed tag '%s' from %s", tag, name)
+
+
+@job_group.command("describe")
+@click.argument("name")
+@click.option("--description", required=True, help="New description of the job.")
+@click.pass_context
+def job_describe(ctx: click.Context, name: str, description: str) -> None:
+    """Set the description of a job.
+
+    Args:
+        ctx: Click context.
+        name: Job name.
+        description: New description.
+    """
+    job = _get_job(ctx, name)
+    try:
+        job.description = description
+        job.save()
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not update description: {exc}") from exc
+    output.success("✓ Updated description of %s", name)
+
+
 def _read_log(path: str | None, tail: int | None) -> str:
     """Read a downloaded log file, optionally keeping only the last ``tail`` lines."""
     if not path or not os.path.isfile(path):
@@ -819,6 +952,7 @@ def _execution_to_dict(execution: Any) -> dict[str, Any]:
         "state": getattr(execution, "state", None),
         "final_status": getattr(execution, "final_status", None),
         "submission_time": getattr(execution, "submission_time", None),
+        "duration_s": _duration_s(execution),
     }
 
 

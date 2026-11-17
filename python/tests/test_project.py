@@ -14,6 +14,8 @@
 #   limitations under the License.
 #
 
+import pytest
+from hopsworks_common.client.exceptions import RestAPIError
 from hopsworks_common.project import Project
 
 
@@ -95,3 +97,100 @@ class TestProject:
 
         assert project.get_model_serving() == "MS"
         conn._get_model_serving.assert_called_once()
+
+    def test_get_members_delegates_to_members_api(self, mocker):
+        project = Project(project_name="my_project")
+        project._project_members_api = mocker.MagicMock()
+        project._project_members_api.get_members.return_value = ["m1"]
+
+        assert project.get_members() == ["m1"]
+        project._project_members_api.get_members.assert_called_once()
+
+    def test_add_member_delegates_to_members_api(self, mocker):
+        project = Project(project_name="my_project")
+        project._project_members_api = mocker.MagicMock()
+        project._project_members_api.add_member.return_value = "member"
+
+        result = project.add_member("alice@example.com", "Data scientist")
+
+        assert result == "member"
+        project._project_members_api.add_member.assert_called_once_with(
+            "alice@example.com", "Data scientist"
+        )
+
+    def test_remove_member_delegates_to_members_api(self, mocker):
+        project = Project(project_name="my_project")
+        project._project_members_api = mocker.MagicMock()
+
+        project.remove_member("alice@example.com", delete_home_dir=True)
+
+        project._project_members_api.remove_member.assert_called_once_with(
+            "alice@example.com", delete_home_dir=True, new_file_owner=None
+        )
+
+    def test_remove_member_passes_the_chosen_file_owner_through(self, mocker):
+        project = Project(project_name="my_project")
+        project._project_members_api = mocker.MagicMock()
+
+        project.remove_member("alice@example.com", new_file_owner="carol@example.com")
+
+        project._project_members_api.remove_member.assert_called_once_with(
+            "alice@example.com",
+            delete_home_dir=False,
+            new_file_owner="carol@example.com",
+        )
+
+    def test_transfer_ownership_delegates_and_updates_the_owner(self, mocker):
+        project = Project(project_name="my_project", owner="alice@example.com")
+        project._project_members_api = mocker.MagicMock()
+
+        project.transfer_ownership("carol@example.com")
+
+        project._project_members_api.transfer_ownership.assert_called_once_with(
+            "carol@example.com"
+        )
+        assert project.owner == "carol@example.com"
+
+    def test_transfer_ownership_keeps_the_owner_when_the_request_fails(self, mocker):
+        project = Project(project_name="my_project", owner="alice@example.com")
+        project._project_members_api = mocker.MagicMock()
+        project._project_members_api.transfer_ownership.side_effect = RuntimeError(
+            "refused"
+        )
+
+        with pytest.raises(RuntimeError):
+            project.transfer_ownership("carol@example.com")
+
+        assert project.owner == "alice@example.com"
+
+    def test_transfer_ownership_names_the_new_owner_when_only_a_follow_up_failed(
+        self, mocker
+    ):
+        project = Project(project_name="my_project", owner="alice@example.com")
+        project._project_members_api = mocker.MagicMock()
+        response = mocker.MagicMock()
+        response.json.return_value = {"errorCode": 150127, "errorMsg": "incomplete"}
+        project._project_members_api.transfer_ownership.side_effect = RestAPIError(
+            "url", response
+        )
+
+        with pytest.raises(RestAPIError):
+            project.transfer_ownership("carol@example.com")
+
+        assert project.owner == "carol@example.com"
+
+    def test_get_members_api_returns_the_members_api(self, mocker):
+        project = Project(project_name="my_project")
+
+        assert project.get_members_api() is project._project_members_api
+
+    # Regression: the backend serializes this field as "namespace" (ProjectDTO),
+    # and from_response_json splats the decamelized payload straight into
+    # __init__, so a parameter under any other name is swallowed by **kwargs and
+    # the property silently reads None.
+    def test_project_namespace_deserialized_from_response(self):
+        project = Project.from_response_json(
+            {"projectName": "my_project", "namespace": "my-project-ns"}
+        )
+
+        assert project.project_namespace == "my-project-ns"

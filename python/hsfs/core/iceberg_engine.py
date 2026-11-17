@@ -23,8 +23,9 @@ import uuid
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
+import requests
 from hopsworks_common import client
-from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hopsworks_common.core import project_api
 from hopsworks_common.core.constants import HAS_POLARS
 from hopsworks_common.core.type_systems import _convert_offline_type_to_pyarrow_type
@@ -194,6 +195,8 @@ def _make_ephemeral_catalog(name: str, properties: dict[str, str]):
         list_views = _unsupported
         drop_view = _unsupported
         view_exists = _unsupported
+        load_view = _unsupported
+        register_view = _unsupported
 
     return _EphemeralCatalog(name, **properties)
 
@@ -219,7 +222,8 @@ class IcebergEngine:
 
     ICEBERG_SPARK_FORMAT = "iceberg"
     ICEBERG_SPARK_CATALOG_IMPL = "org.apache.iceberg.spark.SparkCatalog"
-    ICEBERG_QUERY_TIME_TRAVEL_AS_OF_TIMESTAMP = "as-of-timestamp"
+    ICEBERG_QUERY_TIME_TRAVEL_AS_OF_INSTANT = "timestampAsOf"
+    ICEBERG_QUERY_TIME_TRAVEL_AS_OF_VERSION = "versionAsOf"
     ICEBERG_START_SNAPSHOT_ID = "start-snapshot-id"
     ICEBERG_END_SNAPSHOT_ID = "end-snapshot-id"
     ICEBERG_DOT_PREFIX = "iceberg."
@@ -277,9 +281,32 @@ class IcebergEngine:
             )
         if fg_commit is None:
             # nothing was committed (e.g. schema-only table creation)
+            self._sync_metastore()
             return None
         fg_commit.validation_id = validation_id
         return self._feature_group_api._commit(self._feature_group, fg_commit)
+
+    def _sync_metastore(self) -> None:
+        """Register the table's current metadata in the Hive metastore after a commit that registers no feature group commit.
+
+        Trino reads ICEBERG feature groups through the metastore, so without this it keeps reading the previous state until the next registered commit.
+        A failure only logs, since the table change itself already succeeded.
+        """
+        if self._glue_catalog() is not None:
+            # Glue holds its own pointer; the backend mirrors HopsFS tables only.
+            return
+        try:
+            self._feature_group_api._sync_metastore(self._feature_group)
+        except (RestAPIError, requests.exceptions.RequestException) as e:
+            # A 4xx is a backend without the endpoint or a feature group it does not mirror.
+            quiet = isinstance(e, RestAPIError) and e.response.status_code < 500
+            log = _logger.debug if quiet else _logger.warning
+            log(
+                "Could not register the Iceberg metadata of feature group %s v%s in the metastore: %s",
+                self._feature_group.name,
+                self._feature_group.version,
+                e,
+            )
 
     def _is_iceberg_table_at(self, location: str) -> bool:
         """Return True iff *location* contains a readable Iceberg table.
@@ -953,11 +980,9 @@ class IcebergEngine:
             and iceberg_fg_alias.left_feature_group_start_timestamp is None
         ):
             # snapshot query with end time; Iceberg expects epoch milliseconds
-            iceberg_options = {
-                self.ICEBERG_QUERY_TIME_TRAVEL_AS_OF_TIMESTAMP: str(
-                    iceberg_fg_alias.left_feature_group_end_timestamp
-                ),
-            }
+            iceberg_options = self._snapshot_read_opts_at(
+                location, iceberg_fg_alias.left_feature_group_end_timestamp
+            )
         elif iceberg_fg_alias.left_feature_group_start_timestamp is not None:
             # incremental query; Iceberg only supports snapshot-id bounds,
             # so the wallclock bounds are resolved against the snapshot log
@@ -965,19 +990,31 @@ class IcebergEngine:
                 location, iceberg_fg_alias.left_feature_group_start_timestamp
             )
             if start_snapshot_id is None:
-                raise FeatureStoreException(
-                    "Cannot run the incremental query: no Iceberg snapshot exists at or before "
-                    f"the start time {iceberg_fg_alias.left_feature_group_start_timestamp}."
+                # The window starts before the table's first snapshot (e.g. a
+                # rolling monitoring window on a fresh table). start-snapshot-id
+                # is exclusive, so the first snapshot's changes cannot be part
+                # of an incremental scan; read the table state at the end bound
+                # instead, which equals the window content when every commit is
+                # inside the window (mirrors the Delta CDF earliest-version
+                # fallback).
+                end_ts = iceberg_fg_alias.left_feature_group_end_timestamp
+                iceberg_options = (
+                    self._snapshot_read_opts_at(location, end_ts)
+                    if end_ts is not None
+                    else {}
                 )
-            iceberg_options = {
-                self.ICEBERG_START_SNAPSHOT_ID: str(start_snapshot_id),
-            }
-            if iceberg_fg_alias.left_feature_group_end_timestamp is not None:
-                end_snapshot_id = self._resolve_snapshot_id_at(
-                    location, iceberg_fg_alias.left_feature_group_end_timestamp
-                )
-                if end_snapshot_id is not None:
-                    iceberg_options[self.ICEBERG_END_SNAPSHOT_ID] = str(end_snapshot_id)
+            else:
+                iceberg_options = {
+                    self.ICEBERG_START_SNAPSHOT_ID: str(start_snapshot_id),
+                }
+                if iceberg_fg_alias.left_feature_group_end_timestamp is not None:
+                    end_snapshot_id = self._resolve_snapshot_id_at(
+                        location, iceberg_fg_alias.left_feature_group_end_timestamp
+                    )
+                    if end_snapshot_id is not None:
+                        iceberg_options[self.ICEBERG_END_SNAPSHOT_ID] = str(
+                            end_snapshot_id
+                        )
 
         if read_options:
             for key in read_options:
@@ -994,6 +1031,40 @@ class IcebergEngine:
         )
 
         return iceberg_options
+
+    def _snapshot_read_opts_at(self, location: str, end_ts: int) -> dict[str, str]:
+        """Read options pinning the table state at *end_ts* by snapshot id.
+
+        The snapshot is resolved client-side against the snapshots' own
+        ``committed_at`` clock, the clock the backend derives the recorded
+        commit time from.
+        Passing ``timestampAsOf`` instead lets Iceberg resolve the bound
+        server-side against the snapshot-log timestamps, a different clock: a
+        recorded commit time landing just below snapshot N's log timestamp
+        would then silently read snapshot N-1.
+        Resolving here keeps registration and read on one clock, so mid-range
+        resolution is exact.
+
+        When *end_ts* precedes every snapshot the earliest snapshot is pinned.
+        That covers the fresh-insert case (commit times recorded a few ms
+        before the first snapshot) but also a window that genuinely ended
+        before the first commit, which then reads data committed after the
+        window instead of coming back empty.
+        This mirrors the Delta earliest-version fallback and is indistinguishable
+        client-side from the skew case.
+        Only a table with no snapshots at all keeps the timestamp bound.
+        """
+        snapshots = self._read_snapshots(location)
+        if not snapshots:
+            return {
+                self.ICEBERG_QUERY_TIME_TRAVEL_AS_OF_INSTANT: util._get_delta_datestr_from_timestamp(
+                    end_ts
+                )
+            }
+        snapshot_id = self._latest_snapshot_id_at(snapshots, end_ts)
+        if snapshot_id is None:
+            snapshot_id = snapshots[0]["snapshot_id"]
+        return {self.ICEBERG_QUERY_TIME_TRAVEL_AS_OF_VERSION: str(snapshot_id)}
 
     @staticmethod
     def _is_catalog_identifier(address: str) -> bool:
@@ -1023,8 +1094,19 @@ class IcebergEngine:
 
     def _resolve_snapshot_id_at(self, location: str, timestamp: int) -> int | None:
         """Return the id of the latest snapshot committed at or before *timestamp*."""
+        return self._latest_snapshot_id_at(self._read_snapshots(location), timestamp)
+
+    @staticmethod
+    def _latest_snapshot_id_at(
+        snapshots: list[dict[str, Any]], timestamp: int
+    ) -> int | None:
+        """Id of the latest snapshot committed at or before *timestamp*.
+
+        Returns None when *timestamp* precedes every snapshot.
+        Expects *snapshots* ordered oldest first.
+        """
         snapshot_id = None
-        for snapshot in self._read_snapshots(location):
+        for snapshot in snapshots:
             committed_at = util._convert_event_time_to_timestamp(
                 snapshot["committed_at"]
             )
@@ -1118,6 +1200,7 @@ class IcebergEngine:
                 "target-file-size-bytes", str(target_file_size_mb * 1024 * 1024)
             )
         result = action.execute()
+        self._sync_metastore()
         metrics = {"strategy": strategy}
         for key, getter in (
             ("rewritten_data_files", "rewrittenDataFilesCount"),
@@ -1353,6 +1436,7 @@ class IcebergEngine:
             )
             update.commit()
             table.refresh()
+            self._sync_metastore()
         return self._spec_expressions(table)
 
     @staticmethod
@@ -1420,6 +1504,7 @@ class IcebergEngine:
             self._save_empty_iceberg_table_pyspark(write_options=write_options)
         else:
             self._save_empty_iceberg_table_python(write_options=write_options)
+        self._sync_metastore()
 
     def _save_empty_iceberg_table_pyspark(
         self, write_options: dict[str, Any] | None = None
@@ -1581,7 +1666,18 @@ class IcebergEngine:
         if _client._is_external():
             parsed_url = urlparse(location)
             try:
-                pyiceberg_loc = f"hdfs://{self._variable_api._get_loadbalancer_external_domain('namenode')}:{parsed_url.port}{parsed_url.path}"
+                namenode = self._variable_api._get_loadbalancer_external_domain(
+                    "namenode"
+                )
+                if not namenode:
+                    raise FeatureStoreException(
+                        "Client could not get namenode service hostname from "
+                        "loadbalancer_external_domain_namenode. "
+                        "The variable is either not set or empty in Hopsworks cluster configuration. "
+                        "The datanode and namenode load balancers may not be enabled on this cluster; "
+                        "contact your system administrator."
+                    )
+                pyiceberg_loc = f"hdfs://{namenode}:{parsed_url.port}{parsed_url.path}"
                 _logger.debug(
                     f"External client, using namenode url + pyiceberg location: {pyiceberg_loc}"
                 )

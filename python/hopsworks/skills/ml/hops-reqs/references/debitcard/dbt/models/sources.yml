@@ -1,0 +1,11 @@
+version: 2
+
+sources:
+  - name: cards
+    database: delta
+    schema: "{{ env_var('DBT_TRINO_SCHEMA') }}"
+    tables:
+      - name: authorisations
+        identifier: card_authorisations_1
+      - name: authorisation_signals
+        identifier: card_authorisation_signals_1

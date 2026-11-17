@@ -19,6 +19,13 @@ import pytest
 from hopsworks_common.core.opensearch import ProjectOpenSearchClient
 from hsfs.client.exceptions import VectorDatabaseException
 from hsfs.core.opensearch import OpenSearchClientSingleton, OpensearchRequestOption
+from opensearchpy.exceptions import (
+    AuthenticationException,
+    AuthorizationException,
+    ConnectionError,
+    NotFoundError,
+    RequestError,
+)
 
 
 class TestOpenSearchClientSingleton:
@@ -82,6 +89,96 @@ class TestOpenSearchClientSingleton:
         assert isinstance(exception, VectorDatabaseException)
         assert exception.reason == expected_reason
         assert exception.info == expected_info
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            # A knn query with the filter inside, OpenSearch 2.x
+            {
+                "type": "illegal_argument_exception",
+                "reason": "[knn] requires k to be in the range (0, 10000]",
+            },
+            # A knn query inside a bool query
+            {
+                "type": "x_content_parse_exception",
+                "reason": "[1:83] [bool] failed to parse field [must]",
+                "caused_by": {
+                    "type": "illegal_argument_exception",
+                    "reason": "[knn] requires k to be in the range (0, 10000]",
+                },
+            },
+        ],
+        ids=["top_level", "caused_by"],
+    )
+    def test_search_reports_k_too_large(self, error):
+        opensearch_client = MagicMock()
+        opensearch_client.search.side_effect = RequestError(
+            400, error["type"], {"error": error, "status": 400}
+        )
+        target = ProjectOpenSearchClient(
+            opensearch_client=opensearch_client, is_cluster_client=False
+        )
+
+        with pytest.raises(VectorDatabaseException) as e:
+            target._search(index="index", body={})
+
+        assert e.value.reason == VectorDatabaseException.REQUESTED_K_TOO_LARGE
+        assert e.value.info == {
+            VectorDatabaseException.REQUESTED_K_TOO_LARGE_INFO_K: 10000
+        }
+
+    @pytest.mark.parametrize(
+        "first_error",
+        [
+            AuthenticationException(401, "security_exception", {}),
+            ConnectionError("N/A", "connection refused", None),
+        ],
+        ids=["expired_token", "closed_connection"],
+    )
+    def test_search_converts_request_error_after_refresh(self, mocker, first_error):
+        error = {
+            "type": "illegal_argument_exception",
+            "reason": "[knn] requires k to be in the range (0, 10000]",
+        }
+        opensearch_client = MagicMock()
+        opensearch_client.search.side_effect = [
+            first_error,
+            RequestError(400, error["type"], {"error": error, "status": 400}),
+        ]
+        target = ProjectOpenSearchClient(
+            opensearch_client=opensearch_client, is_cluster_client=False
+        )
+        mock_refresh = mocker.patch.object(target, "_refresh_opensearch_connection")
+
+        with pytest.raises(VectorDatabaseException) as e:
+            target._search(index="index", body={})
+
+        mock_refresh.assert_called_once()
+        assert e.value.reason == VectorDatabaseException.REQUESTED_K_TOO_LARGE
+        assert isinstance(e.value.__cause__, RequestError)
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            AuthorizationException(403, "security_exception", {}),
+            NotFoundError(404, "index_not_found_exception", {}),
+        ],
+        ids=["refused", "missing"],
+    )
+    def test_field_mapping_unreadable_keeps_federated_client(self, mocker, error):
+        opensearch_client = MagicMock()
+        opensearch_client.indices.get_field_mapping.side_effect = error
+        target = ProjectOpenSearchClient(
+            opensearch_client=opensearch_client,
+            feature_store_id=99,
+            is_cluster_client=False,
+        )
+        invalidate = mocker.patch.object(OpenSearchClientSingleton, "_invalidate_cache")
+
+        assert target._get_field_mapping(index="index", field="f2") is None
+
+        invalidate.assert_not_called()
+        opensearch_client.close.assert_not_called()
 
     @pytest.fixture(autouse=True)
     def reset_singleton(self):
@@ -326,3 +423,60 @@ class TestOpensearchRequestOption:
         OpensearchRequestOption.get_version = lambda: (2, 3)
         options = OpensearchRequestOption.get_options({"timeout": 50})
         assert options == {"timeout": 50}
+
+
+class TestMultiSearchReportsFailedEntries:
+    """A search that fails inside a batch fails the way it does on its own.
+
+    OpenSearch answers a multi-search with HTTP 200 and puts each failure in its
+    own entry, so nothing raises. Reading hits out of such an entry yields no
+    results, which is indistinguishable from a key that genuinely matched
+    nothing: a permission error, a shard failure or an overloaded node then
+    reads as missing feature data.
+    """
+
+    def _client(self, mocker, responses):
+        client = ProjectOpenSearchClient.__new__(ProjectOpenSearchClient)
+        inner = mocker.Mock()
+        inner.msearch.return_value = {"responses": responses}
+        mocker.patch.object(client, "_get_opensearch_client", return_value=inner)
+        return client
+
+    FORBIDDEN = {
+        "error": {
+            "type": "security_exception",
+            "reason": "no permissions for [indices:data/read/search]",
+        },
+        "status": 403,
+    }
+
+    def test_a_failed_entry_raises(self, mocker):
+        client = self._client(mocker, [self.FORBIDDEN])
+
+        with pytest.raises(VectorDatabaseException) as raised:
+            client._multi_search(body=[])
+
+        assert "no permissions" in str(raised.value)
+
+    def test_a_failure_beside_a_success_still_raises(self, mocker):
+        """One bad entry must not be hidden by the entries that worked."""
+        client = self._client(
+            mocker, [{"hits": {"hits": [{"_source": {"a": 1}}]}}, self.FORBIDDEN]
+        )
+
+        with pytest.raises(VectorDatabaseException):
+            client._multi_search(body=[])
+
+    def test_matching_nothing_is_not_a_failure(self, mocker):
+        client = self._client(mocker, [{"hits": {"hits": []}}, {"hits": {"hits": []}}])
+
+        assert client._multi_search(body=[])["responses"] == [
+            {"hits": {"hits": []}},
+            {"hits": {"hits": []}},
+        ]
+
+    def test_an_unreadable_entry_raises(self, mocker):
+        client = self._client(mocker, ["not a response"])
+
+        with pytest.raises(VectorDatabaseException):
+            client._multi_search(body=[])

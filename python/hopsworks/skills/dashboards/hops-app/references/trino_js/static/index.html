@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Customers</title>
+  <script>
+    // Relative URLs resolve against the proxy mount only with a trailing slash.
+    if (!location.pathname.endsWith("/")) location.replace(location.pathname + "/" + location.search);
+  </script>
+  <link rel="stylesheet" href="static/app.css">
+  <script type="module" src="static/app.js"></script>
+</head>
+<body>
+  <header class="band">
+    <div class="mark" aria-hidden="true">H</div>
+    <div>
+      <h1>Customers</h1>
+      <div class="sub">The first rows of the feature group, read through Trino</div>
+    </div>
+  </header>
+  <main>
+    <section class="card">
+      <table id="rows"><thead></thead><tbody><tr><td><div class="loading"></div></td></tr></tbody></table>
+      <div id="error" aria-live="polite"></div>
+    </section>
+  </main>
+</body>
+</html>

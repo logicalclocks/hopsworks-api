@@ -36,11 +36,15 @@ class RestAPIError(Exception):
     STATUS_CODE_UNAUTHORIZED = 401
     STATUS_CODE_FORBIDDEN = 403
     STATUS_CODE_NOT_FOUND = 404
+    STATUS_CODE_TOO_MANY_REQUESTS = 429
     STATUS_CODE_INTERNAL_SERVER_ERROR = 500
 
     class FeatureStoreErrorCode(int, Enum):
         FEATURE_GROUP_COMMIT_NOT_FOUND = 270227
         STATISTICS_NOT_FOUND = 270228
+        DATA_SOURCE_CREDENTIALS_NOT_PROVIDED = 270334
+        DATA_SOURCE_CREDENTIALS_INCOMPLETE = 270335
+        DATA_SOURCE_CREDENTIALS_INVALID = 270336
 
         def __eq__(self, other: int | Any) -> bool:
             if isinstance(other, int):
@@ -72,6 +76,7 @@ class RestAPIError(Exception):
         )
         if len(error_object) != 0:
             self.error_code = error_object.get("errorCode", "")
+        self.user_message = error_object.get("usrMsg", "")
         super().__init__(message)
         self.url = url
         self.response = response
@@ -282,8 +287,12 @@ class ModelServingException(Exception):
 
 @public("hopsworks.client.exceptions.DataSourceException")
 @also_available_as("hsml.client.exceptions.DataSourceException")
-class DataSourceException(Exception):
-    """Generic data source exception."""
+class DataSourceException(FeatureStoreException):
+    """Raised when a data source cannot be read or its schema cannot be fetched.
+
+    This exception is a subclass of `FeatureStoreException`, so code that already
+    catches that keeps catching a failed read on the way into a feature group.
+    """
 
 
 @public("hopsworks.client.exceptions.PlatformIntelligenceException")

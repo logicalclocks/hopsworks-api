@@ -16,10 +16,11 @@
 import logging
 import warnings
 
+import pandas as pd
 import pytest
 from hsfs import feature, feature_group
 from hsfs.client.exceptions import FeatureStoreException
-from hsfs.constructor import filter, join, query
+from hsfs.constructor import filter, join, lookback, query
 from hsfs.constructor.fs_query import FsQuery
 from hsfs.engine import spark
 
@@ -698,6 +699,7 @@ class TestQuery:
         mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         mock_fs_query = mocker.MagicMock(spec=FsQuery)
+        mock_fs_query.pushdown_query = None
         mock_fs_query.query = "SELECT * FROM test"
         mock_fs_query.on_demand_feature_groups = []
         mock_fs_query.hudi_cached_feature_groups = []
@@ -718,12 +720,61 @@ class TestQuery:
         mock_fs_query._register_delta_tables.assert_called()
         mock_fs_query._register_hudi_tables.assert_called()
 
+    def test_prep_read_source_pushdown(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mock_engine = mocker.MagicMock()
+        mock_engine._is_flyingduck_query_supported.return_value = False
+        mock_engine._is_source_pushdown_supported.return_value = True
+        mock_engine._register_pushdown_query.return_value = "SELECT * FROM pushed_down"
+        mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
+
+        mock_fs_query = mocker.MagicMock(spec=FsQuery)
+        mock_fs_query.pushdown_query = "SELECT * FROM SALES_DB.PUBLIC.FG0 AS fg0"
+        mocker.patch(
+            "hsfs.core.query_constructor_api.QueryConstructorApi._construct_query",
+            return_value=mock_fs_query,
+        )
+
+        sql_query, _ = TestQuery.fg1.select_all()._prep_read(
+            online=False, read_options={}
+        )
+
+        assert sql_query == "SELECT * FROM pushed_down"
+        mock_engine._register_pushdown_query.assert_called_once_with(mock_fs_query)
+        mock_fs_query._register_external.assert_not_called()
+        mock_fs_query._register_hudi_tables.assert_not_called()
+
+    def test_prep_read_source_pushdown_unsupported_engine(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mock_engine = mocker.MagicMock()
+        mock_engine._is_flyingduck_query_supported.return_value = False
+        mock_engine._is_source_pushdown_supported.return_value = False
+        mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
+
+        mock_fs_query = mocker.MagicMock(spec=FsQuery)
+        mock_fs_query.pushdown_query = "SELECT * FROM SALES_DB.PUBLIC.FG0 AS fg0"
+        mock_fs_query.query = "SELECT * FROM test"
+        mock_fs_query.pit_query = None
+        mocker.patch(
+            "hsfs.core.query_constructor_api.QueryConstructorApi._construct_query",
+            return_value=mock_fs_query,
+        )
+
+        sql_query, _ = TestQuery.fg1.select_all()._prep_read(
+            online=False, read_options={}
+        )
+
+        assert sql_query == "SELECT * FROM test"
+        mock_engine._register_pushdown_query.assert_not_called()
+        mock_fs_query._register_external.assert_called()
+
     def test_prep_hudi_delta_fg_join(self, mocker):
         engine = spark.Engine()
         mocker.patch("hsfs.engine._get_instance", return_value=engine)
         mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         mock_fs_query = mocker.MagicMock(spec=FsQuery)
+        mock_fs_query.pushdown_query = None
         mock_fs_query.query = "SELECT * FROM test"
         mock_fs_query.on_demand_feature_groups = []
         mock_fs_query.hudi_cached_feature_groups = []
@@ -779,6 +830,7 @@ class TestQuery:
         mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
 
         mock_fs_query = mocker.MagicMock(spec=FsQuery)
+        mock_fs_query.pushdown_query = None
         mock_fs_query.query = "SELECT * FROM test"
         mock_fs_query.on_demand_feature_groups = []
         mock_fs_query.hudi_cached_feature_groups = []
@@ -802,6 +854,7 @@ class TestQuery:
         mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
 
         mock_fs_query = mocker.MagicMock(spec=FsQuery)
+        mock_fs_query.pushdown_query = None
         mock_fs_query.query = "SELECT * FROM test"
         mock_fs_query.on_demand_feature_groups = []
         mock_fs_query.hudi_cached_feature_groups = []
@@ -823,69 +876,72 @@ class TestQuery:
         # The query sent to the backend should have _limit == 7 during _prep_read
         assert captured_limit[0] == 7
 
-    @staticmethod
-    def _fg_with_event_time(event_time):
-        return feature_group.FeatureGroup(
-            name="test_et",
-            version=1,
-            featurestore_id=99,
-            featurestore_name="test_featurestore",
-            primary_key=[],
-            partition_key=[],
-            features=[
-                feature.Feature("id", feature_group_id=21),
-                feature.Feature("ts", feature_group_id=21),
-            ],
-            id=21,
-            stream=False,
-            event_time=event_time,
+
+class TestQueryReadLimit:
+    def _read(
+        self, mocker, result, limit, engine_type="python", dataframe_type="default"
+    ):
+        mocker.patch("hsfs.engine._get_type", return_value=engine_type)
+        mock_engine = mocker.MagicMock()
+        self.engine = mock_engine
+        mock_engine._sql.return_value = result
+        mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
+        mock_fs_query = mocker.MagicMock(spec=FsQuery)
+        mock_fs_query.pushdown_query = None
+        mock_fs_query.query = "SELECT * FROM test"
+        mock_fs_query.on_demand_feature_groups = []
+        mock_fs_query.hudi_cached_feature_groups = []
+        mocker.patch(
+            "hsfs.core.query_constructor_api.QueryConstructorApi._construct_query",
+            return_value=mock_fs_query,
+        )
+        query = TestQuery.fg1.select_all()
+        if limit is not None:
+            query = query.limit(limit)
+        return query.read(dataframe_type=dataframe_type)
+
+    def test_an_engine_that_ignores_the_limit_is_cut_down(self, mocker):
+        result = self._read(mocker, pd.DataFrame({"id": range(100)}), 10)
+        assert len(result) == 10
+
+    def test_lists_are_cut_down_too(self, mocker):
+        assert self._read(mocker, [[i] for i in range(100)], 5) == [
+            [i] for i in range(5)
+        ]
+
+    def test_without_a_limit_the_result_is_untouched(self, mocker):
+        result = self._read(mocker, pd.DataFrame({"id": range(100)}), None)
+        assert len(result) == 100
+
+    def test_a_zero_limit_returns_no_rows(self, mocker):
+        result = self._read(mocker, pd.DataFrame({"id": range(100)}), 0)
+        assert len(result) == 0
+
+    def test_spark_limits_before_converting_to_the_requested_type(self, mocker):
+        spark_df = mocker.MagicMock()
+        self._read(mocker, spark_df, 50, engine_type="spark", dataframe_type="pandas")
+
+        # The Spark DataFrame is requested, limited, and only then converted.
+        assert self.engine._sql.call_args[0][3] == "default"
+        spark_df.limit.assert_called_once_with(50)
+        self.engine._return_dataframe_type.assert_called_once_with(
+            spark_df.limit.return_value, "pandas"
         )
 
-    def test_include_left_event_time_appends_when_absent(self, mocker):
-        # The event-time column is forced through the query for event-time
-        # partitioning when the user did not select it; the caller is told to
-        # drop it again before the data is written.
+    def test_an_online_embedding_read_passes_the_limit(self, mocker):
         mocker.patch("hsfs.engine._get_type", return_value="python")
-        fg = self._fg_with_event_time("ts")
-        q = fg.select([fg["id"]])
-
-        # Act
-        column, appended = q._include_left_event_time()
-
-        # Assert
-        assert appended is True
-        assert column.endswith("ts")
-        assert any(f.name == "ts" for f in q.features)
-
-    def test_include_left_event_time_already_selected(self, mocker):
-        # A selected event-time column is reused and must not be appended
-        # again (or dropped later).
-        mocker.patch("hsfs.engine._get_type", return_value="python")
-        fg = self._fg_with_event_time("ts")
-        q = fg.select_all()
-        features_before = len(q.features)
-
-        # Act
-        column, appended = q._include_left_event_time()
-
-        # Assert
-        assert appended is False
-        assert column.endswith("ts")
-        assert len(q.features) == features_before
-
-    def test_include_left_event_time_no_event_time(self, mocker):
-        # Without an event time on the left feature group there is nothing to
-        # partition by; the caller falls back to counter partitioning.
-        mocker.patch("hsfs.engine._get_type", return_value="python")
-        fg = self._fg_with_event_time(None)
-        q = fg.select_all()
-
-        # Act
-        column, appended = q._include_left_event_time()
-
-        # Assert
-        assert column is None
-        assert appended is False
+        mock_engine = mocker.MagicMock()
+        mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
+        query = TestQuery.fg1.select_all().limit(5)
+        mocker.patch.object(query, "_check_read_supported")
+        mocker.patch.object(
+            query._left_feature_group.__class__,
+            "embedding_index",
+            new_callable=mocker.PropertyMock,
+            return_value=mocker.MagicMock(),
+        )
+        query.read(online=True)
+        assert mock_engine._read_vector_db.call_args[1]["n"] == 5
 
 
 class TestQueryRead:
@@ -1083,3 +1139,284 @@ class TestQueryRead:
         feat, prefix, fg = q._get_feature_by_name("tf3_name")
         assert feat.name == "tf3_name"
         assert fg == TestQuery.fg3
+
+
+class TestOnlinePreparedRead:
+    """A repeated online read of an unchanged query must not ask the backend again.
+
+    Constructing the query and fetching the online connector are both HTTP
+    calls, made before any SQL runs, and neither answer changes while the query
+    does not.
+    """
+
+    def _query(self, mocker, calls):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        q = TestQuery.fg1.select_all()
+        mocker.patch.object(q, "_check_read_supported")
+        mocker.patch.object(q, "_to_string", return_value="SELECT 1")
+        mocker.patch.object(
+            q._query_constructor_api,
+            "_construct_query",
+            side_effect=lambda *a, **k: calls.append("construct"),
+        )
+        mocker.patch.object(
+            q._storage_connector_api,
+            "_get_online_connector",
+            side_effect=lambda *a, **k: calls.append("connector") or "connector",
+        )
+        return q
+
+    def test_repeated_reads_prepare_once(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance", return_value=object())
+        calls = []
+        q = self._query(mocker, calls)
+
+        first = q._prep_read(True, {})
+        for _ in range(4):
+            assert q._prep_read(True, {}) == first
+
+        assert calls == ["construct", "connector"]
+
+    @pytest.mark.parametrize(
+        "mutate",
+        [
+            lambda q: q.filter(feature.Feature("id") > 1),
+            lambda q: q.limit(10),
+            lambda q: q.append_feature(feature.Feature("extra", feature_group_id=11)),
+            lambda q: setattr(q, "left_feature_group_start_time", 1),
+            lambda q: setattr(q, "left_feature_group_end_time", 2),
+            lambda q: setattr(
+                q,
+                "lookback",
+                lookback.Lookback(
+                    default=lookback.FeatureGroupLookback(key="EVENT_TIME", start=1)
+                ),
+            ),
+        ],
+    )
+    def test_a_changed_query_prepares_again(self, mocker, mutate):
+        mocker.patch("hopsworks_common.client._get_instance", return_value=object())
+        calls = []
+        q = self._query(mocker, calls)
+
+        q._prep_read(True, {})
+        mutate(q)
+        q._prep_read(True, {})
+
+        assert calls == ["construct", "connector", "construct", "connector"]
+
+    def test_show_does_not_leave_its_row_count_behind(self, mocker):
+        """`show(n)` sets the limit for its own read only.
+
+        It prepared under the temporary limit and left that preparation in
+        place, so the next ordinary read of the same query ran the preview's
+        LIMIT even though the query carries none.
+        """
+        mocker.patch("hopsworks_common.client._get_instance", return_value=object())
+        calls = []
+        q = self._query(mocker, calls)
+        rendered = []
+        q._to_string.side_effect = lambda fs_query, online: (
+            rendered.append(q._limit) or f"SELECT 1 LIMIT {q._limit}"
+        )
+        mocker.patch("hsfs.engine._get_instance")
+
+        q.show(2, online=True)
+        q._prep_read(True, {})
+
+        assert q._limit is None
+        assert rendered == [2, None], "the ordinary read reused the preview's limit"
+
+    def test_show_does_not_read_a_prepared_query(self, mocker):
+        """A prepared query must not make `show(n)` render someone else's limit."""
+        mocker.patch("hopsworks_common.client._get_instance", return_value=object())
+        calls = []
+        q = self._query(mocker, calls)
+        q.limit(50)
+        rendered = []
+        q._to_string.side_effect = lambda fs_query, online: (
+            rendered.append(q._limit) or "SELECT 1"
+        )
+        mocker.patch("hsfs.engine._get_instance")
+
+        q._prep_read(True, {})
+        q.show(2, online=True)
+
+        assert rendered == [50, 2], "show reused the query's own limit"
+        assert q._limit == 50
+
+    def test_show_does_not_evict_what_the_query_prepared(self, mocker):
+        """The preview is not this query's read, so it must not take its place.
+
+        Keying on the request already stops the preview's LIMIT from being
+        reused, because it is a different request. What it does not stop on its
+        own is the preview replacing the entry the query's own reads use, which
+        would send the next one back to the backend.
+        """
+        mocker.patch("hopsworks_common.client._get_instance", return_value=object())
+        calls = []
+        q = self._query(mocker, calls)
+        mocker.patch("hsfs.engine._get_instance")
+
+        q._prep_read(True, {})
+        q.show(2, online=True)
+        q._prep_read(True, {})
+
+        assert calls == ["construct", "connector", "construct", "connector"], (
+            "the preview replaced the prepared read, so the next one prepared again"
+        )
+
+    def test_a_change_inside_a_joined_query_prepares_again(self, mocker):
+        """A join's sub-query is changed through its own object, not through this one."""
+        mocker.patch("hopsworks_common.client._get_instance", return_value=object())
+        calls = []
+        q = self._query(mocker, calls)
+        sub = TestQuery.fg2.select_all()
+        q.join(sub)
+
+        q._prep_read(True, {})
+        sub.filter(feature.Feature("id") > 1)
+        q._prep_read(True, {})
+
+        assert calls == ["construct", "connector", "construct", "connector"]
+
+    def test_a_joined_query_prepares_again(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance", return_value=object())
+        calls = []
+        q = self._query(mocker, calls)
+
+        q._prep_read(True, {})
+        q.join(TestQuery.fg2.select_all())
+        q._prep_read(True, {})
+
+        assert calls == ["construct", "connector", "construct", "connector"]
+
+    def test_a_new_connection_prepares_again(self, mocker):
+        """Credentials belong to a session; a re-login must not read through the old ones."""
+        calls = []
+        connection = mocker.patch(
+            "hopsworks_common.client._get_instance", return_value=object()
+        )
+        q = self._query(mocker, calls)
+
+        q._prep_read(True, {})
+        connection.return_value = object()
+        q._prep_read(True, {})
+
+        assert calls == ["construct", "connector", "construct", "connector"]
+
+
+class TestReadBatches:
+    """Batches arrive as they are produced, and the reader is released either way."""
+
+    def _query(self, mocker, engine_instance):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_instance", return_value=engine_instance)
+        mocker.patch("hopsworks_common.client._get_instance", return_value=object())
+        q = TestQuery.fg1.select_all()
+        mocker.patch.object(q, "_check_read_supported")
+        mocker.patch.object(q, "_to_string", return_value="SELECT 1")
+        mocker.patch.object(q._query_constructor_api, "_construct_query")
+        mocker.patch.object(
+            q._storage_connector_api, "_get_online_connector", return_value="connector"
+        )
+        return q
+
+    def test_batches_are_yielded_and_the_reader_is_closed(self, mocker):
+        closed = []
+
+        def stream(*_args, **_kwargs):
+            try:
+                yield "batch-1"
+                yield "batch-2"
+            finally:
+                closed.append(True)
+
+        engine_instance = mocker.Mock()
+        engine_instance._stream_batches.side_effect = stream
+        q = self._query(mocker, engine_instance)
+
+        with q.read_batches(online=True) as batches:
+            assert list(batches) == ["batch-1", "batch-2"]
+
+        assert closed == [True]
+
+    def test_leaving_early_still_closes_the_reader(self, mocker):
+        """A caller that takes one batch must not leave the server producing the rest."""
+        closed = []
+
+        def stream(*_args, **_kwargs):
+            try:
+                yield "batch-1"
+                yield "batch-2"
+            finally:
+                closed.append(True)
+
+        engine_instance = mocker.Mock()
+        engine_instance._stream_batches.side_effect = stream
+        q = self._query(mocker, engine_instance)
+
+        with q.read_batches(online=True) as batches:
+            assert next(iter(batches)) == "batch-1"
+
+        assert closed == [True]
+
+    def test_an_exception_while_reading_still_closes_the_reader(self, mocker):
+        closed = []
+
+        def stream(*_args, **_kwargs):
+            try:
+                yield "batch-1"
+                yield "batch-2"
+            finally:
+                closed.append(True)
+
+        engine_instance = mocker.Mock()
+        engine_instance._stream_batches.side_effect = stream
+        q = self._query(mocker, engine_instance)
+
+        with pytest.raises(ValueError, match="caller"):  # noqa: SIM117
+            with q.read_batches(online=True) as batches:
+                next(iter(batches))
+                raise ValueError("caller blew up")
+
+        assert closed == [True]
+
+    def test_the_batch_size_reaches_the_engine(self, mocker):
+        engine_instance = mocker.Mock()
+        engine_instance._stream_batches.side_effect = lambda *a, **k: iter(())
+        q = self._query(mocker, engine_instance)
+
+        with q.read_batches(online=True, batch_size=7):
+            pass
+
+        assert engine_instance._stream_batches.call_args.args[4] == 7
+
+    def test_joined_features_are_declared_under_their_prefixed_names(self, mocker):
+        """The SQL output names a prefixed join's columns with the prefix."""
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        q = TestQuery.fg1.select_all().join(
+            TestQuery.fg2.select_all(), on=["id"], prefix="r_"
+        )
+
+        names = [f.name for f in q._output_features()]
+
+        assert names == ["id", "label", "tf_name", "r_id", "r_tf1_name"]
+        # The query's own features are not renamed.
+        assert [f.name for f in TestQuery.fg2.features] == ["id", "tf1_name"]
+
+    @pytest.mark.parametrize("batch_size", [0, -1])
+    def test_a_batch_size_below_one_is_refused(self, mocker, batch_size):
+        q = self._query(mocker, mocker.Mock())
+
+        with pytest.raises(ValueError, match="at least 1"):  # noqa: SIM117
+            with q.read_batches(batch_size=batch_size):
+                pass
+
+    def test_an_engine_that_cannot_stream_says_so(self, mocker):
+        engine_instance = mocker.Mock(spec=[])
+        q = self._query(mocker, engine_instance)
+
+        with pytest.raises(FeatureStoreException, match="Python engine"):  # noqa: SIM117
+            with q.read_batches():
+                pass

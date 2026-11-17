@@ -90,7 +90,7 @@ public class DeltaStreamerConfig implements Serializable {
     cfg.retryOnSourceFailures = true;
 
     // Field within source record to decide how to break ties between records with same key in input data.
-    cfg.sourceOrderingField =  writeOptions.get(HudiEngine.DELTA_SOURCE_ORDERING_FIELD_OPT_KEY);
+    cfg.sourceOrderingFields = writeOptions.get(HudiEngine.DELTA_SOURCE_ORDERING_FIELD_OPT_KEY);
 
     cfg.configs = new ArrayList<String>() {{
         // User provided options

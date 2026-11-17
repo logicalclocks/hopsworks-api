@@ -43,6 +43,14 @@
       "gpus": 1
     }
   },
+  "get_cores_memory_gpus_and_disk": {
+    "response": {
+      "cores": 0.2,
+      "memory": 16,
+      "gpus": 1,
+      "diskGb": 20
+    }
+  },
   "get_component_resources_num_instances": {
     "response": {
       "num_instances": 1

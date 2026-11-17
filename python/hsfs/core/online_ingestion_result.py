@@ -42,7 +42,7 @@ class OnlineIngestionResult:
 
         Parameters:
             online_ingestion_id: The unique identifier for the online ingestion batch.
-            status: The status of the ingestion batch (e.g., "UPSERTED", "FAILED").
+            status: The status of the ingestion batch: "UPSERTED", "DELETED", "IGNORED" or "FAILED".
             rows: The number of rows processed in this batch.
         """
         self._online_ingestion_id = online_ingestion_id
@@ -103,7 +103,11 @@ class OnlineIngestionResult:
     @public
     @property
     def status(self) -> str:
-        """Get the status of the ingestion batch (e.g., "UPSERTED", "FAILED")."""
+        """Get the status of the ingestion batch.
+
+        One of "UPSERTED" for rows written, "DELETED" for rows removed by a delete,
+        "IGNORED" for rows the online store skipped, or "FAILED".
+        """
         return self._status
 
     @public

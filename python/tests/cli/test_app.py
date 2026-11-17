@@ -31,7 +31,12 @@ def _fake_app(**overrides):
     a.monitoringConfig = overrides.get("monitoringConfig")
     a.description = overrides.get("description")
     a.app_base_path = overrides.get("app_base_path")
+    a.proxy_path_mode = overrides.get("proxy_path_mode")
     a.readiness_probe_path = overrides.get("readiness_probe_path")
+    a.db_access = overrides.get("db_access", True)
+    a.idle_scale_to_zero = overrides.get("idle_scale_to_zero", False)
+    a.idle_cooldown_seconds = overrides.get("idle_cooldown_seconds")
+    a.cold_start_timeout_seconds = overrides.get("cold_start_timeout_seconds")
     a.app_url = overrides.get("app_url")
     return a
 
@@ -168,6 +173,17 @@ def test_app_info_shows_custom_metadata(mock_project):
     assert 'python -m uvicorn dash:app --port "$APP_PORT"' in result.output
 
 
+def test_app_info_shows_the_routing_mode(mock_project):
+    apps = mock_project.get_app_api.return_value
+    apps.get_app.return_value = _fake_app(name="dash", proxy_path_mode="PREFIX")
+    result = CliRunner().invoke(cli, ["app", "info", "dash"])
+    assert result.exit_code == 0, result.output
+    assert "compatibility prefix" in result.output
+    apps.get_app.return_value = _fake_app(name="dash", proxy_path_mode="ROOT")
+    result = CliRunner().invoke(cli, ["app", "info", "dash"])
+    assert "root (the app serves at its base path)" in result.output
+
+
 def test_app_info_shows_monitoring_routes(mock_project):
     apps = mock_project.get_app_api.return_value
     apps.get_app.return_value = _fake_app(
@@ -225,6 +241,7 @@ def test_app_info_json_includes_custom_metadata(mock_project):
         description="FastAPI demo",
         app_base_path="/myapp",
         readiness_probe_path="/health",
+        proxy_path_mode="ROOT",
     )
     result = CliRunner().invoke(cli, ["--json", "app", "info", "dash"])
     assert result.exit_code == 0, result.output
@@ -237,6 +254,7 @@ def test_app_info_json_includes_custom_metadata(mock_project):
     assert payload["description"] == "FastAPI demo"
     assert payload["app_base_path"] == "/myapp"
     assert payload["readiness_probe_path"] == "/health"
+    assert payload["proxy_path_mode"] == "ROOT"
     assert payload["source"] == "Project file"
 
 
@@ -343,6 +361,136 @@ def test_app_create_forwards_args(mock_project):
     )
 
 
+def test_app_create_no_db_access(mock_project):
+    apps = mock_project.get_app_api.return_value
+    apps.create_app.return_value = _fake_app(name="dash")
+    result = CliRunner().invoke(
+        cli,
+        ["app", "create", "dash", "--path", "Resources/dash.py", "--no-db-access"],
+    )
+    assert result.exit_code == 0, result.output
+    assert apps.create_app.call_args.kwargs["db_access"] is False
+
+
+def test_app_create_idle_scale_to_zero_forwards_the_timeouts(mock_project):
+    apps = mock_project.get_app_api.return_value
+    apps.create_app.return_value = _fake_app(name="dash")
+    result = CliRunner().invoke(
+        cli,
+        [
+            "app",
+            "create",
+            "dash",
+            "--path",
+            "Resources/app.py",
+            "--idle-scale-to-zero",
+            "--idle-cooldown-seconds",
+            "120",
+            "--cold-start-timeout-seconds",
+            "45",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    kwargs = apps.create_app.call_args.kwargs
+    assert kwargs["idle_scale_to_zero"] is True
+    assert kwargs["idle_cooldown_seconds"] == 120
+    assert kwargs["cold_start_timeout_seconds"] == 45
+
+
+def test_app_create_idle_timeouts_reject_the_option_off(mock_project):
+    apps = mock_project.get_app_api.return_value
+    result = CliRunner().invoke(
+        cli,
+        [
+            "app",
+            "create",
+            "dash",
+            "--path",
+            "Resources/app.py",
+            "--no-idle-scale-to-zero",
+            "--idle-cooldown-seconds",
+            "120",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "--no-idle-scale-to-zero" in result.output
+    apps.create_app.assert_not_called()
+
+
+def test_app_create_idle_timeouts_alone_are_forwarded(mock_project):
+    apps = mock_project.get_app_api.return_value
+    apps.create_app.return_value = _fake_app(name="dash")
+    result = CliRunner().invoke(
+        cli,
+        [
+            "app",
+            "create",
+            "dash",
+            "--path",
+            "Resources/app.py",
+            "--idle-cooldown-seconds",
+            "120",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    kwargs = apps.create_app.call_args.kwargs
+    assert "idle_scale_to_zero" not in kwargs
+    assert kwargs["idle_cooldown_seconds"] == 120
+
+
+def test_app_create_leaves_idle_scale_to_zero_to_the_cluster_default(mock_project):
+    apps = mock_project.get_app_api.return_value
+    apps.create_app.return_value = _fake_app(name="dash")
+    result = CliRunner().invoke(
+        cli, ["app", "create", "dash", "--path", "Resources/app.py"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "idle_scale_to_zero" not in apps.create_app.call_args.kwargs
+
+
+def test_app_create_no_idle_scale_to_zero_opts_out(mock_project):
+    apps = mock_project.get_app_api.return_value
+    apps.create_app.return_value = _fake_app(name="dash")
+    result = CliRunner().invoke(
+        cli,
+        [
+            "app",
+            "create",
+            "dash",
+            "--path",
+            "Resources/app.py",
+            "--no-idle-scale-to-zero",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert apps.create_app.call_args.kwargs["idle_scale_to_zero"] is False
+
+
+def test_app_info_shows_idle_scale_to_zero(mock_project):
+    apps = mock_project.get_app_api.return_value
+    apps.get_app.return_value = _fake_app(
+        name="dash",
+        idle_scale_to_zero=True,
+        idle_cooldown_seconds=120,
+        cold_start_timeout_seconds=45,
+    )
+    result = CliRunner().invoke(cli, ["app", "info", "dash"])
+    assert result.exit_code == 0, result.output
+    assert "Scale to zero when idle" in result.output
+    assert "after 120 s idle" in result.output
+    assert "wakes within 45 s" in result.output
+
+
+def test_app_create_defaults_to_db_access(mock_project):
+    apps = mock_project.get_app_api.return_value
+    apps.create_app.return_value = _fake_app(name="dash")
+    result = CliRunner().invoke(
+        cli, ["app", "create", "dash", "--path", "Resources/dash.py"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "db_access" not in apps.create_app.call_args.kwargs
+
+
 def test_app_create_custom_forwards_args(mock_project):
     apps = mock_project.get_app_api.return_value
     apps.create_app.return_value = _fake_app(name="dash")
@@ -385,6 +533,62 @@ def test_app_create_custom_forwards_args(mock_project):
         app_base_path="/myapp",
         readiness_probe_path="/health",
     )
+
+
+def test_app_create_flask_git_forwards_entrypoint_script(mock_project):
+    """A Flask git app is launched from its file: an entrypoint script and a port, no command."""
+    apps = mock_project.get_app_api.return_value
+    apps.create_app.return_value = _fake_app(name="web", app_kind="FLASK")
+    result = CliRunner().invoke(
+        cli,
+        [
+            "app",
+            "create",
+            "web",
+            "--app-kind",
+            "FLASK",
+            "--git-url",
+            "https://github.com/gibchikafa/appshopsworkstests.git",
+            "--git-provider",
+            "GitHub",
+            "--entrypoint-script",
+            "flaskapp.py",
+            "--app-port",
+            "5000",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    apps.create_app.assert_called_once_with(
+        name="web",
+        app_kind="FLASK",
+        environment="python-app-pipeline",
+        memory=2048,
+        cores=1.0,
+        app_port=5000,
+        git_url="https://github.com/gibchikafa/appshopsworkstests.git",
+        git_provider="GitHub",
+        entrypoint_script="flaskapp.py",
+    )
+
+
+def test_app_create_nodejs_rejects_an_entrypoint_command(mock_project):
+    result = CliRunner().invoke(
+        cli,
+        [
+            "app",
+            "create",
+            "api",
+            "--app-kind",
+            "NODEJS",
+            "--path",
+            "Resources/server.js",
+            "--entrypoint-command",
+            "node server.js",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "Node.js apps do not accept --entrypoint-command" in result.output
+    mock_project.get_app_api.return_value.create_app.assert_not_called()
 
 
 def test_app_create_streamlit_git_forwards_args(mock_project):

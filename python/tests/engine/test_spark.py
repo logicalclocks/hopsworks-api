@@ -18,6 +18,7 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+import os
 import sys
 from unittest.mock import MagicMock, PropertyMock, call, mock_open
 
@@ -37,10 +38,16 @@ from hsfs import (
     transformation_function,
     util,
 )
+from hsfs.builtin_transformations import min_max_scaler
 from hsfs.client import exceptions
+from hsfs.constructor import fs_query as fs_query_mod
 from hsfs.constructor import hudi_feature_group_alias, query
 from hsfs.core import data_source as ds
-from hsfs.core import online_ingestion, training_dataset_engine
+from hsfs.core import (
+    online_ingestion,
+    training_dataset_engine,
+    transformation_function_engine,
+)
 from hsfs.core.constants import GE_MAJOR, HAS_GREAT_EXPECTATIONS
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 from hsfs.core.transformation_execution_dag import TransformationExecutionDAG
@@ -75,16 +82,24 @@ from pyspark.sql.types import (
     StringType,
     StructField,
     StructType,
+    TimestampNTZType,
     TimestampType,
 )
 
 
 hopsworks_common.connection._hsfs_engine_type = "spark"
+_PANDAS_UNSUPPORTED_BY_PYSPARK = tuple(
+    int(part) for part in pd.__version__.split(".")[:2]
+) < (2, 2)
 
 
 @pytest.mark.skipif(
     sys.platform.startswith("win"),
     reason="Spark tests transiently fail on Windows.",
+)
+@pytest.mark.skipif(
+    _PANDAS_UNSUPPORTED_BY_PYSPARK,
+    reason="PySpark 4.1 requires pandas >= 2.2.0.",
 )
 class TestSpark:
     # Helper Functions
@@ -617,6 +632,61 @@ class TestSpark:
 
         # Assert
         assert mock_sc_read.return_value.createOrReplaceTempView.call_count == 1
+
+    def test_register_pushdown_query(self, mocker, backend_fixtures):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+
+        spark_engine = spark.Engine()
+
+        json = backend_fixtures["fs_query"]["get"]["response"]
+        fs_query = fs_query_mod.FsQuery.from_response_json(json)
+
+        # A warehouse that folds unquoted identifiers hands back upper-case columns, while
+        # feature names in the feature store are always lower case.
+        mocker.patch(
+            "hsfs.storage_connector.JdbcConnector.read",
+            return_value=spark_engine._spark_session.createDataFrame(
+                [("key", 1)], ["PK1", "Value_2"]
+            ),
+        )
+
+        # Act
+        result = spark_engine._register_pushdown_query(fs_query)
+
+        # Assert
+        # The view name carries a unique suffix, so match the prefix and read the view back.
+        assert result.startswith("SELECT * FROM pushdown_result_hopsworks_")
+        assert spark_engine._spark_session.sql(result).columns == ["pk1", "value_2"]
+
+    def test_register_pushdown_query_uses_a_distinct_view_per_call(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+
+        spark_engine = spark.Engine()
+
+        json = backend_fixtures["fs_query"]["get"]["response"]
+        fs_query = fs_query_mod.FsQuery.from_response_json(json)
+
+        mocker.patch(
+            "hsfs.storage_connector.JdbcConnector.read",
+            side_effect=[
+                spark_engine._spark_session.createDataFrame([("a",)], ["PK1"]),
+                spark_engine._spark_session.createDataFrame([("b",)], ["PK1"]),
+            ],
+        )
+
+        # Act
+        first = spark_engine._register_pushdown_query(fs_query)
+        second = spark_engine._register_pushdown_query(fs_query)
+
+        # Assert
+        # Two reads in one session must not answer from each other's result.
+        assert first != second
+        assert spark_engine._spark_session.sql(first).collect()[0][0] == "a"
+        assert spark_engine._spark_session.sql(second).collect()[0][0] == "b"
 
     def test_register_hudi_temporary_table(self, mocker):
         # Arrange
@@ -1914,6 +1984,9 @@ class TestSpark:
         mocker.patch.object(spark_engine, "_jvm", jvm_mock)
         mocker.patch.object(spark_engine, "_spark_context", mocker.MagicMock())
         mocker.patch.object(spark_engine, "_is_connect", False)
+        mock_sync = mocker.patch(
+            "hsfs.core.iceberg_engine.IcebergEngine._sync_metastore"
+        )
 
         table_mock = jvm_mock.org.apache.iceberg.hadoop.HadoopTables.return_value.load.return_value
         existing_field = mocker.Mock()
@@ -1944,6 +2017,7 @@ class TestSpark:
         ]
         assert added_columns == ["col_1", "col_2"]
         update_schema_mock.commit.assert_called_once()
+        mock_sync.assert_called_once()
 
     def test_add_cols_to_iceberg_table_no_new_columns(self, mocker):
         # Arrange
@@ -1952,6 +2026,9 @@ class TestSpark:
         mocker.patch.object(spark_engine, "_jvm", jvm_mock)
         mocker.patch.object(spark_engine, "_spark_context", mocker.MagicMock())
         mocker.patch.object(spark_engine, "_is_connect", False)
+        mock_sync = mocker.patch(
+            "hsfs.core.iceberg_engine.IcebergEngine._sync_metastore"
+        )
 
         table_mock = jvm_mock.org.apache.iceberg.hadoop.HadoopTables.return_value.load.return_value
         existing_field = mocker.Mock()
@@ -1967,6 +2044,7 @@ class TestSpark:
 
         # Assert
         table_mock.updateSchema.assert_not_called()
+        mock_sync.assert_not_called()
 
     def test_save_online_dataframe(self, mocker, backend_fixtures):
         # Arrange
@@ -2062,6 +2140,101 @@ class TestSpark:
             == 1
         )
 
+    def _mock_online_ingestion_wait(self, mocker, backend_fixtures):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hopsworks_common.client._is_external", return_value=False)
+        mocker.patch("hsfs.engine.spark.Engine._serialize_to_avro")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
+        mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
+        mock_storage_connector_api = mocker.patch(
+            "hsfs.core.storage_connector_api.StorageConnectorApi"
+        )
+        json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
+        mock_storage_connector_api.return_value._get_kafka_connector.return_value = (
+            storage_connector.StorageConnector.from_response_json(json)
+        )
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi._create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
+        )
+        mock_get_online_ingestion = mocker.patch(
+            "hsfs.feature_group.FeatureGroup.get_online_ingestion"
+        )
+        mock_get_latest_online_ingestion = mocker.patch(
+            "hsfs.feature_group.FeatureGroup.get_latest_online_ingestion"
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            online_topic_name="test_online_topic_name",
+            online_enabled=True,
+        )
+        fg.feature_store = mocker.Mock()
+        fg._subject = {"id": 823}
+        return fg, mock_get_online_ingestion, mock_get_latest_online_ingestion
+
+    def test_save_online_dataframe_waits_on_its_own_online_ingestion(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange
+        fg, mock_get_online_ingestion, mock_get_latest_online_ingestion = (
+            self._mock_online_ingestion_wait(mocker, backend_fixtures)
+        )
+        spark_engine = spark.Engine()
+        spark_df = spark_engine._spark_session.createDataFrame(
+            pd.DataFrame(data={"col_0": [1, 2]})
+        )
+
+        # Act
+        spark_engine._save_online_dataframe(
+            feature_group=fg,
+            dataframe=spark_df,
+            write_options={
+                "wait_for_online_ingestion": True,
+                "online_ingestion_options": {"mark_online_rows": False},
+            },
+        )
+
+        # Assert: the wait follows the ingestion this write created, not whichever one the
+        # backend reports as latest.
+        mock_get_online_ingestion.assert_called_once_with(123)
+        mock_get_online_ingestion.return_value.wait_for_completion.assert_called_once()
+        mock_get_latest_online_ingestion.assert_not_called()
+
+    def test_save_stream_dataframe_waits_on_its_own_online_ingestion(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange
+        fg, mock_get_online_ingestion, mock_get_latest_online_ingestion = (
+            self._mock_online_ingestion_wait(mocker, backend_fixtures)
+        )
+        spark_engine = spark.Engine()
+        spark_df = spark_engine._spark_session.createDataFrame(
+            pd.DataFrame(data={"col_0": [1, 2]})
+        )
+
+        # Act
+        spark_engine._save_stream_dataframe(
+            feature_group=fg,
+            dataframe=spark_df,
+            query_name="test_query",
+            output_mode="append",
+            await_termination=True,
+            timeout=1,
+            checkpoint_dir="test_checkpoint_dir",
+            write_options={"wait_for_online_ingestion": True},
+        )
+
+        # Assert
+        mock_get_online_ingestion.assert_called_once_with(123)
+        mock_get_online_ingestion.return_value.wait_for_completion.assert_called_once()
+        mock_get_latest_online_ingestion.assert_not_called()
+
     def test_save_online_dataframe_sends_num_entries_by_default(
         self, mocker, backend_fixtures
     ):
@@ -2071,7 +2244,9 @@ class TestSpark:
         mock_spark_engine_serialize_to_avro = mocker.patch(
             "hsfs.engine.spark.Engine._serialize_to_avro"
         )
-        mock_get_headers = mocker.patch("hsfs.engine.spark.Engine._get_headers")
+        mock_get_headers = mocker.patch(
+            "hsfs.core.kafka_engine._get_headers", return_value={}
+        )
 
         mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
@@ -2133,6 +2308,8 @@ class TestSpark:
                 "kafka.ssl.keystore.password": "test_ssl_keystore_password",
                 "kafka.ssl.key.password": "test_ssl_key_password",
             },
+            operation=None,
+            storage="online",
         )
         mock_spark_engine_serialize_to_avro.assert_called_once()
 
@@ -2145,7 +2322,9 @@ class TestSpark:
         mock_spark_engine_serialize_to_avro = mocker.patch(
             "hsfs.engine.spark.Engine._serialize_to_avro"
         )
-        mock_get_headers = mocker.patch("hsfs.engine.spark.Engine._get_headers")
+        mock_get_headers = mocker.patch(
+            "hsfs.core.kafka_engine._get_headers", return_value={}
+        )
 
         mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
@@ -2207,8 +2386,149 @@ class TestSpark:
                 "kafka.ssl.key.password": "test_ssl_key_password",
                 "online_ingestion_options": {"disable_online_ingestion_count": True},
             },
+            operation=None,
+            storage="online",
         )
         mock_spark_engine_serialize_to_avro.assert_called_once()
+
+    def test_pad_online_delete_dataframe(self):
+        # Arrange
+        spark_engine = spark.Engine()
+
+        features = [
+            feature.Feature(name="id", type="bigint", primary=True),
+            feature.Feature(name="name", type="string"),
+            feature.Feature(name="scores", type="array<bigint>"),
+            feature.Feature(name="created", type="timestamp"),
+        ]
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=["id"],
+            partition_key=[],
+            id=10,
+            features=features,
+        )
+
+        delete_df = spark_engine._spark_session.createDataFrame(
+            pd.DataFrame(data={"id": [1, 2], "ignored": ["a", "b"]})
+        )
+
+        # Act
+        padded = spark_engine._pad_online_delete_dataframe(fg, delete_df)
+
+        # Assert - every feature is present with its declared type, non-key values are
+        # null, and a column the feature group does not have is dropped
+        assert padded.columns == ["id", "name", "scores", "created"]
+        assert {
+            field.name: field.dataType.simpleString() for field in padded.schema
+        } == {
+            "id": "bigint",
+            "name": "string",
+            "scores": "array<bigint>",
+            "created": "timestamp",
+        }
+        assert [row.asDict() for row in padded.orderBy("id").collect()] == [
+            {"id": 1, "name": None, "scores": None, "created": None},
+            {"id": 2, "name": None, "scores": None, "created": None},
+        ]
+
+    def test_pad_online_delete_dataframe_keeps_composite_primary_key(self):
+        # Arrange
+        spark_engine = spark.Engine()
+
+        features = [
+            feature.Feature(name="id", type="bigint", primary=True),
+            feature.Feature(name="region", type="string", primary=True),
+            feature.Feature(name="measurement", type="double"),
+        ]
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=["id", "region"],
+            partition_key=[],
+            id=10,
+            features=features,
+        )
+
+        delete_df = spark_engine._spark_session.createDataFrame(
+            pd.DataFrame(data={"id": [1], "region": ["eu"], "measurement": [3.5]})
+        )
+
+        # Act
+        padded = spark_engine._pad_online_delete_dataframe(fg, delete_df)
+
+        # Assert - both key columns keep the caller's values, and a value the caller
+        # passed for a non-key feature is overridden with null
+        assert padded.collect()[0].asDict() == {
+            "id": 1,
+            "region": "eu",
+            "measurement": None,
+        }
+
+    def test_delete_online_dataframe_disable_online_ingestion_count(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hopsworks_common.client._is_external", return_value=False)
+        mocker.patch("hsfs.engine.spark.Engine._serialize_to_avro")
+        mock_get_headers = mocker.patch(
+            "hsfs.core.kafka_engine._get_headers", return_value={}
+        )
+
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
+        mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
+        mock_engine_get_instance.return_value._add_file.return_value = (
+            "result_from_add_file"
+        )
+
+        mock_storage_connector_api = mocker.patch(
+            "hsfs.core.storage_connector_api.StorageConnectorApi"
+        )
+        json_data = backend_fixtures["storage_connector"]["get_kafka_external"][
+            "response"
+        ]
+        sc = storage_connector.StorageConnector.from_response_json(json_data)
+        mock_storage_connector_api.return_value._get_kafka_connector.return_value = sc
+
+        spark_engine = spark.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            online_topic_name="test_online_topic_name",
+        )
+        fg.feature_store = mocker.Mock()
+
+        df = pd.DataFrame(data={"col_0": [1, 2], "col_1": ["test_1", "test_2"]})
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+        # the padding is covered by its own tests; keep the frame countable here
+        mocker.patch(
+            "hsfs.engine.spark.Engine._pad_online_delete_dataframe",
+            return_value=spark_df,
+        )
+
+        # Act
+        spark_engine._delete_online_dataframe(
+            feature_group=fg,
+            dataframe=spark_df,
+            write_options={
+                "online_ingestion_options": {"disable_online_ingestion_count": True}
+            },
+        )
+
+        # Assert - num_entries should be None when disable_online_ingestion_count is True
+        assert mock_get_headers.call_args[0][1] is None
+        assert mock_get_headers.call_args[1]["operation"] == "delete"
+        # the tombstone is for OnlineFS alone: the offline delete already hit the table
+        assert mock_get_headers.call_args[1]["storage"] == "online"
 
     def test_serialize_to_avro(self, mocker):
         # Arrange
@@ -2547,134 +2867,6 @@ class TestSpark:
         )
         assert mock_spark_engine_write_training_dataset_single.call_count == 0
         assert mock_spark_engine_write_training_dataset_splits.call_count == 0
-
-    def test_write_training_dataset_append_binds_created_statistics(self, mocker):
-        # Appended batches must be transformed with the statistics saved when
-        # the version was created (training_dataset_version passed to
-        # _fit_and_transform), not refit on the batch — refitting would
-        # transform the increment inconsistently with the data already
-        # materialized. A create/overwrite still refits (version not passed).
-        # Arrange
-        mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.spark.Engine._write_options")
-        mocker.patch("hsfs.engine.spark.Engine._convert_to_default_dataframe")
-        mocker.patch("hsfs.engine.spark.Engine._write_training_dataset_single")
-        mock_fit_and_transform = mocker.patch(
-            "hsfs.core.transformation_function_engine.TransformationFunctionEngine._fit_and_transform"
-        )
-
-        spark_engine = spark.Engine()
-
-        td = training_dataset.TrainingDataset(
-            name="test",
-            location="location",
-            version=7,
-            data_format="parquet",
-            featurestore_id=99,
-            splits={},
-        )
-        mock_query = mocker.Mock(spec=query.Query)
-        mock_query._include_left_event_time.return_value = (None, False)
-
-        # Act: append
-        spark_engine._write_training_dataset(
-            training_dataset=td,
-            query_obj=mock_query,
-            user_write_options={},
-            save_mode=spark_engine.APPEND,
-        )
-
-        # Assert
-        assert mock_fit_and_transform.call_args[1]["training_dataset_version"] == 7
-
-        # Act: overwrite refits
-        spark_engine._write_training_dataset(
-            training_dataset=td,
-            query_obj=mock_query,
-            user_write_options={},
-            save_mode=spark_engine.OVERWRITE,
-        )
-
-        # Assert
-        assert mock_fit_and_transform.call_args[1]["training_dataset_version"] is None
-
-    def test_write_training_dataset_threads_event_time_partitioning(self, mocker):
-        # The event-time column resolved from the query (forced through it
-        # when the user did not select it) reaches the writer, together with
-        # the flag to drop it again after the partition keys are derived.
-        # Arrange
-        mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.spark.Engine._write_options")
-        mocker.patch("hsfs.engine.spark.Engine._convert_to_default_dataframe")
-        mock_write_single = mocker.patch(
-            "hsfs.engine.spark.Engine._write_training_dataset_single"
-        )
-        mocker.patch(
-            "hsfs.core.transformation_function_engine.TransformationFunctionEngine._fit_and_transform"
-        )
-
-        spark_engine = spark.Engine()
-
-        td = training_dataset.TrainingDataset(
-            name="test",
-            location="location",
-            version=1,
-            data_format="parquet",
-            featurestore_id=99,
-            splits={},
-        )
-        mock_query = mocker.Mock(spec=query.Query)
-        mock_query._include_left_event_time.return_value = ("fg1_event_time", True)
-
-        # Act
-        spark_engine._write_training_dataset(
-            training_dataset=td,
-            query_obj=mock_query,
-            user_write_options={},
-            save_mode=spark_engine.APPEND,
-        )
-
-        # Assert
-        mock_query._include_left_event_time.assert_called_once_with()
-        assert mock_write_single.call_args[1]["event_time_column"] == "fg1_event_time"
-        assert mock_write_single.call_args[1]["drop_event_time"] is True
-        assert mock_write_single.call_args[1]["partition_precision"] == "day"
-
-        # Act: the precision rides in the write options (popped before they
-        # reach the Spark writer)
-        spark_engine._write_training_dataset(
-            training_dataset=td,
-            query_obj=mock_query,
-            user_write_options={"partition_precision": "month"},
-            save_mode=spark_engine.APPEND,
-        )
-
-        # Assert
-        assert mock_write_single.call_args[1]["partition_precision"] == "month"
-
-    def test_write_training_dataset_invalid_partition_precision(self, mocker):
-        # Arrange
-        mocker.patch("hopsworks_common.client._get_instance")
-        spark_engine = spark.Engine()
-
-        td = training_dataset.TrainingDataset(
-            name="test",
-            location="location",
-            version=1,
-            data_format="parquet",
-            featurestore_id=99,
-            splits={},
-        )
-
-        # Act / Assert
-        with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            spark_engine._write_training_dataset(
-                training_dataset=td,
-                query_obj=mocker.Mock(spec=query.Query),
-                user_write_options={"partition_precision": "hour"},
-                save_mode=spark_engine.APPEND,
-            )
-        assert "partition precision" in str(e_info.value)
 
     def test_get_training_data_accepts_feature_view_engine_call_shape(self, mocker):
         # FeatureViewEngine._get_training_data forwards the same arguments to
@@ -3718,6 +3910,91 @@ class TestSpark:
             assert result[column].schema == expected[column].schema
             assert result[column].collect() == expected[column].collect()
 
+    def test_time_series_split_timestamp_ntz(self, mocker):
+        # TimestampNTZType is not a TimestampType; only the plan shows a
+        # fall-through to the UDF, the rows come out right either way.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+
+        spark_engine = spark.Engine()
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={"col1": None, "col2": None},
+            id=10,
+            train_start=1000000000,
+            train_end=1488600000,
+            test_end=1488718800,
+        )
+
+        d = {
+            "col_0": [1, 2],
+            "col_1": ["test_1", "test_2"],
+            "event_time": ["2017-03-04", "2017-03-05"],
+        }
+        df = pd.DataFrame(data=d)
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+        spark_df = spark_df.withColumn(
+            "event_time", spark_df["event_time"].cast(TimestampNTZType())
+        )
+        assert isinstance(spark_df.schema["event_time"].dataType, TimestampNTZType)
+
+        # Act
+        result = spark_engine._time_series_split(
+            training_dataset=td,
+            dataset=spark_df,
+            event_time="event_time",
+            drop_event_time=False,
+        )
+
+        # Assert
+        for split in result:
+            plan = result[split]._jdf.queryExecution().executedPlan().toString()
+            assert "BatchEvalPython" not in plan, plan
+            assert "ArrowEvalPython" not in plan, plan
+        assert [r["col_0"] for r in result["train"].collect()] == [1]
+        assert [r["col_0"] for r in result["test"].collect()] == [2]
+
+    def test_time_series_split_event_time_case_mismatch(self, mocker):
+        # must reach the UDF fallback, not raise KEY_NOT_EXISTS
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+
+        spark_engine = spark.Engine()
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={"col1": None, "col2": None},
+            id=10,
+            train_start=1000000000,
+            train_end=1488600000,
+            test_end=1488718800,
+        )
+
+        df = pd.DataFrame({"col_0": [1, 2], "event_time": ["2017-03-04", "2017-03-05"]})
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+        spark_df = spark_df.withColumn(
+            "event_time", spark_df["event_time"].cast(TimestampType())
+        )
+
+        # Act
+        result = spark_engine._time_series_split(
+            training_dataset=td,
+            dataset=spark_df,
+            event_time="EVENT_TIME",
+            drop_event_time=False,
+        )
+
+        # Assert
+        assert [r["col_0"] for r in result["train"].collect()] == [1]
+        assert [r["col_0"] for r in result["test"].collect()] == [2]
+
     def test_time_series_split_epoch_sec(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
@@ -3903,22 +4180,10 @@ class TestSpark:
             to_df=False,
         )
 
-        # Assert: overwrite without an event time writes into counter
-        # partition 0, so the layout stays uniform with appends.
+        # Assert
         assert mock_spark_engine_setup_storage_connector.call_count == 1
-        assert (
-            feature_dataframe.withColumn.call_args[0][0]
-            == spark_engine.COUNTER_PARTITION_COLUMN
-        )
-        partitioned_df = feature_dataframe.withColumn.return_value
-        assert partitioned_df.write.format.call_args[0][0] == "csv"
-        assert (
-            partitioned_df.write.format.return_value.options.return_value.mode.return_value.partitionBy.call_args[
-                0
-            ][0]
-            == spark_engine.COUNTER_PARTITION_COLUMN
-        )
-        assert partitioned_df.unpersist.call_count == 1
+        assert feature_dataframe.write.format.call_args[0][0] == "csv"
+        assert feature_dataframe.unpersist.call_count == 1
 
     def test_write_training_dataset_single_tsv(self, mocker):
         # Arrange
@@ -3941,272 +4206,9 @@ class TestSpark:
             to_df=False,
         )
 
-        # Assert: tsv is written as csv, on the partitioned writer.
-        assert mock_spark_engine_setup_storage_connector.call_count == 1
-        partitioned_df = feature_dataframe.withColumn.return_value
-        assert partitioned_df.write.format.call_args[0][0] == "csv"
-
-    def test_write_training_dataset_single_append(self, mocker):
-        # Arrange
-        mocker.patch("hopsworks_common.client._get_instance")
-        mock_spark_engine_setup_storage_connector = mocker.patch(
-            "hsfs.engine.spark.Engine._setup_storage_connector",
-            return_value="path",
-        )
-        mock_validate = mocker.patch(
-            "hsfs.engine.spark.Engine._validate_partition_scheme",
-            return_value=[0, 2, 1],
-        )
-
-        spark_engine = spark.Engine()
-        feature_dataframe = mocker.Mock()
-
-        # Act
-        spark_engine._write_training_dataset_single(
-            feature_dataframe=feature_dataframe,
-            storage_connector=None,
-            data_format="parquet",
-            write_options={},
-            save_mode=spark_engine.APPEND,
-            path="path",
-            to_df=False,
-        )
-
         # Assert
         assert mock_spark_engine_setup_storage_connector.call_count == 1
-        mock_validate.assert_called_once_with(
-            "path", spark_engine.COUNTER_PARTITION_COLUMN
-        )
-        # A partition column carrying the next incremental id (max + 1) is
-        # added...
-        assert feature_dataframe.withColumn.call_args[0][0] == (
-            spark_engine.COUNTER_PARTITION_COLUMN
-        )
-        # ...and the write partitions by it in append mode.
-        partitioned_df = feature_dataframe.withColumn.return_value
-        assert (
-            partitioned_df.write.format.return_value.options.return_value.mode.return_value.partitionBy.call_args[
-                0
-            ][0]
-            == spark_engine.COUNTER_PARTITION_COLUMN
-        )
-
-    def _partition_listing_engine(self, mocker, entries=None, exists=True):
-        # Build a spark engine whose Hadoop FS lists `entries`, mirroring the
-        # (name, is_dir) shape of `FileSystem.listStatus`.
-        mocker.patch("hopsworks_common.client._get_instance")
-        spark_engine = spark.Engine()
-
-        def _status(name, is_dir):
-            status = mocker.Mock()
-            status.isDirectory.return_value = is_dir
-            status.getPath.return_value.getName.return_value = name
-            return status
-
-        fs = mocker.Mock()
-        fs.exists.return_value = exists
-        fs.listStatus.return_value = [
-            _status(name, is_dir) for name, is_dir in (entries or [])
-        ]
-        mocker.patch.object(
-            spark_engine, "_jvm"
-        ).org.apache.hadoop.fs.Path.return_value.getFileSystem.return_value = fs
-        return spark_engine
-
-    def test_validate_partition_scheme(self, mocker):
-        # Arrange
-        counter = spark.Engine.COUNTER_PARTITION_COLUMN
-        spark_engine = self._partition_listing_engine(
-            mocker,
-            [
-                (f"{counter}=0", True),
-                (f"{counter}=2", True),
-                (f"{counter}=1", True),
-                ("_SUCCESS", False),
-                ("some_other_dir", True),
-            ],
-        )
-
-        # Act
-        existing = spark_engine._validate_partition_scheme("path", counter)
-
-        # Assert: the existing counter values are returned for max + 1
-        assert sorted(existing) == [0, 1, 2]
-
-    def test_validate_partition_scheme_empty(self, mocker):
-        # Arrange
-        spark_engine = self._partition_listing_engine(mocker, exists=False)
-
-        # Act
-        existing = spark_engine._validate_partition_scheme(
-            "path", spark.Engine.COUNTER_PARTITION_COLUMN
-        )
-
-        # Assert: nothing materialized yet
-        assert existing == []
-
-    def test_validate_partition_scheme_mismatch_raises(self, mocker):
-        # A Hive layout is partitioned by exactly one column name, so a
-        # counter append onto a date-keyed dataset (or vice versa) would
-        # corrupt it and must be refused.
-        # Arrange
-        date = spark.Engine.DATE_PARTITION_COLUMN
-        counter = spark.Engine.COUNTER_PARTITION_COLUMN
-        spark_engine = self._partition_listing_engine(
-            mocker, [(f"{date}=20260701", True)]
-        )
-
-        # Act / Assert: counter append onto a date-keyed dataset
-        with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            spark_engine._validate_partition_scheme("path", counter)
-        assert "partitioned by" in str(e_info.value)
-
-        # Act / Assert: date append onto a counter-keyed dataset
-        spark_engine = self._partition_listing_engine(mocker, [(f"{counter}=0", True)])
-        with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            spark_engine._validate_partition_scheme("path", date)
-        assert "partitioned by" in str(e_info.value)
-
-    def test_validate_partition_scheme_legacy_flat_data(self, mocker):
-        # A dataset created before incremental append has flat data files
-        # directly under the location; appending must refuse rather than
-        # corrupt it by mixing layouts.
-        # Arrange
-        spark_engine = self._partition_listing_engine(
-            mocker,
-            [("part-00000.parquet", False), ("_SUCCESS", False)],
-        )
-
-        # Act / Assert
-        with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            spark_engine._validate_partition_scheme(
-                "path", spark.Engine.COUNTER_PARTITION_COLUMN
-            )
-        assert "not partitioned" in str(e_info.value)
-
-    def test_write_training_dataset_single_event_time_partitioning(self, mocker):
-        # With an event-time column present, each row's partition key is
-        # derived from it (no counter listing), the layout is only validated
-        # on append, and a column forced through the query for partitioning is
-        # dropped again before the write.
-        # Arrange
-        mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch(
-            "hsfs.engine.spark.Engine._setup_storage_connector",
-            return_value="path",
-        )
-        mock_validate = mocker.patch(
-            "hsfs.engine.spark.Engine._validate_partition_scheme"
-        )
-        mock_partition_date = mocker.patch(
-            "hsfs.engine.spark.Engine._event_partition_date"
-        )
-
-        spark_engine = spark.Engine()
-        feature_dataframe = mocker.Mock()
-        feature_dataframe.columns = ["feature", "et"]
-
-        # Act
-        spark_engine._write_training_dataset_single(
-            feature_dataframe=feature_dataframe,
-            storage_connector=None,
-            data_format="parquet",
-            write_options={},
-            save_mode=spark_engine.APPEND,
-            path="path",
-            to_df=False,
-            event_time_column="et",
-            drop_event_time=True,
-        )
-
-        # Assert
-        mock_validate.assert_called_once_with(
-            "path", spark_engine.DATE_PARTITION_COLUMN
-        )
-        mock_partition_date.assert_called_once_with(feature_dataframe, "et", "day")
-        assert feature_dataframe.withColumn.call_args[0][0] == (
-            spark_engine.DATE_PARTITION_COLUMN
-        )
-        partitioned_df = feature_dataframe.withColumn.return_value
-        partitioned_df.drop.assert_called_once_with("et")
-
-    def test_write_training_dataset_single_event_time_kept(self, mocker):
-        # An event-time column the user selected stays in the written data.
-        # Arrange
-        mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.spark.Engine._setup_storage_connector")
-        mocker.patch("hsfs.engine.spark.Engine._event_partition_date")
-
-        spark_engine = spark.Engine()
-        feature_dataframe = mocker.Mock()
-        feature_dataframe.columns = ["feature", "et"]
-
-        # Act
-        spark_engine._write_training_dataset_single(
-            feature_dataframe=feature_dataframe,
-            storage_connector=None,
-            data_format="parquet",
-            write_options={},
-            save_mode=spark_engine.OVERWRITE,
-            path="path",
-            to_df=False,
-            event_time_column="et",
-            drop_event_time=False,
-        )
-
-        # Assert
-        partitioned_df = feature_dataframe.withColumn.return_value
-        partitioned_df.drop.assert_not_called()
-
-    def test_event_partition_date(self, mocker):
-        # The partition key is the row's UTC event date as a `YYYYMMDD`
-        # integer, truncated to the requested precision, whatever the column
-        # type.
-        # Arrange
-        mocker.patch("hopsworks_common.client._get_instance")
-        spark_engine = spark.Engine()
-
-        # 2026-07-15 13:45:30 UTC in epoch ms
-        ts_ms = 1784123130000
-
-        df = spark_engine._spark_session.createDataFrame(
-            pd.DataFrame(
-                {
-                    "ts": pd.to_datetime([ts_ms], unit="ms"),
-                    "ms": pd.Series([ts_ms], dtype="int64"),
-                }
-            )
-        )
-        # Spark ingests the naive timestamp as session-local time, so assert
-        # the timestamp derivation against Spark's own epoch view of the
-        # value rather than a fixed instant.
-        df = df.withColumn("ts_ms", (df["ts"].cast("double") * 1000).cast("long"))
-        df = df.withColumn(
-            "ts_day", spark_engine._event_partition_date(df, "ts", "day")
-        )
-        df = df.withColumn(
-            "ms_day", spark_engine._event_partition_date(df, "ms", "day")
-        )
-        df = df.withColumn(
-            "ms_month", spark_engine._event_partition_date(df, "ms", "month")
-        )
-        df = df.withColumn(
-            "ms_year", spark_engine._event_partition_date(df, "ms", "year")
-        )
-
-        # Act
-        row = df.collect()[0]
-
-        # Assert
-        assert row["ms_day"] == 20260715
-        assert row["ms_month"] == 20260701
-        assert row["ms_year"] == 20260101
-        expected_ts_day = int(
-            datetime.datetime.fromtimestamp(
-                row["ts_ms"] / 1000, tz=datetime.timezone.utc
-            ).strftime("%Y%m%d")
-        )
-        assert row["ts_day"] == expected_ts_day
+        assert feature_dataframe.write.format.call_args[0][0] == "csv"
 
     def test_write_training_dataset_single_to_df(self, mocker):
         # Arrange
@@ -4304,113 +4306,6 @@ class TestSpark:
         mock_read.format.return_value.options.return_value.load.assert_called_once()
         mock_spark_engine_setup_storage_connector.assert_called_once()
         mock_spark_engine_setup_storage_connector.assert_called_once_with(None, None)
-
-    def test_read_time_range_prunes_partitions(self, mocker):
-        # A time-range read filters on the date partition column before
-        # dropping it, so Spark prunes to the rows inside the range, and the
-        # internal keys never reach the Spark reader as options.
-        # Arrange
-        partition_column = spark.Engine.DATE_PARTITION_COLUMN
-        mock_df = MagicMock(name="DataFrame")
-        mock_df.columns = [partition_column, "feature"]
-        filtered_start = MagicMock(name="filtered_start")
-        filtered_end = MagicMock(name="filtered_end")
-        filtered_end.columns = mock_df.columns
-        mock_df.filter.return_value = filtered_start
-        filtered_start.filter.return_value = filtered_end
-
-        mock_read = MagicMock()
-        mock_read.format.return_value.options.return_value.load.return_value = mock_df
-        mocker.patch.object(
-            pyspark.sql.SparkSession,
-            "read",
-            new_callable=PropertyMock,
-            return_value=mock_read,
-        )
-        mocker.patch("hsfs.engine.spark.Engine._setup_storage_connector")
-
-        spark_engine = spark.Engine()
-
-        # Act
-        result = spark_engine._read(
-            storage_connector=None,
-            data_format="parquet",
-            read_options={
-                "event_start_time": 20260101,
-                "event_end_time": 20260731,
-            },
-            location="test_location",
-            dataframe_type="default",
-        )
-
-        # Assert: both bounds filtered, partition column dropped afterwards
-        mock_read.format.return_value.options.assert_called_once_with()
-        assert mock_df.filter.call_count == 1
-        assert filtered_start.filter.call_count == 1
-        filtered_end.drop.assert_called_once_with(partition_column)
-        assert result == filtered_end.drop.return_value
-
-    def test_read_time_range_counter_partitions_raise(self, mocker):
-        # A dataset whose partitions are counter-keyed (materialized without
-        # an event time) surfaces the counter column, not the date one, and
-        # is not time-addressable; failing beats silently returning an empty
-        # result.
-        # Arrange
-        mock_df = MagicMock(name="DataFrame")
-        mock_df.columns = [spark.Engine.COUNTER_PARTITION_COLUMN, "feature"]
-
-        mock_read = MagicMock()
-        mock_read.format.return_value.options.return_value.load.return_value = mock_df
-        mocker.patch.object(
-            pyspark.sql.SparkSession,
-            "read",
-            new_callable=PropertyMock,
-            return_value=mock_read,
-        )
-        mocker.patch("hsfs.engine.spark.Engine._setup_storage_connector")
-
-        spark_engine = spark.Engine()
-
-        # Act / Assert
-        with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            spark_engine._read(
-                storage_connector=None,
-                data_format="parquet",
-                read_options={"event_start_time": 20260101},
-                location="test_location",
-                dataframe_type="default",
-            )
-        assert "partitioned by event time" in str(e_info.value)
-
-    def test_read_time_range_not_partitioned_raises(self, mocker):
-        # A time-range read of a dataset without the append partition column
-        # cannot be pruned; failing beats silently returning everything.
-        # Arrange
-        mock_df = MagicMock(name="DataFrame")
-        mock_df.columns = ["feature"]
-
-        mock_read = MagicMock()
-        mock_read.format.return_value.options.return_value.load.return_value = mock_df
-        mocker.patch.object(
-            pyspark.sql.SparkSession,
-            "read",
-            new_callable=PropertyMock,
-            return_value=mock_read,
-        )
-        mocker.patch("hsfs.engine.spark.Engine._setup_storage_connector")
-
-        spark_engine = spark.Engine()
-
-        # Act / Assert
-        with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            spark_engine._read(
-                storage_connector=None,
-                data_format="parquet",
-                read_options={"event_start_time": 20260101},
-                location="test_location",
-                dataframe_type="default",
-            )
-        assert "partitioned by event time" in str(e_info.value)
 
     def test_read_location_format_delta(self, mocker):
         # Arrange
@@ -5007,6 +4902,23 @@ class TestSpark:
             mock_add_file.assert_called_once_with("hdfs://test_file")
             mock_pyspark_files_get.assert_called_once_with("test_file")
 
+    def test_add_file_external_downloads_to_temp_dir(self, mocker):
+        # Arrange
+        mock_dataset_api = mocker.patch("hsfs.core.dataset_api.DatasetApi")
+        mock_dataset_api.return_value.read_content.return_value.content = b""
+        mocker.patch("hopsworks_common.client._is_external", return_value=True)
+
+        spark_engine = spark.Engine()
+        mock_open_file = mocker.patch("builtins.open", mocker.mock_open())
+
+        # Act
+        path = spark_engine._add_file(file="test_file", distribute=False)
+
+        # Assert
+        expected = os.path.join(constants._temp_dir(), "test_file")
+        assert path == expected
+        mock_open_file.assert_called_once_with(expected, "wb")
+
     def test_add_file_if_present_in_job_configuration(self, mocker):
         # Arrange
         mocker.patch(
@@ -5029,6 +4941,75 @@ class TestSpark:
         # Assert
         assert path == "/tmp/materialisation_dir/test_file"
         mock_add_file.assert_not_called()
+
+    def test_add_file_as_url_is_relative_to_the_driver_jvm(self, mocker, tmp_path):
+        downloaded = tmp_path / "ts.jks"
+        downloaded.write_bytes(b"truststore")
+        jvm_cwd = tmp_path / "work-dir"
+        jvm_cwd.mkdir()
+        spark_engine = spark.Engine()
+        mocker.patch.object(spark_engine, "_add_file", return_value=str(downloaded))
+        spark_engine._spark_context = MagicMock()
+        spark_engine._spark_context._jvm.java.lang.System.getProperty.return_value = (
+            str(jvm_cwd)
+        )
+
+        url = spark_engine._add_file_as_url("/Projects/p/Resources/ts.jks")
+        again = spark_engine._add_file_as_url("/Projects/p/Resources/ts.jks")
+
+        spark_engine._add_file.assert_called_with(
+            "/Projects/p/Resources/ts.jks", distribute=False
+        )
+        name = url[len("file:") :]
+        assert url == again
+        assert name.startswith(".hopsworks-") and name.endswith("-ts.jks")
+        assert (jvm_cwd / name).read_bytes() == b"truststore"
+        spark_engine._spark_context.addFile.assert_called_with(str(jvm_cwd / name))
+
+    def test_add_file_as_url_keeps_a_job_attached_file_in_place(self, mocker):
+        mocker.patch(
+            "os.environ",
+            {
+                "APP_FILES": "/Projects/test_file",
+                "MATERIALISATION_DIR": "/tmp/materialisation_dir",
+            },
+        )
+        mock_add_file = mocker.patch("pyspark.SparkContext.addFile")
+
+        url = spark.Engine()._add_file_as_url("/Projects/test_file")
+
+        assert url == "file:///tmp/materialisation_dir/test_file"
+        mock_add_file.assert_not_called()
+
+    def test_add_file_as_url_refuses_spark_connect(self, mocker):
+        spark_engine = spark.Engine()
+        spark_engine._is_connect = True
+        mock_add_file = mocker.patch.object(spark_engine, "_add_file")
+
+        with pytest.raises(exceptions.FeatureStoreException, match="Spark Connect"):
+            spark_engine._add_file_as_url("/Projects/p/Resources/ts.jks")
+
+        mock_add_file.assert_not_called()
+
+    def test_run_where_spark_runs_calls_in_process_without_spark_connect(self):
+        spark_engine = spark.Engine()
+        spark_engine._is_connect = False
+
+        assert spark_engine._run_where_spark_runs(lambda: (200, "{}"), "unused") == (
+            200,
+            "{}",
+        )
+
+    def test_run_where_spark_runs_uses_a_spark_task_under_spark_connect(self):
+        spark_engine = spark.Engine()
+        spark_engine._is_connect = True
+        spark_engine._spark_session = pyspark.sql.SparkSession.builder.getOrCreate()
+
+        status, text = spark_engine._run_where_spark_runs(
+            lambda: (200, "{}"), "struct<status:int,text:string>"
+        )
+
+        assert (status, text) == (200, "{}")
 
     def test_profile(self, mocker):
         # Arrange
@@ -6239,6 +6220,160 @@ class TestSpark:
         # Assert
         assert result.schema == expected_spark_df.schema
         assert result.collect() == expected_spark_df.collect()
+
+    def test_fit_and_transform_coalesce_keeps_udf_above_the_merge(self, mocker):
+        # a UDF below the Coalesce runs once per parent partition (FSTORE-2109)
+        mocker.patch("hopsworks_common.client._get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "spark"
+        spark_engine = spark.Engine()
+
+        @udf(int, drop=["col_0"])
+        def plus_one(col_0):
+            return col_0 + 1
+
+        tf = transformation_function.TransformationFunction(
+            99,
+            hopsworks_udf=plus_one,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        fg1 = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature(name="col_0", type=IntegerType(), index=0)],
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="test",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            transformation_functions=[tf("col_0")],
+        )
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="PARQUET",
+            featurestore_id=99,
+            splits={},
+            id=10,
+            coalesce=True,
+        )
+        spark_df = spark_engine._spark_session.createDataFrame(
+            pd.DataFrame({"col_0": list(range(20))})
+        ).repartition(4)
+
+        # Act
+        merged_first = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
+            training_dataset=td,
+            feature_view_obj=fv,
+            dataset=spark_df,
+            pre_transform=lambda frame: frame.coalesce(1),
+        )
+        # the pre-change shape: transform first, merge afterwards
+        merged_last = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
+            training_dataset=td, feature_view_obj=fv, dataset=spark_df
+        ).coalesce(1)
+
+        # Assert
+        def node_order(df):
+            plan = df._jdf.queryExecution().executedPlan().toString()
+            evals = [
+                plan.index(name)
+                for name in ("BatchEvalPython", "ArrowEvalPython")
+                if name in plan
+            ]
+            assert evals, plan
+            return min(evals), plan.index("Coalesce")
+
+        # a parent prints above its children
+        udf_pos, coalesce_pos = node_order(merged_first)
+        assert udf_pos < coalesce_pos
+        udf_pos_last, coalesce_pos_last = node_order(merged_last)
+        assert coalesce_pos_last < udf_pos_last
+        assert merged_first.rdd.getNumPartitions() == 1
+        assert merged_first.collect() == merged_last.collect()
+
+    def test_fit_and_transform_coalesce_fits_statistics_before_the_merge(self, mocker):
+        # Merging before the fit would also cure the OOM, but on different
+        # statistics.
+        mocker.patch("hopsworks_common.client._get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "spark"
+        spark_engine = spark.Engine()
+
+        tf = transformation_function.TransformationFunction(
+            99,
+            hopsworks_udf=min_max_scaler("f1"),
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        fg1 = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature(name="f1", type=IntegerType(), index=0)],
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="test",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            transformation_functions=[tf("f1")],
+        )
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="PARQUET",
+            featurestore_id=99,
+            splits={},
+            id=10,
+            coalesce=True,
+        )
+        spark_df = spark_engine._spark_session.createDataFrame(
+            pd.DataFrame({"f1": [float(i) for i in range(20)]})
+        ).repartition(4)
+
+        profiled_partitions = []
+
+        def fake_compute(
+            training_dataset_obj,
+            columns,
+            label_encoder_features,
+            feature_dataframe,
+            feature_view_obj,
+        ):
+            profiled_partitions.append(feature_dataframe.rdd.getNumPartitions())
+            return mocker.Mock(
+                feature_descriptive_statistics=[
+                    FeatureDescriptiveStatistics(
+                        feature_name=c, min=0.0, max=19.0, mean=9.5
+                    )
+                    for c in columns
+                ]
+            )
+
+        mocker.patch.object(
+            transformation_function_engine.TransformationFunctionEngine,
+            "_compute_transformation_fn_statistics",
+            side_effect=fake_compute,
+        )
+
+        # Act
+        result = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
+            training_dataset=td,
+            feature_view_obj=fv,
+            dataset=spark_df,
+            pre_transform=lambda frame: frame.coalesce(1),
+        )
+
+        # Assert
+        # profiled on all four partitions, merged only for the transform
+        assert profiled_partitions == [4]
+        assert result.rdd.getNumPartitions() == 1
 
     def test_apply_transformation_function_overwrite_feature(self, mocker):
         # An unaliased single-output UDF named after its input feature

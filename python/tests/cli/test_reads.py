@@ -112,12 +112,41 @@ def test_fg_preview(mock_project):
 
     fs = mock_project.get_feature_store.return_value
     fg = _feature_group("transactions", features=[_feature("id", "bigint")])
-    fg.read.return_value = pd.DataFrame({"id": [1, 2, 3, 4, 5]})
+    fg.select_all.return_value.show.return_value = pd.DataFrame({"id": [1, 2, 3]})
     fs.get_feature_group.return_value = fg
     result = CliRunner().invoke(cli, ["fg", "preview", "transactions", "--n", "3"])
     assert result.exit_code == 0, result.output
-    fg.read.assert_called_with(online=False, dataframe_type="pandas")
+    # A bounded read: the limit goes to the query, never a whole-table read.
+    fg.select_all.return_value.show.assert_called_with(3, online=False)
+    fg.read.assert_not_called()
     assert "id" in result.output
+
+
+def test_fg_preview_online(mock_project):
+    import pandas as pd
+
+    fs = mock_project.get_feature_store.return_value
+    fg = _feature_group("transactions", features=[_feature("id", "bigint")])
+    fg.select_all.return_value.show.return_value = pd.DataFrame({"id": [1]})
+    fs.get_feature_group.return_value = fg
+    result = CliRunner().invoke(cli, ["fg", "preview", "transactions", "--online"])
+    assert result.exit_code == 0, result.output
+    fg.select_all.return_value.show.assert_called_with(10, online=True)
+
+
+def test_fg_preview_names_the_columns_of_plain_rows(mock_project):
+    from types import SimpleNamespace
+
+    fs = mock_project.get_feature_store.return_value
+    fg = _feature_group("docs", features=[_feature("id", "bigint")])
+    # The online vector-index path returns rows, not a DataFrame.
+    query = fg.select_all.return_value
+    query.show.return_value = [[1, "a"], [2, "b"]]
+    query._left_features = [SimpleNamespace(name="id"), SimpleNamespace(name="text")]
+    fs.get_feature_group.return_value = fg
+    result = CliRunner().invoke(cli, ["--json", "fg", "preview", "docs", "--online"])
+    assert result.exit_code == 0, result.output
+    assert '"text": "a"' in result.output
 
 
 def test_fg_preview_truncates_wide_columns(mock_project):
@@ -125,7 +154,9 @@ def test_fg_preview_truncates_wide_columns(mock_project):
 
     fs = mock_project.get_feature_store.return_value
     fg = _feature_group("transactions", features=[_feature("id", "bigint")])
-    fg.read.return_value = pd.DataFrame({"id": [1], "emb": [[0.1] * 1536]})
+    fg.select_all.return_value.show.return_value = pd.DataFrame(
+        {"id": [1], "emb": [[0.1] * 1536]}
+    )
     fs.get_feature_group.return_value = fg
     result = CliRunner().invoke(cli, ["fg", "preview", "transactions"])
     assert result.exit_code == 0, result.output
@@ -137,29 +168,34 @@ def test_fg_preview_columns_projection(mock_project):
     import pandas as pd
 
     fs = mock_project.get_feature_store.return_value
-    fg = _feature_group("transactions", features=[_feature("id", "bigint")])
-    fg.read.return_value = pd.DataFrame({"id": [1, 2], "emb": [[0.1] * 4, [0.2] * 4]})
+    fg = _feature_group(
+        "transactions",
+        features=[_feature("id", "bigint"), _feature("emb", "array<double>")],
+    )
+    # The online vector-index read returns every column whatever was selected.
+    fg.select.return_value.show.return_value = pd.DataFrame(
+        {"id": [1, 2], "emb": [[0.1], [0.2]]}
+    )
     fs.get_feature_group.return_value = fg
     result = CliRunner().invoke(
-        cli, ["fg", "preview", "transactions", "--columns", "id"]
+        cli, ["fg", "preview", "transactions", "--columns", "id", "--online"]
     )
     assert result.exit_code == 0, result.output
+    fg.select.assert_called_with(["id"])
     assert "id" in result.output
     assert "emb" not in result.output  # projected out
 
 
 def test_fg_preview_bad_column_errors(mock_project):
-    import pandas as pd
-
     fs = mock_project.get_feature_store.return_value
     fg = _feature_group("transactions", features=[_feature("id", "bigint")])
-    fg.read.return_value = pd.DataFrame({"id": [1, 2]})
     fs.get_feature_group.return_value = fg
     result = CliRunner().invoke(
         cli, ["fg", "preview", "transactions", "--columns", "nope"]
     )
     assert result.exit_code != 0
     assert "nope" in result.output
+    fg.select.assert_not_called()
 
 
 # --- fv --------------------------------------------------------------------
@@ -259,6 +295,7 @@ def test_datasource_infer_metadata(mock_project):
     inferred.features = [inferred_feature]
     inferred.suggested_primary_key = ["user_id"]
     inferred.suggested_event_time = None
+    inferred.suggested_description = "User events, one row per event."
     target_table.infer_metadata.return_value = inferred
 
     other_table = mock.MagicMock()
@@ -279,6 +316,7 @@ def test_datasource_infer_metadata(mock_project):
     assert "USER_ID" in result.output
     assert "bigint" in result.output
     assert "Suggested primary key" in result.output
+    assert "Suggested description: User events, one row per event." in result.output
 
 
 def test_datasource_infer_metadata_table_not_found(mock_project):
@@ -532,8 +570,9 @@ def test_trino_sql_alias_registered():
 
 def test_login_banner_does_not_pollute_stdout(authed_config, capsys):
     # hopsworks.login() prints a "Logged in to project ..." banner; the CLI
-    # must keep it off stdout so --json output and pipes stay parseable (#6).
+    # swallows it so --json output and pipes stay parseable (#6).
     import click
+    import hopsworks
     from hopsworks.cli import session
 
     def fake_login(**kwargs):
@@ -541,9 +580,56 @@ def test_login_banner_does_not_pollute_stdout(authed_config, capsys):
         return mock.MagicMock(name="Project")
 
     ctx = click.Context(click.Command("x"))
-    with mock.patch.object(session.auth, "login", side_effect=fake_login):
+    with mock.patch.object(hopsworks, "login", side_effect=fake_login):
         session.get_project(ctx)
 
     captured = capsys.readouterr()
     assert "Logged in to project" not in captured.out
-    assert "Logged in to project" in captured.err
+    assert "Logged in to project" not in captured.err
+
+
+def test_fg_list_shows_the_access_state_of_provided_external_feature_groups(
+    mock_project,
+):
+    fs = mock_project.get_feature_store.return_value
+    external = _feature_group("sales_external", 1)
+    external.data_source_access = {"status": "NO_ACCESS", "error_code": "ORA-00942"}
+    plain = _feature_group("transactions", 1)
+    plain.data_source_access = None
+    fs.get_feature_groups.return_value = [external, plain]
+
+    result = CliRunner().invoke(cli, ["--json", "fg", "list"])
+
+    assert result.exit_code == 0, result.output
+    access = {row["NAME"]: row["ACCESS"] for row in json.loads(result.stdout)}
+    assert access == {"sales_external": "no_access", "transactions": "-"}
+
+
+def test_fg_test_access_runs_the_check_and_prints_the_state(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fg = _feature_group("sales_external", 1)
+    fg.test_data_source_access.return_value = {
+        "status": "INVALID_CREDENTIALS",
+        "error_code": "ORA-01017",
+        "message": "invalid username/password; logon denied",
+        "checked_at": "2026-10-07T10:00:00Z",
+    }
+    fs.get_feature_group.return_value = fg
+
+    result = CliRunner().invoke(cli, ["fg", "test-access", "sales_external"])
+
+    assert result.exit_code == 0, result.output
+    fg.test_data_source_access.assert_called_once_with()
+    assert "INVALID_CREDENTIALS" in result.output
+    assert "ORA-01017" in result.output
+
+
+def test_fg_test_access_refuses_a_cached_feature_group(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fg = mock.NonCallableMagicMock(spec=["id", "name", "version"])
+    fs.get_feature_group.return_value = fg
+
+    result = CliRunner().invoke(cli, ["fg", "test-access", "transactions"])
+
+    assert result.exit_code == 1, result.output
+    assert "not an external feature group" in result.output

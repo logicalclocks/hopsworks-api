@@ -5,9 +5,11 @@ handles host resolution (internal service-discovery vs external loadbalancer),
 fetches the per-project user's password from the Hopsworks Secrets storage,
 and configures TLS, so the CLI just wraps the resulting DBAPI connection.
 
-Defaults: ``--catalog iceberg`` (the project's offline feature-group store)
-and ``--schema <projectName>``. Override per-command, or pass ``--catalog
-hive`` / ``--catalog system`` for the built-in catalogs.
+Defaults: ``--catalog delta`` (the format feature groups are created in) and
+``--schema <project>_featurestore`` (the project's feature store), so
+``hops sql "SELECT * FROM <fg>_<version>"`` reads a feature group. Override
+per-command, e.g. ``--catalog iceberg`` for Iceberg feature groups, or
+``--catalog hive`` / ``--catalog system`` for the built-in catalogs.
 """
 
 from __future__ import annotations
@@ -40,16 +42,16 @@ def _api(ctx: click.Context) -> Any:
     return session.get_project(ctx).get_trino_api()
 
 
-def _project_schema(ctx: click.Context) -> str:
-    """The project name, lowercased — Trino schema convention in Hopsworks."""
-    return session.get_project(ctx).name.lower()
+def _featurestore_schema(ctx: click.Context) -> str:
+    """The project's feature store, the Trino schema its feature groups live in."""
+    return session.get_feature_store(ctx).name
 
 
 def _connect(ctx: click.Context, catalog: str | None, schema: str | None) -> Any:
     """Open a DBAPI connection with CLI-friendly defaults applied."""
     api = _api(ctx)
-    cat = catalog or "iceberg"
-    sch = schema or _project_schema(ctx)
+    cat = catalog or "delta"
+    sch = schema or _featurestore_schema(ctx)
     # hops sql verifies the Trino coordinator's TLS certificate by default,
     # independent of the REST/login default (which is off). An explicit
     # --verify/--no-verify or HOPSWORKS_HOSTNAME_VERIFICATION still wins, so a
@@ -177,13 +179,13 @@ def _execute(
     "--catalog",
     "catalog",
     default=None,
-    help="Trino catalog (default: iceberg).",
+    help="Trino catalog (default: delta).",
 )
 @click.option(
     "--schema",
     "schema",
     default=None,
-    help="Trino schema (default: project name lowercased).",
+    help="Trino schema (default: the project's feature store).",
 )
 @click.option(
     "--limit",

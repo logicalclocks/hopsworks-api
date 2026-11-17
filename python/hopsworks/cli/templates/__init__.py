@@ -1,1 +1,1 @@
-"""Embedded Claude Code skill and sub-agent templates scaffolded by ``hops init``."""
+"""Agent instruction templates scaffolded by ``hops setup``."""

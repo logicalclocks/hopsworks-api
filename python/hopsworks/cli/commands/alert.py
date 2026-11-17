@@ -24,7 +24,7 @@ from __future__ import annotations
 from typing import Any
 
 import click
-from hopsworks.cli import output, session
+from hopsworks.cli import output, session, versions
 
 
 _SEVERITY = ["warning", "critical", "info"]
@@ -697,9 +697,11 @@ def _resolve_fg(ctx: click.Context, name: str, version: int | None) -> tuple[int
     """Resolve a feature group name to ``(feature_store_id, feature_group_id)``."""
     fs = session.get_feature_store(ctx)
     try:
-        fg = fs.get_feature_group(name, version=version)
+        fg = versions.feature_group(fs, name, version)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Feature group '{name}' not found: {exc}") from exc
+    if fg is None:
+        raise click.ClickException(f"Feature group '{name}' not found.")
     return fs.id, fg.id
 
 
@@ -709,9 +711,11 @@ def _resolve_fv(
     """Resolve a feature view to ``(feature_store_id, name, version)``."""
     fs = session.get_feature_store(ctx)
     try:
-        fv = fs.get_feature_view(name, version=version)
+        fv = versions.feature_view(fs, name, version)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
+    if fv is None:
+        raise click.ClickException(f"Feature view '{name}' not found.")
     return fs.id, getattr(fv, "name", name), fv.version
 
 

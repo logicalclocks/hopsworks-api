@@ -1,0 +1,8 @@
+{
+  "name": "trino-js-app",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "trino-client": "0.2.9"
+  }
+}

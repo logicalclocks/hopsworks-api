@@ -73,8 +73,9 @@ class TestHudiEngine:
         assert mock_fg_api.return_value._commit.call_count == 1
         assert (
             "hoodie.datasource.write.payload.class"
-            in mock_hudi_engine_write_hudi_dataset.call_args[0][3]
+            not in mock_hudi_engine_write_hudi_dataset.call_args[0][3]
         )
+        assert mock_hudi_engine_write_hudi_dataset.call_args[0][2] == "delete"
         assert mock_hudi_engine_write_hudi_dataset.call_args[0][1] == "append"
 
     def test_register_temporary_table(self, mocker, backend_fixtures):
