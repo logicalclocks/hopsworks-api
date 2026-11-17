@@ -272,6 +272,29 @@ def test_a_start_refused_for_capacity_names_the_retry_time():
     assert "retry after a while" in start_refusal(_refused(429), "g")
 
 
+def test_a_platform_class_429_keeps_the_capacity_wording():
+    from hopsworks.cli.commands.embed import start_refusal
+
+    for code in (130097, 130099, 130100, 130101):
+        assert start_refusal(_refused(429, code, retry_after="5"), "g") == (
+            "embed jobs are at capacity; nothing was started; retry after 5 s"
+        )
+
+
+@pytest.mark.parametrize("code", [150131, 130095, 100086, 240077, 510032])
+def test_a_quota_busy_429_shows_the_server_message_and_is_not_resent(code):
+    from hopsworks.cli.commands.embed import short_wait, start_refusal
+
+    refused = _refused(429, code, retry_after="5")
+    refused.response._content = json.dumps(
+        {"errorCode": code, "errorMsg": "The project needs 4.1 CPU, 4.05 free."}
+    ).encode()
+    assert start_refusal(refused, "g") == (
+        "The project needs 4.1 CPU, 4.05 free. (nothing was started)"
+    )
+    assert short_wait(refused) is None
+
+
 def test_a_start_refused_for_a_running_build_or_a_deletion_says_which():
     from hopsworks.cli.commands.embed import start_refusal
 

@@ -37,6 +37,8 @@ PLATFORM_CLASS = "embed"
 SCHEDULES = ("daily", "hourly")
 #: The backend's answer to a start of a job being deleted (RESTCodes.JobErrorCode.JOB_DELETING).
 JOB_DELETING = "130102"
+# PROJECT_COMPUTE_BUSY of the Project, Job, Service, Serving and Kube families: the project's compute quota is held by another start or an ending workload. Not the platform class at capacity.
+QUOTA_BUSY_CODES = frozenset({"150131", "130095", "100086", "240077", "510032"})
 #: Marks the deletion execution's arguments: `hops fg embed delete GROUP --in-job`.
 IN_JOB = "--in-job"
 #: Seconds between two reads of the deletion execution's state.
@@ -589,6 +591,12 @@ def start_refusal(exc: BaseException, group: str) -> str | None:
                 f"run hops fg embed delete {group} again to finish it"
             )
         return f"a build of {group} is already running"
+    if status == 429 and str(cause.error_code) in QUOTA_BUSY_CODES:
+        reason = (
+            cause.response.json().get("errorMsg")
+            or "the project's compute quota is busy"
+        )
+        return f"{reason} (nothing was started)"
     if status == 429:
         after = (cause.response.headers.get("Retry-After") or "").strip()
         when = f"{after} s" if after.isdigit() else "a while"
@@ -622,6 +630,8 @@ def short_wait(exc: BaseException) -> int | None:
     """
     cause = _rest_error(exc)
     if cause is None or cause.response.status_code != 429:
+        return None
+    if str(cause.error_code) in QUOTA_BUSY_CODES:
         return None
     after = (cause.response.headers.get("Retry-After") or "").strip()
     if not after.isdigit() or int(after) > START_WAIT_MAX_S:
