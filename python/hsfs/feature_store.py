@@ -949,6 +949,7 @@ class FeatureStore:
                 Defaults to using cluster wide configuration 'featurestore_online_tablespace' to identify tablespace for disk storage.
             sink_enabled:
                 Enable automatic ingestion from the configured data source using a sink job.
+                A SQL data source must name a table: ingesting from a SQL query is not supported.
             sink_job_conf:
                 Optional configuration describing the sink job to create when `sink_enabled` is True.
                 Accepts either a job configuration object or a dictionary.
@@ -1232,6 +1233,7 @@ class FeatureStore:
                 Defaults to using cluster wide configuration 'featurestore_online_tablespace' to identify tablespace for disk storage.
             sink_enabled:
                 Enable copying data from the configured data source to the feature group.
+                A SQL data source must name a table: ingesting from a SQL query is not supported.
             sink_job_conf:
                 Optional configuration describing the sink job to create when `sink_enabled` is True.
             sink_job:
