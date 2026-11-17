@@ -1699,7 +1699,7 @@ class Deployment:
             ValueError: If neither `projects` nor `all_projects` is given.
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
 
-        Example: Restrict a deployment to its own project
+        Example: Stop sharing a deployment with every project
             ```python
             deployment = ms.get_deployment("my_llm_deployment")
             deployment.unshare(all_projects=True)
