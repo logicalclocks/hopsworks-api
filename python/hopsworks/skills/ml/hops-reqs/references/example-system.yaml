@@ -1,5 +1,5 @@
 # A batch churn system after every phase ran and verify passed.
-# The rules and the meaning of each field are in system-yaml.md.
+# The rules are in system-yaml.md, the meaning of each field in system-yaml-schema.md.
 schema_version: 1
 
 system:
