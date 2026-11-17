@@ -143,7 +143,10 @@ def _compute_quota_rows() -> list[list[str]]:
         limit = quota.get(key)
         if limit and limit.get("limit") is not None:
             used = (limit.get("used") or 0) / scale
-            rows.append([label, f"{used:g} of {limit['limit'] / scale:g}{unit} used"])
+            text = f"{used:g} of {limit['limit'] / scale:g}{unit} used"
+            if limit.get("canBorrow"):
+                text += f", {limit['canBorrow'] / scale:g} more can be borrowed"
+            rows.append([label, text])
     for warning in quota.get("warnings") or []:
         rows.append(["Warning", str(warning)])
     return rows

@@ -141,6 +141,25 @@ def test_project_info_shows_the_compute_quota_and_its_use(authed_config):
     assert "GPU" not in result.output
 
 
+def test_project_info_shows_what_a_kueue_queue_can_borrow(authed_config):
+    borrowing = {
+        "method": "KUEUE",
+        "source": "other",
+        "cpu": {"limit": 0.0, "used": 8.5, "available": 0.0, "canBorrow": 91.5},
+        "memory": {
+            "limit": 0.0,
+            "used": 2 * 1024**3,
+            "available": 0.0,
+            "canBorrow": 10 * 1024**3,
+        },
+        "warnings": [],
+    }
+    result = _run_info(lambda method, path: borrowing)
+    assert result.exit_code == 0, result.output
+    assert "8.5 of 0 cores used, 91.5 more can be borrowed" in result.output
+    assert "2 of 0 GiB used, 10 more can be borrowed" in result.output
+
+
 def test_project_info_says_unavailable_when_the_quota_cannot_be_read(authed_config):
     def fail(method, path):
         raise RuntimeError("503")
