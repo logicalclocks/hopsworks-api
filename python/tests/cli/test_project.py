@@ -110,3 +110,38 @@ def test_project_use_survives_a_project_without_a_feature_store(authed_config):
     assert result.exit_code == 0, result.output
     assert config.load().feature_store_id is None
     assert config.load().project == "demo"
+
+
+def _run_info(answer):
+    from hopsworks_common.core import rest
+
+    project = mock.MagicMock()
+    project.name = "demo"
+    project.id = 119
+    with (
+        mock.patch.object(auth, "login", return_value=project),
+        mock.patch.object(rest, "_project_path", side_effect=lambda *p: list(p)),
+        mock.patch.object(rest, "_send_request", side_effect=answer),
+    ):
+        return CliRunner().invoke(cli, ["project", "info"])
+
+
+def test_project_info_shows_the_egress_policy(authed_config):
+    from tests.cli.test_egress import ENFORCED
+
+    result = _run_info(lambda method, path, **kw: ENFORCED)
+    assert result.exit_code == 0, result.output
+    assert (
+        "enforced: 443/TCP 80/TCP 8000-8010/TCP (global); 6543/TCP (project)"
+        in result.output
+    )
+
+
+def test_project_info_says_egress_is_unavailable_when_it_cannot_be_read(authed_config):
+    def send(method, path, **kw):
+        raise RuntimeError("503")
+
+    result = _run_info(send)
+    assert result.exit_code == 0, result.output
+    assert "Egress" in result.output and "unavailable" in result.output
+    assert "Project ID" in result.output

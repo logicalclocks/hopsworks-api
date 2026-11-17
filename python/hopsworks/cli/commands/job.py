@@ -335,7 +335,7 @@ def job_deploy(
         try:
             execution = job.run(args=app_args, await_termination=wait)
         except Exception as exc:  # noqa: BLE001
-            raise click.ClickException(f"Run failed: {exc}") from exc
+            raise _run_failed(job, "Run", exc) from exc
         output.success(
             "✓ Started %s (execution #%s, state=%s)",
             name,
@@ -398,7 +398,7 @@ def job_run(
             end_time=end_time,
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Run failed: {exc}") from exc
+        raise _run_failed(job, "Run", exc) from exc
 
     output.success(
         "✓ Started job %s (execution #%s, state=%s)",
@@ -467,7 +467,7 @@ def job_backfill(
             end_time=end_time,
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Backfill failed: {exc}") from exc
+        raise _run_failed(job, "Backfill", exc) from exc
 
     output.success(
         "✓ Backfill of %s started (execution #%s, window %s → %s)",
@@ -924,6 +924,40 @@ def _read_log(path: str | None, tail: int | None) -> str:
     if tail is not None and tail >= 0:
         lines = lines[-tail:]
     return "".join(lines)
+
+
+_EGRESS_PREFIX = "hopsworks egress: "
+# The dlt job prints its egress line last, after the vendor's traceback.
+_EGRESS_TAIL = 50
+
+
+def _run_failed(job: Any, verb: str, exc: Exception) -> click.ClickException:
+    """The error of a failed run; a failed wait names the closed egress port when stderr does."""
+    from hopsworks_common.client.exceptions import (  # noqa: PLC0415 - SDK loaded on use
+        JobExecutionException,
+    )
+
+    reason = _egress_reason(job) if isinstance(exc, JobExecutionException) else None
+    return click.ClickException(f"{verb} failed: {reason or exc}")
+
+
+def _egress_reason(job: Any) -> str | None:
+    """The last ``hopsworks egress: `` line of the newest execution's stderr tail, without the prefix."""
+    tmp = tempfile.mkdtemp(prefix="hops-joblogs-")
+    try:
+        newest = max(job.get_executions() or [], key=lambda e: e.id, default=None)
+        if newest is None:
+            return None
+        _, stderr_path = newest.download_logs(path=tmp)
+        tail = _read_log(stderr_path, _EGRESS_TAIL)
+    except Exception:  # noqa: BLE001 - the SDK's error is reported instead
+        return None
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    for line in reversed(tail.splitlines()):
+        if line.startswith(_EGRESS_PREFIX):
+            return line[len(_EGRESS_PREFIX) :].strip() or None
+    return None
 
 
 def _get_job(ctx: click.Context, name: str) -> Any:

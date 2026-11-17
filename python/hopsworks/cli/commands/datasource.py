@@ -2899,8 +2899,19 @@ def sharepoint_sync_audit(
 # endregion
 
 
+def _warn_closed_port(fs: Any, body: dict[str, Any]) -> None:
+    """Warn when the source's port is not open under the project's egress policy."""
+    port = body.get("port") or body.get("databasePort")
+    if port is None:
+        return
+    from hopsworks.cli import egress
+
+    egress.warn_if_closed(getattr(fs, "project_name", None), port)
+
+
 def _test_connector(ctx: click.Context, body: dict[str, Any]) -> None:
     fs = session.get_feature_store(ctx)
+    _warn_closed_port(fs, body)
     from hopsworks_common.core import rest
 
     try:
@@ -2928,6 +2939,7 @@ def _test_connector(ctx: click.Context, body: dict[str, Any]) -> None:
 
 def _create_connector(ctx: click.Context, body: dict[str, Any]) -> None:
     fs = session.get_feature_store(ctx)
+    _warn_closed_port(fs, body)
     from hopsworks_common.core import rest
 
     try:
