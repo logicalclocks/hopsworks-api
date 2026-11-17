@@ -175,6 +175,10 @@ DLTHub copies a source into a managed feature group for the cases mounting canno
 
 The per-feature-group `sink_job` shown here is for ingesting a **single** table. When ingesting more than one table from the same connector, default to one multi-table job for all of them — see [Ingest many tables with one job](#ingest-many-tables-with-one-job) — instead of looping this pattern.
 
+A SQL source is ingested from a table: give the feature group a `DataSource` with its `database` and `table`, such as one from `get_tables()`.
+The ingestion job cannot run a SQL query, so a `DataSource` with a `query` and no `table` is rejected with HTTP 400 and error code 270136; a cluster without that check fails with HTTP 422 "A database must be specified".
+To use a query's result, mount it as an external feature group by passing `DataSource(storage_connector=..., query="SELECT ...")` to `create_external_feature_group`, or ingest the table and derive the subset in a feature pipeline.
+
 ```python
 import hopsworks
 from hopsworks.core import SinkJobConfiguration
