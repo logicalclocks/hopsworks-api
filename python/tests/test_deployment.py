@@ -2582,14 +2582,18 @@ class TestDeploymentSharing:
             "_get_deployment_sharing",
             return_value={"allProjects": all_projects, "projects": list(projects)},
         )
-        # As the backend answers: no project is named while all are shared.
+
+        # As the backend applies a change: to what it stores, naming no project while all are shared.
+        def change(_, all_change, add, remove):
+            everyone = all_projects if all_change is None else all_change
+            names = [n for n in [*projects, *add] if n not in remove]
+            return {
+                "allProjects": everyone,
+                "projects": [] if everyone else list(dict.fromkeys(names)),
+            }
+
         return mocker.patch.object(
-            d._serving_api,
-            "_set_deployment_sharing",
-            side_effect=lambda _, all_projects, names: {
-                "allProjects": all_projects,
-                "projects": [] if all_projects else names,
-            },
+            d._serving_api, "_change_deployment_sharing", side_effect=change
         )
 
     def test_shared_with_reads_the_backend(self, mocker):
@@ -2598,70 +2602,56 @@ class TestDeploymentSharing:
 
         assert d.shared_with == {"all_projects": True, "projects": ["b"]}
 
-    def test_share_with_adds_to_the_current_projects(self, mocker):
+    def test_share_with_sends_only_the_added_projects(self, mocker):
         d = self._deployment(mocker)
-        put = self._stored(mocker, d, False, ["a"])
+        change = self._stored(mocker, d, False, ["a"])
 
         result = d.share_with(projects=["b", "a"])
 
-        put.assert_called_once_with(d, False, ["a", "b"])
+        # Never what was read: the backend applies the change to what it stores.
+        change.assert_called_once_with(d, None, ["b", "a"], [])
+        d._serving_api._get_deployment_sharing.assert_not_called()
         assert result == {"all_projects": False, "projects": ["a", "b"]}
 
     def test_share_with_accepts_a_single_name(self, mocker):
         d = self._deployment(mocker)
-        put = self._stored(mocker, d)
+        change = self._stored(mocker, d)
 
         d.share_with(projects="b")
 
-        put.assert_called_once_with(d, False, ["b"])
+        change.assert_called_once_with(d, None, ["b"], [])
 
-    def test_share_with_all_projects_keeps_the_named_projects(self, mocker):
+    def test_share_with_all_projects(self, mocker):
         d = self._deployment(mocker)
-        put = self._stored(mocker, d, False, ["a"])
+        change = self._stored(mocker, d, False, ["a"])
 
-        d.share_with(all_projects=True)
+        result = d.share_with(all_projects=True)
 
-        put.assert_called_once_with(d, True, ["a"])
-
-    def test_share_with_keeps_all_projects_when_unset(self, mocker):
-        d = self._deployment(mocker)
-        put = self._stored(mocker, d, True, [])
-
-        d.share_with(projects=["b"])
-
-        put.assert_called_once_with(d, True, ["b"])
+        change.assert_called_once_with(d, True, [], [])
+        assert result == {"all_projects": True, "projects": []}
 
     def test_share_with_all_projects_false_restricts(self, mocker):
         d = self._deployment(mocker)
-        put = self._stored(mocker, d, True, [])
+        change = self._stored(mocker, d, True, [])
 
         d.share_with(all_projects=False)
 
-        put.assert_called_once_with(d, False, [])
+        change.assert_called_once_with(d, False, [], [])
 
     def test_share_with_needs_an_argument(self, mocker):
         d = self._deployment(mocker)
-        put = self._stored(mocker, d)
+        change = self._stored(mocker, d)
 
         with pytest.raises(ValueError):
             d.share_with()
 
-        put.assert_not_called()
+        change.assert_not_called()
 
-    def test_share_with_returns_what_the_backend_stored(self, mocker):
-        d = self._deployment(mocker)
-        self._stored(mocker, d, False, ["a"])
-
-        assert d.share_with(all_projects=True) == {
-            "all_projects": True,
-            "projects": [],
-        }
-
-    def test_a_write_without_a_body_reads_the_sharing_back(self, mocker):
+    def test_a_change_without_a_body_reads_the_sharing_back(self, mocker):
         d = self._deployment(mocker)
         self._stored(mocker, d, False, ["a"])
         mocker.patch.object(
-            d._serving_api, "_set_deployment_sharing", return_value=None
+            d._serving_api, "_change_deployment_sharing", return_value=None
         )
 
         assert d.share_with(projects=["b"]) == {
@@ -2669,28 +2659,28 @@ class TestDeploymentSharing:
             "projects": ["a"],
         }
 
-    def test_unshare_removes_the_named_projects(self, mocker):
+    def test_unshare_sends_only_the_removed_projects(self, mocker):
         d = self._deployment(mocker)
-        put = self._stored(mocker, d, False, ["a", "b"])
+        change = self._stored(mocker, d, False, ["a", "b"])
 
         result = d.unshare(projects=["a", "missing"])
 
-        put.assert_called_once_with(d, False, ["b"])
+        change.assert_called_once_with(d, None, [], ["a", "missing"])
         assert result == {"all_projects": False, "projects": ["b"]}
 
-    def test_unshare_all_projects_keeps_the_named_projects(self, mocker):
+    def test_unshare_all_projects(self, mocker):
         d = self._deployment(mocker)
-        put = self._stored(mocker, d, True, ["a"])
+        change = self._stored(mocker, d, True, [])
 
         d.unshare(all_projects=True)
 
-        put.assert_called_once_with(d, False, ["a"])
+        change.assert_called_once_with(d, False, [], [])
 
     def test_unshare_needs_an_argument(self, mocker):
         d = self._deployment(mocker)
-        put = self._stored(mocker, d)
+        change = self._stored(mocker, d)
 
         with pytest.raises(ValueError):
             d.unshare()
 
-        put.assert_not_called()
+        change.assert_not_called()

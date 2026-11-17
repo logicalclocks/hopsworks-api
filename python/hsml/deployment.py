@@ -1674,11 +1674,7 @@ class Deployment:
         added = _as_name_list(projects)
         if not added and all_projects is None:
             raise ValueError("Give `projects` or `all_projects`.")
-        current = self._read_sharing()
-        return self._write_sharing(
-            current["all_projects"] if all_projects is None else all_projects,
-            [*current["projects"], *(n for n in added if n not in current["projects"])],
-        )
+        return self._change_sharing(all_projects, added, [])
 
     @public
     def unshare(
@@ -1712,19 +1708,17 @@ class Deployment:
         removed = _as_name_list(projects)
         if not removed and not all_projects:
             raise ValueError("Give `projects` or `all_projects`.")
-        current = self._read_sharing()
-        return self._write_sharing(
-            False if all_projects else current["all_projects"],
-            [n for n in current["projects"] if n not in removed],
-        )
+        return self._change_sharing(False if all_projects else None, [], removed)
 
     def _read_sharing(self) -> dict[str, Any]:
         return _sharing_from_json(self._serving_api._get_deployment_sharing(self))
 
-    def _write_sharing(self, all_projects: bool, projects: list[str]) -> dict[str, Any]:
-        # The backend drops the named projects when all projects are shared.
-        sharing = self._serving_api._set_deployment_sharing(
-            self, all_projects, projects
+    def _change_sharing(
+        self, all_projects: bool | None, added: list[str], removed: list[str]
+    ) -> dict[str, Any]:
+        # Applied by the backend to what it stores, so a concurrent change is never undone.
+        sharing = self._serving_api._change_deployment_sharing(
+            self, all_projects, added, removed
         )
         return _sharing_from_json(sharing) if sharing else self._read_sharing()
 

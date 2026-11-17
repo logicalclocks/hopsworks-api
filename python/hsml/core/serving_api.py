@@ -327,18 +327,20 @@ class ServingApi:
         ]
         return _client._send_request("GET", path_params)
 
-    def _set_deployment_sharing(
+    def _change_deployment_sharing(
         self,
         deployment_instance: deployment.Deployment,
-        all_projects: bool,
-        projects: list[str],
+        all_projects: bool | None,
+        add: list[str],
+        remove: list[str],
     ) -> dict[str, Any] | None:
-        """Replace the projects a deployment is shared with.
+        """Change the projects a deployment is shared with, applied by the backend to what it stores.
 
         Parameters:
             deployment_instance: Metadata object of the deployment.
-            all_projects: Whether the deployment is shared with every project.
-            projects: Names of the projects to share with; ignored when `all_projects` is true.
+            all_projects: Whether the deployment is shared with every project; `None` keeps the stored value.
+            add: Names of the projects to share with.
+            remove: Names of the projects to stop sharing with.
 
         Returns:
             A dict with the keys `allProjects` and `projects`.
@@ -351,9 +353,10 @@ class ServingApi:
             deployment_instance.id,
             "sharing",
         ]
-        return self._send_switch(
-            "PUT", path_params, {"allProjects": all_projects, "projects": projects}
-        )
+        body: dict[str, Any] = {"add": add, "remove": remove}
+        if all_projects is not None:
+            body["allProjects"] = all_projects
+        return self._send_switch("PATCH", path_params, body)
 
     def _send_switch(
         self, method: str, path_params: list, body: dict[str, Any]
