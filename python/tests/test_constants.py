@@ -255,6 +255,22 @@ class TestConstants:
             prefix="SERVING_TOOL",
         )
 
+    def test_predictor_loading_strategy_constants(self):
+        # Arrange
+        loading_strategies = {
+            "LOADING_STRATEGY_HOPSFS_MOUNT": "HOPSFS_MOUNT",
+            "LOADING_STRATEGY_RUNAI_STREAMER": "RUNAI_STREAMER",
+            "LOADING_STRATEGY_DOWNLOAD": "DOWNLOAD",
+        }
+
+        # Assert
+        self._check_added_modified_or_removed_values(
+            constants.PREDICTOR,
+            num_values=len(loading_strategies),
+            expected_constants=loading_strategies,
+            prefix="LOADING_STRATEGY",
+        )
+
     # PREDICTOR_STATE
 
     def test_predictor_state_status_constants(self):

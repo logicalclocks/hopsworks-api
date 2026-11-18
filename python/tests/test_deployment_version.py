@@ -94,3 +94,21 @@ class TestDeploymentVersion:
 
         assert version.triton_image_tag == "26.09-py3"
         assert version.to_dict()["tritonImageTag"] == "26.09-py3"
+
+    def test_loading_strategy_is_exposed(self, backend_fixtures):
+        json_dict = backend_fixtures["deployment_version"]["get_versions"]["response"]
+
+        versions = DeploymentVersion.from_response_json(json_dict)
+
+        assert [v.loading_strategy for v in versions] == ["DOWNLOAD", None]
+        assert versions[0].to_dict()["loadingStrategy"] == "DOWNLOAD"
+        assert versions[1].to_dict()["loadingStrategy"] is None
+
+    def test_loading_strategy_round_trip(self, backend_fixtures):
+        json_dict = backend_fixtures["deployment_version"]["get_version"]["response"]
+        version = DeploymentVersion.from_response_json(json_dict)
+
+        again = DeploymentVersion.from_response_json(json.loads(version.json()))
+
+        assert version.loading_strategy == "HOPSFS_MOUNT"
+        assert again.loading_strategy == "HOPSFS_MOUNT"

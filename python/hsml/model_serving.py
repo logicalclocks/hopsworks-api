@@ -298,6 +298,7 @@ class ModelServing:
         default_predictor: bool | None = None,
         knative_mode: bool | None = None,
         triton_image_tag: str | None = None,
+        loading_strategy: str | None = None,
     ) -> Predictor:
         """Create a Predictor metadata object.
 
@@ -374,6 +375,14 @@ class ModelServing:
                 On an update, `None` means "unchanged": the deployment keeps its current tag, so moving it to the cluster default takes naming that tag explicitly.
                 A deployment also keeps its tag after an admin stops advertising it.
                 Ignored for non-Triton model servers.
+            loading_strategy: How the model server reads the model files.
+                `'HOPSFS_MOUNT'` mounts them read-only from HopsFS and the model server reads them in place; every model server except vLLM accepts it.
+                `'RUNAI_STREAMER'` mounts them the same way and vLLM loads them with the Run:ai Model Streamer; only vLLM accepts it.
+                `'DOWNLOAD'` copies them to the local disk of the pod before the model server starts; every model server accepts it.
+                The two mount strategies need the HopsFS CSI driver on the cluster.
+                `None` lets Hopsworks choose on a new deployment: a mount strategy when the cluster has the HopsFS CSI driver, `'DOWNLOAD'` otherwise.
+                On an update, `None` keeps the deployment's current strategy.
+                The values are also available as `PREDICTOR.LOADING_STRATEGY_*` constants in `hsml.constants`; see [`Predictor.loading_strategy`][hsml.predictor.Predictor.loading_strategy].
 
         Returns:
             The predictor metadata object.
@@ -405,6 +414,7 @@ class ModelServing:
             default_predictor=default_predictor,
             knative_mode=knative_mode,
             triton_image_tag=triton_image_tag,
+            loading_strategy=loading_strategy,
         )
 
     @public
