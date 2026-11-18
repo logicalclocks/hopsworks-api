@@ -59,6 +59,7 @@ Every mart follows the layer's `standards`; the Factory proposes these, and the 
 A mart whose dbt project, `marts/<mart>/`, has `semantic_models:` (load **hops-semantic**) is registered as the semantic project `<layer>_<mart>`, `<layer>` being the slug and each `-` in either name becoming `_`, unless `hops semantic show <layer>_<mart>` already finds it: `hops semantic create <layer>_<mart> --path <dir>`, with `<dir>` the mart's HopsFS directory (`$PWD/marts/<mart>` under the terminal's HopsFS mount, or where the backfill uploaded it from an external client) and the cluster's mandatory semantic project tags as `--tag` when a create is refused for them.
 Then `hops semantic test <layer>_<mart>` runs, and the YAML is fixed until every metric passes; the mart records `semantic_project: {name, path, build, tested}` (the build the test compiled, `tested` in UTC).
 A mart without `semantic_models:` registers nothing.
+A silver layer with `semantic_models:` in its dbt project, `dbt/`, does the same as one semantic project, `<layer>_silver`, from `$PWD/dbt`, recorded in `outputs.semantic_project`.
 A dashboard chart of a metric the semantic project defines reads it as hops-superset's "Metrics from the semantic layer" says.
 
 ## Dashboards

@@ -32,7 +32,13 @@ Find a skill at `.claude/skills/<name>/` in the repository, else `~/.claude/skil
 - **The blueprint is given.** The generator, its tests, the dbt project and the app were copied from the hops-analytics references. Run them as they are; change one only to fix a failure, recording the fix and why in `decisions`.
 - **Ask, never guess.** When a feature group the generator writes, the semantic project or the app already exists and was not made by this layer, or a Python environment is missing, ask with `AskUserQuestion` (one call, up to four questions, two to four concrete options each with the recommended one first). Record every answer and every choice you make yourself in `decisions` (`at`, `by: user` or `by: claude`, `what`, `why`).
 - **Commit each phase** in the layer's git work tree: `[<slug>] <phase>: <what>`, `system.yaml` with the code.
-- **The repository.** As `/hops-bronze` handles it: `layer.repo.url: local` keeps the code in Hopsworks only (commit, never push); a `layer.repo.url` with a `layer.repo.provider` is an existing repository to add as `origin`; with no `layer.repo.url`, a new private GitHub repository `layer.repo.name` (`gh repo view`, else `gh repo create <layer.repo.name> --private --source .. --remote origin --push` when `gh auth status` is logged in). Record the URL as `layer.repo.url`, commit only this directory and push after every commit; without a GitHub login, say once that `github-login` connects one, and keep committing locally.
+- **The repository.** A `layer.repo.url` of `local` keeps the code in Hopsworks only: commit as below, never add a remote, `gh repo create` or push.
+  Otherwise, an analytics pipeline's layers share one work tree, `layer.repo.name` (`hops-<prefix>`, the parent of this directory), and one repository; each layer is a directory in it.
+  A `layer.repo.url` with a `layer.repo.provider` is an existing repository the Factory was given (**Create new GitHub repo** unchecked): when the work tree has no `origin`, add that URL as `origin` and, when it has commits, put the work tree's commits on its history as below; for `gitlab`, `bitbucket` or `git` use git alone (no `gh`; access is a token for that host in Hopsworks Account Settings, Git providers, or an SSH key it accepts, and when `git ls-remote origin` fails say which fixes it and keep committing locally).
+  With no `layer.repo.url`, a new private GitHub repository: when the work tree already has an `origin`, record its URL; else when `gh repo view <layer.repo.name>` finds the repository, add it as `origin` and put the work tree's commits on its history (`git fetch origin` then `git rebase origin/<its default branch>`; the work tree was started fresh, and each layer's commits touch only its own directory); else, with `gh auth status` logged in, create it (`gh repo create <layer.repo.name> --private --source .. --remote origin --push`).
+  Record the URL as `layer.repo.url`.
+  Commit only this layer's directory (`git add -A -- .`, `git commit -m ... -- .`) and push after every commit.
+  Without a GitHub login, say once that `github-login` connects one, and keep committing locally.
 - **Logs stay out of the directory**, as `AGENTS.md` says.
 - **Never delete** what this build did not create.
 
@@ -47,10 +53,10 @@ Create the repository, as the rules say, and commit.
 
 ### backfill
 
-Deploy the backfill job and run it once, waiting for it: `hops job deploy <slug>-backfill <generator.program> --env <generator.environment> --args "<generator.backfill.args>" --run --wait`.
+Deploy the backfill job and run it once, waiting for it: `hops job deploy <slug>-backfill <generator.program> --env <generator.environment> --args "<generator.backfill.args> --lifecycle <layer.lifecycle>" --run --wait`.
 It creates the feature groups in `tables` (offline, Delta), writes the two years of history up to the last midnight (UTC), adds each feature's description and tags each `analytics_table` `{"layer": "gold", "lifecycle": "<layer.lifecycle>"}`.
 A scheduled run appends `-start_time <fire instant>` to the program's arguments, which the program accepts and ignores (**hops-job**, Windows and backfill).
-When it fails, read its log (`hops job logs <slug>-backfill --stdout --tail 200`, and `--stderr`), fix the cause, and run it again; a rerun rewrites the same rows.
+When it fails, read its log (`hops job logs <slug>-backfill --stdout --tail 200`, which prints both stdout and stderr), fix the cause, and run it again; a rerun rewrites the same rows.
 Check each table's rows (`hops trino query --catalog delta --schema <project>_featurestore "SELECT count(*) FROM <table>_1"`, the project name lowercased) against the counts the job's log printed, and its tag (`hops fg tags <name>`).
 Record each in `outputs.tables` (`name`, `version`, `cadence`, `primary_key`, `event_time`, `rows`), the job in `outputs.jobs` (`{name, environment, tables}`, no cadence), and the backfill's end in `decisions`.
 
@@ -71,15 +77,16 @@ Then run the saved queries (`hops semantic saved-queries <name>`, then `hops sem
 ### app
 
 The chat app's LLM is the account environment variables `LLM_URL`, `LLM_MODEL` and `LLM_API_KEY` of the member who starts it, which the Factory's form saved; never read or print their values.
-Deploy the app from this directory, as **hops-app** says for a custom app: `hops app create <app.name> --path "$(pwd)/<app.path>/app.py" --app-kind custom --entrypoint-command "python app.py" --app-port 8080 --readiness-probe-path /health --environment <app.environment> --start`, adding `app-requirements.txt` to the environment only when **hops-app**'s reuse rule says the environment lacks them.
-Wait for it to serve (`hops app info <app.name>`), then smoke-test it through `kubectl port-forward`: `/health`, `/api/catalog` lists the semantic project's metrics, and `/api/run` with `{"query": {"metrics": ["revenue"], "group_by": ["metric_time__month"]}}` returns rows.
+Before deploying, run the app here and smoke-test it: `uv pip install -r <app.path>/app-requirements.txt` when a package is missing, `APP_PORT=8080 python <app.path>/app.py &`, then with `curl` on `http://localhost:8080`: `/health` answers, `/api/catalog` lists the semantic project's metrics, and `/api/run` with `{"query": {"metrics": ["revenue"], "group_by": ["metric_time__month"]}}` returns rows; stop it afterwards.
 `/api/catalog` also says whether the LLM is configured (`llm.configured`): when it is, `/api/ask` with one example question returns `"kind": "answer"`; when it is not, say that the app answers questions once the three variables are set in the account settings and the app is restarted, and go on, since its Build a query form works without them.
+Deploy the app from this directory, as **hops-app** says for a custom app, with its path relative to the project (the terminal's `/hopsfs/` mount is the project's root, and an app path is not read through it): `hops app create <app.name> --path "${PWD#/hopsfs/}/<app.path>/app.py" --app-kind custom --entrypoint-command "python app.py" --app-port 8080 --readiness-probe-path /health --environment <app.environment> --start`, adding `app-requirements.txt` to the environment only when **hops-app**'s reuse rule says the environment lacks them.
+`--start` returns once the readiness probe on `/health` passes; check that it serves with `hops app info <app.name>` (`kubectl port-forward` is refused in a Hopsworks terminal).
 When it fails, read `hops app logs <app.name>`, fix the cause, and `hops app redeploy <app.name>`.
 Record `outputs.app` (`name`, `url` from `hops app url <app.name>`).
 
 ### schedule
 
-For each cadence in `schedule.cadences`, deploy its job: `hops job deploy <slug>-<cadence> <generator.program> --env <generator.environment> --args "<its args>"`.
+For each cadence in `schedule.cadences`, deploy its job: `hops job deploy <slug>-<cadence> <generator.program> --env <generator.environment> --args "<its args> --lifecycle <layer.lifecycle>"`.
 Schedule it from the backfill's end, with catch-up, so the days continue from the history: `hops job schedule <slug>-<cadence> "<its cron>" --start-time <the backfill's end> --catchup --max-catchup-runs <its max_catchup_runs>`.
 The catch-up writes the days since the backfill, one run each; wait for the first run (`hops job history <slug>-<cadence>`) and check from its log that it wrote its day.
 Record each in `outputs.jobs` (`{name, cadence, cron, environment, tables}`).

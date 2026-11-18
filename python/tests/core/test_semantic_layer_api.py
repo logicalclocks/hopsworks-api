@@ -17,7 +17,6 @@
 import datetime
 import json
 import logging
-import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
@@ -1866,7 +1865,7 @@ class TestExportJob:
         job.fs.get_or_create_feature_group.assert_called_once_with(
             name="revenue_daily",
             version=1,
-            description="Daily revenue per country [semantic export 7/revenue_daily]",
+            description="Daily revenue per country",
             primary_key=["customer__country"],
             event_time="metric_time__day",
             time_travel_format="DELTA",
@@ -2005,25 +2004,36 @@ class TestExportJob:
         assert job.reports[0]["status"] == "TARGET_EXISTS"
         assert job.reports[0]["featureGroupId"] == recorded
 
-    def test_a_feature_group_a_first_run_created_but_did_not_report_is_taken_over(
-        self, job
-    ):
+    def test_a_description_does_not_make_a_feature_group_the_exports(self, job):
         job.fg.id = 501
-        job.fg.description = (
-            "Daily revenue per country [semantic export 7/revenue_daily]"
-        )
-
-        report = semantic_layer_api._run_export(7, "revenue_daily", 3)
-
-        assert job.write_options == _written(True)
-        assert (report["status"], report["featureGroupId"]) == ("SUCCEEDED", 501)
-
-    def test_another_exports_marker_does_not_take_a_feature_group_over(self, job):
-        job.fg.id = 501
-        job.fg.description = "[semantic export 7/revenue_weekly]"
+        job.fg.description = "[semantic export 7/revenue_daily]"
 
         with pytest.raises(SemanticLayerException, match="did not create it"):
             semantic_layer_api._run_export(7, "revenue_daily", 3)
+
+        job.fg.insert.assert_not_called()
+
+    def test_a_lookback_run_fills_a_feature_group_that_holds_no_data(self, job):
+        job.export.update(featureGroupId=501, lookback="7 days")
+        job.fg.id = 501
+        job.fg._delta_has_data.return_value = False
+
+        report = semantic_layer_api._run_export(7, "revenue_daily", 4)
+
+        assert job.write_options == _written(True)
+        assert len(job.written) == 3
+        assert report["message"] == "Wrote every row: the feature group held none."
+
+    def test_a_lookback_run_fails_when_the_table_cannot_be_read(self, job):
+        job.export.update(featureGroupId=501, lookback="7 days")
+        job.fg.id = 501
+        job.fg._delta_has_data.side_effect = OSError("HopsFS is down")
+
+        with pytest.raises(OSError, match="HopsFS is down"):
+            semantic_layer_api._run_export(7, "revenue_daily", 4)
+
+        job.fg.insert.assert_not_called()
+        assert job.reports[0]["status"] == "FAILED"
 
     def test_a_failure_is_reported_and_raised(self, job):
         job.fg.insert.side_effect = RuntimeError("HopsFS is down")
@@ -2189,43 +2199,6 @@ class TestExportMaterialization:
         assert "materialization" not in report
 
 
-class _DeltaLog:
-    """A Delta log for `_output_version`: the version of each commit's `semantic-export-7-daily` transaction."""
-
-    def __init__(self, transactions):
-        self.transactions = transactions
-        self.at = len(transactions) - 1
-        self.loaded = []
-
-    def __call__(self, location, storage_options=None):
-        return self
-
-    def version(self):
-        return self.at
-
-    def load_as_version(self, version):
-        self.loaded.append(version)
-        self.at = version
-
-    def transaction_version(self, app_id):
-        assert app_id == "semantic-export-7-daily"
-        return self.transactions[self.at]
-
-
-def _fake_delta_engine(mocker):
-    """The Delta engine module of hsfs, faked with the packages above it: importing hsfs needs the generated alias modules."""
-    engine = SimpleNamespace(DeltaEngine=MagicMock(name="DeltaEngine"))
-    core = SimpleNamespace(delta_engine=engine)
-    mocker.patch.dict(
-        sys.modules,
-        {
-            "hsfs": SimpleNamespace(core=core),
-            "hsfs.core": core,
-            "hsfs.core.delta_engine": engine,
-        },
-    )
-
-
 def test_each_write_attempt_has_its_own_transaction_version():
     versions = {semantic_layer_api._transaction_version() for _ in range(1000)}
     assert len(versions) == 1000
@@ -2233,65 +2206,23 @@ def test_each_write_attempt_has_its_own_transaction_version():
 
 
 class TestOutputVersion:
-    @pytest.fixture
-    def log(self, mocker):
-        def install(transactions):
-            delta_log = _DeltaLog(transactions)
-            mocker.patch("deltalake.DeltaTable", delta_log)
-            _fake_delta_engine(mocker)
-            return delta_log
-
-        return install
-
-    def test_the_head_is_the_runs_commit(self, log):
-        delta_log = log([None, 76, 77])
+    def test_the_feature_group_finds_the_commit(self):
+        fg = MagicMock()
+        fg._delta_transaction_commit.return_value = 2
 
         assert (
-            semantic_layer_api._output_version(
-                MagicMock(), "semantic-export-7-daily", 77
-            )
-            == 2
+            semantic_layer_api._output_version(fg, "semantic-export-7-daily", 77) == 2
         )
-        assert delta_log.loaded == [1]
-
-    def test_a_later_commit_of_another_writer_is_skipped(self, log):
-        log([None, 76, 77, 77, 77])
-
-        assert (
-            semantic_layer_api._output_version(
-                MagicMock(), "semantic-export-7-daily", 77
-            )
-            == 2
+        fg._delta_transaction_commit.assert_called_once_with(
+            "semantic-export-7-daily", 77, semantic_layer_api._OUTPUT_VERSION_SEARCH
         )
 
-    def test_the_first_commit_of_the_table(self, log):
-        log([77])
+    def test_an_unreadable_log(self):
+        fg = MagicMock()
+        fg._delta_transaction_commit.side_effect = OSError("HopsFS is down")
 
         assert (
-            semantic_layer_api._output_version(
-                MagicMock(), "semantic-export-7-daily", 77
-            )
-            == 0
-        )
-
-    def test_a_log_without_the_runs_transaction(self, log):
-        log([None, 76, 78])
-
-        assert (
-            semantic_layer_api._output_version(
-                MagicMock(), "semantic-export-7-daily", 77
-            )
-            is None
-        )
-
-    def test_an_unreadable_log(self, mocker):
-        mocker.patch("deltalake.DeltaTable", side_effect=OSError("HopsFS is down"))
-        _fake_delta_engine(mocker)
-
-        assert (
-            semantic_layer_api._output_version(
-                MagicMock(), "semantic-export-7-daily", 77
-            )
+            semantic_layer_api._output_version(fg, "semantic-export-7-daily", 77)
             is None
         )
 

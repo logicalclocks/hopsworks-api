@@ -35,13 +35,11 @@ Superset is reachable only inside the cluster.
 
 A chart of a business metric (revenue, orders, conversion) reads that metric's governed definition when
 one exists: look in `hops semantic list` and `hops search <term> --type metric`, and load
-**hops-semantic** for its group-bys. How it reads the definition depends on whether the user has a
-semantic connection in Superset, one per Hopsworks project with each semantic project as a schema,
-which Hopsworks reports (hops-superset's `references/semantic_layer.md`): never look a database up
-by name. Only its absence selects a dataset over the metric's SQL: `hops semantic dashboard`, or a
-program's `SEMANTIC_DATASETS` entry, failing with code 600014
-(`SEMANTIC_LAYER_DASHBOARDS_DISABLED`). Any other failure, an authentication error, a 5xx or 600015
-(`SEMANTIC_LAYER_SUPERSET_ERROR`), ends the run with that error.
+**hops-semantic** for its group-bys. Try the semantic connection first: `hops semantic dashboard`, or a program's `SEMANTIC_DATASETS`
+entry (hops-superset's `references/semantic_layer.md`). Only code 600014
+(`SEMANTIC_LAYER_DASHBOARDS_DISABLED`) means there is none; then build the dataset over the metric's
+SQL. Any other failure, an authentication error, a 5xx or 600015 (`SEMANTIC_LAYER_SUPERSET_ERROR`),
+ends the run with that error; never look a database up by name.
 
 - **A semantic connection:** a dashboard that shows only metrics needs no program.
   `hops semantic dashboard <semantic project> --metrics ... [--group-by ...] --title <title>` builds it, and

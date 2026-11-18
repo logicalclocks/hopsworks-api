@@ -259,37 +259,20 @@ hops superset dashboard update N [--title T] [--published] [--refresh 300] [--me
 ## Semantic Layer
 
 Wraps `project.get_semantic_layer_api()`: metrics defined in YAML next to a dbt project, over feature groups.
-The `hops-semantic` skill covers the YAML.
+The `hops-semantic` skill covers the YAML and every command; `hops semantic --help` lists them.
 
 ```bash
 hops semantic list
-hops semantic init <name> [--from-fg <fg>[:<version>] ...] [--path <dir>] [--repo new|<url>] [--yes]   # scaffold, register, compile
-hops semantic create <name> --path <dbt project dir> [--format AUTO|DBT|NATIVE|MANIFEST_JSON] [--mode FOLLOW|PINNED] [--tag NAME=VALUE]
+hops semantic init <name> [--from-fg <fg>[:<version>] ...] [--path <dir>] [--repo new|<url>]   # scaffold, register, compile
+hops semantic create <name> --path <dbt project dir> [--mode FOLLOW|PINNED] [--tag NAME=VALUE]
 hops semantic show <name>                                   # settings, the build queries use, and whether it is stale
-hops semantic update <name> [--path <dir>] [--format ...] [--mode FOLLOW|PINNED]
 hops semantic compile <name> [--wait]                       # --wait shows the issues and exits 1 on an INVALID or FAILED build
 hops semantic test <name> [--metrics a,b] [--no-compile]    # compile, then run each metric once on Trino; exit 1 on any failure
-hops semantic builds <name>
-hops semantic build <name> <build id>                       # one build with its issues at file:line
-hops semantic promote <name> <build id>
-hops semantic metrics <name> [--group-by a,b] [--tag schema]   # --group-by keeps the compatible metrics, --tag (repeatable) the tagged ones
+hops semantic metrics <name> [--group-by a,b]
 hops semantic dimensions <name> [--metrics a,b]
-hops semantic entities <name> [--metrics a,b]
-hops semantic dimension-values <name> <dimension> [--metrics a,b] [--limit N]
-hops semantic saved-queries <name>                          # sql, query, dashboard take --saved-query q for --metrics
-hops semantic sql <name> --metrics a,b [--group-by metric_time__month,customer__country] [--where "..."] [--order-by -a] [--limit N]
-hops semantic query <name> --metrics a,b [...same flags] [--output table|json|csv] [--explain] [--no-cache]   # --explain prints the SQL; --no-cache skips the gateway's result cache
-hops semantic dashboard <name> --metrics a,b [--group-by customer__country] [--title T]   # Superset dashboard on your own semantic connection; prints its URL
-hops semantic export list <name>                            # exports of saved queries into feature groups, with each one's last run
+hops semantic query <name> --metrics a,b [--group-by metric_time__month,customer__country] [--where "..."] [--order-by -a] [--limit N] [--explain]
+hops semantic dashboard <name> --metrics a,b [--group-by customer__country] [--title T]   # Superset dashboard on your own semantic connection
 hops semantic export run <name> <export> [--wait]           # run an export's job now (Data Owner)
-hops semantic transfer-ownership <name> <email> [--yes]     # hand the semantic project, as whose owner its exports run, to another Data Owner
-hops semantic connect <name>                                # URLs and export lines for dbt-sl-sdk; eval "$(hops semantic connect <name>)"
-hops semantic time-spine create --start D --end D [--grain day] [--custom NAME=FREQ]   # feature group time_spine_<grain>
-hops semantic delete <name> --yes
-hops semantic tag list <name>                               # schematised tags on the semantic project
-hops semantic tag set <name> <schema> '<json value>'
-hops semantic tag get <name> <schema>
-hops semantic tag delete <name> <schema>
 ```
 
 ## File system (HopsFS)

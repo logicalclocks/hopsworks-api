@@ -241,7 +241,11 @@ def test_a_refused_query_goes_back_to_the_model_once(catalog):
     assert "unknown group-by 'customer__country'" in llm.sent[1][-1]["content"]
 
 
-def test_a_query_the_gateway_refuses_goes_back_with_its_reason(catalog):
+class Refusal(Exception):
+    error_code = "SEMANTIC_LAYER_INVALID_QUERY"
+
+
+def test_a_query_the_gateway_refuses_goes_back_with_its_code_alone(catalog):
     llm = Script(
         json.dumps({"metrics": ["revenue"]}),
         json.dumps({"metrics": ["revenue"], "limit": 10}),
@@ -251,12 +255,28 @@ def test_a_query_the_gateway_refuses_goes_back_with_its_reason(catalog):
     def run(query):
         calls.append(query)
         if len(calls) == 1:
-            raise RuntimeError("SEMANTIC_LAYER_INVALID_QUERY: boom")
+            raise Refusal("line 3: 'alice@example.com' is not a date")
         return "rows"
 
     outcome = tr.translate(llm, catalog, "revenue", [], run, TODAY)
     assert outcome["result"] == "rows"
-    assert "boom" in llm.sent[1][-1]["content"]
+    assert llm.sent[1][-1]["content"] == (
+        "The semantic layer refused the query (SEMANTIC_LAYER_INVALID_QUERY)."
+        " Reply with a corrected JSON query."
+    )
+
+
+def test_the_person_asking_reads_the_gateways_reason(catalog):
+    llm = Script(*[json.dumps({"metrics": ["revenue"]})] * tr.ATTEMPTS)
+
+    def run(query):
+        raise Refusal("no such column")
+
+    outcome = tr.translate(llm, catalog, "revenue", [], run, TODAY)
+    assert outcome == {
+        "error": "The semantic layer refused the query: no such column",
+        "attempts": tr.ATTEMPTS,
+    }
 
 
 def test_two_refusals_end_in_an_error(catalog):

@@ -456,6 +456,42 @@ class DeltaEngine:
         commits = self._get_delta_commits(location)
         return commits[0] if commits else None
 
+    def _delta_rs_table(self):
+        """The table opened with delta-rs, or None when no commit has created it."""
+        from deltalake import DeltaTable as DeltaRsTable
+        from deltalake.exceptions import TableNotFoundError
+
+        try:
+            return DeltaRsTable(
+                self._get_delta_rs_location(),
+                storage_options=self._get_delta_rs_storage_options() or None,
+            )
+        except TableNotFoundError:
+            return None
+
+    def _has_data(self) -> bool:
+        """Whether the table's current version holds a data file; a table created empty holds none."""
+        table = self._delta_rs_table()
+        return table is not None and bool(table.file_uris())
+
+    def _transaction_commit(self, app_id: str, version: int, search: int) -> int | None:
+        """The Delta version of the commit carrying the application transaction `(app_id, version)`, or None when the head does not carry it.
+
+        The log is read from the head back, at most `search` versions: the commit is the first version at which the transaction's version is `version`, which holds when each write uses a transaction version of its own.
+        """
+        table = self._delta_rs_table()
+        if table is None or table.transaction_version(app_id) != version:
+            return None
+        at = table.version()
+        for _ in range(search):
+            if at == 0:
+                return 0
+            table.load_as_version(at - 1)
+            if table.transaction_version(app_id) != version:
+                return at
+            at -= 1
+        return None
+
     def _delete_record(self, delete_df):
         partition_transforms._require_writable(self._feature_group)
         storage_options = None

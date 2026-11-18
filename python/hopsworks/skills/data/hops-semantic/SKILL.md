@@ -49,14 +49,7 @@ hops semantic init sales --repo https://github.com/acme/metrics.git   # an exist
 2. the feature group named `x`, at its **latest** version.
 
 Anything else is a compile error at that file and line.
-Use the `meta` override whenever the dbt model and the feature group have different names, or to pin a version so a new FG version does not silently change the metric.
-A feature group in another project's feature store, shared with this one, also needs `feature_store: <project>_featurestore` in that `meta`.
-In MetricFlow's native format, `node_relation` names the FG table as `<project>_featurestore.<fg>_<version>`.
-Only feature groups with an offline table resolve: cached and stream feature groups of the project, or shared with it; external feature groups and other tables do not.
-Every `expr` is checked against the feature group's columns at compile time.
-The compiler links the FG `event_time` to the model's time dimension on that column, adding one at `day` grain named after the column when none is declared, and a measure with no `agg_time_dimension`, its own or in `defaults`, aggregates over it.
-Declare the time dimension for a finer grain, and set `agg_time_dimension` only to aggregate over another time; a FG without `event_time` needs it, else `AGG_TIME_DIMENSION`, and an `EVENT_TIME` warning means the link clashed with another element's name.
-Nothing checks that a primary entity is the FG primary key, so match it yourself: joins trust a primary entity to be unique.
+A feature group shared from another project, the feature group types that resolve, and how the FG `event_time` and primary key map to the model: [references/feature-groups.md](references/feature-groups.md).
 
 ```yaml
 semantic_models:
@@ -246,51 +239,14 @@ While an export without `lookback` holds the exact rows of a query (same metrics
 
 ## Query history
 
-Every query run over REST, Arrow Flight SQL or the BI tables is recorded, failed and cancelled ones included; members see their own, Data Owners everyone's.
-Kept 30 days; the request, SQL and error go after 7 (`semantic_query_strip_details_after_days`).
-Best effort, not an audit log: a record can be lost (full queue, expired credential). Metadata listings and `sql`/`--explain` are not recorded.
-Use it to find why a dashboard or BI tool query failed (`--status FAILED`, the `error` column) or which surface and cache outcome a query had.
-
-```bash
-hops semantic history sales --status FAILED --limit 20            # newest first: surface, duration, rows, cache, error
-hops semantic history sales --user meb10000 --json                # a member's queries; Data Owners only
-```
-
-```python
-df = sales.query_history(limit=100, status="FAILED")                # pandas, one row per execution attempt
-```
+Every query over REST, Arrow Flight SQL or the BI tables is recorded for 30 days; members see their own, Data Owners everyone's.
+`hops semantic history <name> --status FAILED --limit 20` shows why a dashboard or BI tool query failed: [references/history.md](references/history.md).
 
 ## dbt Semantic Layer clients
 
-`dbt-sl-sdk` and the Arrow Flight SQL JDBC driver, with dbt's `{{ semantic_layer.query(...) }}` syntax, reach a semantic project with the Hopsworks host, an API key with the `FEATURESTORE` and `TRINO` scopes, and the semantic project's id as the environment id:
-
-```bash
-eval "$(hops semantic connect sales)"   # DBT_SL_GRAPHQL_URL_FORMAT, DBT_SL_ADBC_URL_FORMAT and, with a private CA, SSL_CERT_FILE; URLs on stderr
-```
-
-```python
-info = sales.connection_info()          # environment_id, graphql_url, adbc_url, jdbc_url, env and ca_path
-```
-
-- **GraphQL** (`graphql_url`) serves metadata and `compileSql` only: `metrics`, `dimensions`, `measures`, `entities`, `savedQueries`, their paginated forms, `queryableGranularities` and `environmentInfo`.
-- **Queries** run over Arrow Flight SQL (`adbc_url`, `jdbc_url`) or REST. `dbt-sl-sdk`'s `client.query()` and `client.dimension_values()` use ADBC and work; a query sent as a GraphQL operation (`createQuery`, `query`, `createDimensionValuesQuery`) is refused with a GraphQL validation error.
-
-### BI tools (experimental)
-
-On the same Flight SQL port, a statement without `{{ }}` is plain SQL over tables: catalog `semantic_layer`, schema the environment id (`semantic_layer."7"`), the table `metrics` (`metric_time__<grain>`, then every group-by, then every metric) and one table per saved query.
-DBeaver, DataGrip and other JDBC/ODBC tools browse them; dbt's Tableau and Power BI connectors need the admin's dbt-compatible layout (Flight and `/api/graphql` on port 443 of one host).
-
-```sql
-SELECT customer__country, DATE_TRUNC('month', metric_time__day) AS m, SUM(revenue)
-FROM semantic_layer."7".metrics
-WHERE customer__country IN ('SE', 'NO')
-GROUP BY 1, 2 HAVING SUM(revenue) > 100 ORDER BY 3 DESC LIMIT 50
-```
-
-- `SUM`, `AVG`, `MIN`, `MAX`, `COUNT` and `ANY_VALUE` around a metric column all mean the metric itself: `AVG(revenue)` is revenue, not an average of it. Never tell a user it is an average.
-- One table per statement; group-bys in WHERE, metrics in HAVING; `DATE_TRUNC` (both argument orders), `EXTRACT` (ISODOW, not DOW) and lossless `CAST`s only.
-- Refused with `INVALID_ARGUMENT: the BI tables do not support <construct>; ...`: joins, unions, subqueries, window functions, expressions over columns, `COUNT(*)`, metrics in WHERE, parameter markers.
-- Recorded in the history with surface `BI`; never answered from exports.
+`dbt-sl-sdk`, the Arrow Flight SQL JDBC and ADBC drivers, and JDBC/ODBC BI tools reach a semantic project with the Hopsworks host, an API key and the project's environment id.
+`eval "$(hops semantic connect <name>)"` exports the URLs; `sales.connection_info()` returns them.
+What GraphQL serves, how queries run, and the plain SQL tables BI tools read (experimental), with what they refuse: [references/clients.md](references/clients.md).
 
 ## Tags
 

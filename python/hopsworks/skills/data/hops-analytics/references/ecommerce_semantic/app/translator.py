@@ -1,11 +1,13 @@
 """Questions in plain language to semantic layer queries, through an LLM, checked before they run.
 
-The LLM sees the semantic project's catalog (metrics, dimensions, the values of the small ones) and the
-question, never a data row, and answers with a JSON query: metrics, group-bys, filters, a time range,
+The LLM sees the semantic project's catalog (metrics, dimensions, and the values of each categorical
+dimension with at most `LISTED_VALUES` of them) and the question, never a query's result, and answers
+with a JSON query: metrics, group-bys, filters, a time range,
 an order and a limit. `check` refuses every name the catalog does not have, a filter value a dimension
 does not take and a group-by a metric cannot reach, so nothing the model invents reaches the gateway;
-the filters are bound as literals by the SDK, never parsed as SQL. A refused query, or one the gateway
-refuses, goes back to the model once with the reason.
+the filters are bound as literals by the SDK, never parsed as SQL. A query `check` refuses goes back to
+the model once with the reason; one the gateway refuses goes back with its error code alone, since the
+engine's message can quote data.
 """
 
 from __future__ import annotations
@@ -324,6 +326,9 @@ def messages(
     return turns
 
 
+_AGAIN = " Reply with a corrected JSON query."
+
+
 def translate(
     llm: Callable[[list[dict[str, str]]], str],
     catalog: Catalog,
@@ -335,11 +340,12 @@ def translate(
     """Ask the model for a query, check it and run it; a refused query goes back to the model once.
 
     `llm` takes chat messages and returns the reply's text; `run` takes a checked query and returns its
-    result, raising when the gateway refuses it. Returns `clarify` with the model's question, or
+    result, raising when the gateway refuses it; the model is told the refusal's `error_code`, never its
+    text. Returns `clarify` with the model's question, or
     `query` and `result`, or `error` with the last reason, and `attempts`.
     """
     turns = messages(catalog, today, question, history)
-    reason = ""
+    reason = shown = ""
     for attempt in range(1, ATTEMPTS + 1):
         reply = llm(turns)
         turns.append({"role": "assistant", "content": reply})
@@ -354,11 +360,17 @@ def translate(
             if not problems:
                 try:
                     return {"query": query, "result": run(query), "attempts": attempt}
-                except Exception as err:  # noqa: BLE001 - the gateway's reason goes back to the model
-                    reason = f"The semantic layer refused the query: {err}"
+                except Exception as err:  # noqa: BLE001 - any refusal goes back to the model
+                    code = getattr(err, "error_code", None)
+                    reason = "The semantic layer refused the query" + (
+                        f" ({code})." if code else "."
+                    )
+                    # The person asking reads the gateway's reason; the model gets the code alone.
+                    shown = f"The semantic layer refused the query: {err}"
+                    turns.append({"role": "user", "content": reason + _AGAIN})
+                    continue
             else:
                 reason = "The query is invalid: " + "; ".join(problems) + "."
-        turns.append(
-            {"role": "user", "content": reason + " Reply with a corrected JSON query."}
-        )
-    return {"error": reason, "attempts": ATTEMPTS}
+        shown = reason
+        turns.append({"role": "user", "content": reason + _AGAIN})
+    return {"error": shown, "attempts": ATTEMPTS}

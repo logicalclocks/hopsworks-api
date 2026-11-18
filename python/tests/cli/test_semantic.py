@@ -685,6 +685,15 @@ class TestExplainAndTest:
         ]
         assert "2 of 2 metrics ran" in result.output
 
+    def test_test_exits_one_when_there_is_no_metric_to_run(self, sales):
+        sales.list_metrics.return_value = []
+
+        result = _run("test", "sales", "--no-compile")
+
+        assert result.exit_code == 1
+        assert "nothing to test" in result.output
+        sales.query.assert_not_called()
+
     def test_test_exits_one_when_a_metric_fails_on_the_engine(self, sales):
         sales.list_metrics.return_value = [
             SemanticMetric(name="revenue", type="SIMPLE"),

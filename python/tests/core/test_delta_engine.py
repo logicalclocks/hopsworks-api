@@ -3188,3 +3188,95 @@ class TestReplaceWrite:
 
         with pytest.raises(FeatureStoreException, match="Python engine only"):
             engine._write_delta_dataset(mocker.Mock(), {"replace": True})
+
+
+class _DeltaLog:
+    """A Delta log as delta-rs reads it: the version of each commit's `export` transaction, and the data files at the head."""
+
+    def __init__(self, transactions, files=("part-0.parquet",)):
+        self.transactions = transactions
+        self.files = list(files)
+        self.at = len(transactions) - 1
+        self.loaded = []
+
+    def __call__(self, location, storage_options=None):
+        return self
+
+    def version(self):
+        return self.at
+
+    def load_as_version(self, version):
+        self.loaded.append(version)
+        self.at = version
+
+    def transaction_version(self, app_id):
+        assert app_id == "export"
+        return self.transactions[self.at]
+
+    def file_uris(self):
+        return self.files
+
+
+class TestDeltaRsLog:
+    @pytest.fixture
+    def engine(self, mocker):
+        _patch_client(mocker, is_external=False)
+        _patch_apis(mocker, lb_domain="nn.example.com", username="user1")
+        engine = DeltaEngine(1, "fs", _make_fg("hopsfs://nn:8020/p"), None, None)
+        mocker.patch.object(engine, "_get_delta_rs_storage_options", return_value={})
+        return engine
+
+    @pytest.fixture
+    def log(self, mocker):
+        def install(*args, **kwargs):
+            delta_log = _DeltaLog(*args, **kwargs)
+            mocker.patch("deltalake.DeltaTable", delta_log)
+            return delta_log
+
+        return install
+
+    def test_the_head_is_the_transactions_commit(self, engine, log):
+        delta_log = log([None, 76, 77])
+
+        assert engine._transaction_commit("export", 77, 100) == 2
+        assert delta_log.loaded == [1]
+
+    def test_a_later_commit_of_another_writer_is_skipped(self, engine, log):
+        log([None, 76, 77, 77, 77])
+
+        assert engine._transaction_commit("export", 77, 100) == 2
+
+    def test_the_first_commit_of_the_table(self, engine, log):
+        log([77])
+
+        assert engine._transaction_commit("export", 77, 100) == 0
+
+    def test_a_log_without_the_transaction(self, engine, log):
+        log([None, 76, 78])
+
+        assert engine._transaction_commit("export", 77, 100) is None
+
+    def test_the_search_is_bounded(self, engine, log):
+        log([77] * 10)
+
+        assert engine._transaction_commit("export", 77, 3) is None
+
+    def test_a_table_no_commit_created_has_no_data_and_no_transaction(
+        self, engine, mocker
+    ):
+        from deltalake.exceptions import TableNotFoundError
+
+        mocker.patch("deltalake.DeltaTable", side_effect=TableNotFoundError("none"))
+
+        assert engine._has_data() is False
+        assert engine._transaction_commit("export", 77, 100) is None
+
+    def test_a_table_created_empty_has_no_data(self, engine, log):
+        log([None], files=())
+
+        assert engine._has_data() is False
+
+    def test_a_table_with_a_data_file_has_data(self, engine, log):
+        log([None, 77])
+
+        assert engine._has_data() is True

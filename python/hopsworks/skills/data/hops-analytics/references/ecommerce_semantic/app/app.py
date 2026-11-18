@@ -10,8 +10,9 @@ Europe", "by quarter instead") refines the previous query. The query of an answe
 place (metrics, group-bys, filters, time range) and run again without the LLM, and the catalog panel
 lists every metric and dimension with its description.
 
-The LLM only writes the query: it sees the catalog and the question, never a data row, and the filters
-it writes are bound as literals, never run as SQL (translator.py). Queries run on Trino as the member
+The LLM only writes the query: it sees the question and the catalog, which lists the values of each
+categorical dimension with at most 60 of them, and never a query's result or the engine's error text.
+The filters it writes are bound as literals, never run as SQL (translator.py). Queries run on Trino as the member
 who started the app, so they see what that member can read.
 
 The LLM is any OpenAI-compatible chat endpoint, from the account environment variables of the member
@@ -30,6 +31,7 @@ from __future__ import annotations
 import datetime as dt
 import decimal
 import json
+import logging
 import os
 import threading
 import time
@@ -121,8 +123,13 @@ def _chat(messages: list[dict[str, str]]) -> str:
         timeout=LLM_TIMEOUT_S,
     )
     if reply.status_code >= 400:
+        # The URL and the provider's reply can carry a credential, so they stay in the app's log.
+        logging.getLogger(__name__).error(
+            "The LLM at %s answered %s: %s", url, reply.status_code, reply.text[:300]
+        )
         raise HTTPException(
-            502, f"The LLM at {url} answered {reply.status_code}: {reply.text[:300]}"
+            502,
+            f"The LLM answered {reply.status_code}; the app's log has the detail.",
         )
     return reply.json()["choices"][0]["message"]["content"] or ""
 

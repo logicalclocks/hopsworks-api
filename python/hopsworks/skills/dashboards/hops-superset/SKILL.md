@@ -33,38 +33,9 @@ quickest path to list/inspect/clean up (delete takes `--yes`). Re-run
 
 ## Charts and dashboard edits without Python
 
-On Superset 7.0, `hops superset chart generate` creates a chart from a short typed config.
-Superset's MCP service compiles it into the viz params and checks every column and metric against the dataset before it saves anything, so no `params` JSON (§4) is needed.
-Prefer it to `create_chart` and to `chart create --params`.
-
-```bash
-hops superset chart types                    # chart types and their required fields
-hops superset chart types xy                 # one type's full config schema, with examples
-hops superset chart generate --dataset 12 --type xy --x event_time \
-  --y 'SUM(amount)' --group-by category --time-grain P1D --name 'Spend per day'
-hops superset chart generate --dataset 12 --type big_number --metric 'COUNT(*)'
-hops superset chart generate --dataset 12 --type table --columns 'category,SUM(amount)' \
-  --filter 'country IN SE,NO' --filter 'amount > 100'
-hops superset chart generate --dataset 12 --config @chart.json   # any type, full schema
-hops superset chart generate --dataset 12 --type pie --dimension category --metric 'SUM(amount)' --preview
-```
-
-- `--y` and `--metric`: `SUM(col)` (also COUNT, AVG, MIN, MAX, COUNT_DISTINCT, MEDIAN) aggregates a column, a bare name is a saved metric of the dataset, anything else (`COUNT(*)`) is a SQL expression.
-- `--preview` leaves the chart unsaved and prints an Explore link; without it the chart is saved and its ID and link printed.
-- A rejected config fails with Superset's message, such as the column it could not find; fix the flag and rerun.
-- Superset runs the chart's query before saving it, so a saved chart is one whose query worked.
-- Superset 7.0.0rc2 saves a generated chart without a query context: it renders in Explore and on dashboards, but `GET /api/v1/chart/{id}/data/` answers 400 `Chart has no query context saved` until the chart is opened and saved once in Superset.
-
-`hops superset dashboard update ID` changes only the fields given and leaves the rest:
-
-```bash
-hops superset dashboard update 7 --title 'Fraud overview' --published --refresh 300
-hops superset dashboard update 7 --metadata '{"color_scheme": "supersetColors"}'   # merged into json_metadata
-hops superset dashboard update 7 --css @print.css --filter-bar horizontal --cross-filters
-```
-
-Put a generated chart on a dashboard with `api.update_chart(chart_id, dashboards=[dashboard_id])` (§1), then lay it out as §5 describes.
-Both commands run only inside the cluster (a Hopsworks terminal or job), like the rest of `hops superset`.
+On Superset 7.0, `hops superset chart generate --dataset N --type xy --x <col> --y 'SUM(<col>)'` creates a chart from a short typed config that Superset checks against the dataset before saving, so no `params` JSON (§4) is needed; prefer it to `create_chart` and to `chart create --params`.
+`hops superset dashboard update ID` changes only the fields given.
+`hops superset chart types [TYPE]` lists the types and a type's config schema; every flag, the metric syntax and the limits: [references/typed_charts.md](references/typed_charts.md).
 
 ## Ask the user (only when state is ambiguous)
 
@@ -245,16 +216,8 @@ Use the same pattern for charts (key on `slice_name`) and dashboards
 
 ### Metrics from the semantic layer
 
-When a semantic project ([hops-semantic](../../data/hops-semantic/SKILL.md))
-defines the metric a chart shows, chart it from the semantic layer instead of deriving it
-again from the feature group: the definition holds the joins, filters and
-aggregation its owners agreed on, so every dashboard shows the same number.
-Each Data owner and Data scientist has one semantic connection of their own in Superset
-per Hopsworks project, with each semantic project as a schema of it: `hops semantic dashboard`
-builds a dashboard of metrics on it, and other charts read a dataset of the semantic
-project's `metrics` table. Where Superset has no such connection, a chart reads
-a dataset over the metric's SQL. How to tell, and the rules for each, are in
-[references/semantic_layer.md](references/semantic_layer.md).
+When a semantic project ([hops-semantic](../../data/hops-semantic/SKILL.md)) defines the metric a chart shows, chart it from the semantic layer instead of deriving it again from the feature group, so every dashboard shows the same number.
+`hops semantic dashboard` builds a dashboard of metrics on the member's own semantic connection; how to tell whether there is one, and the rules for each case: [references/semantic_layer.md](references/semantic_layer.md).
 
 ---
 

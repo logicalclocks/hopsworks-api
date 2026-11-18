@@ -20,7 +20,7 @@ Never answer a metric question with SQL over the feature groups: query the metri
 ## The chat app never runs SQL from the LLM
 
 `app/translator.py` checks every query the LLM writes against the semantic project's catalog before it runs, and the SDK binds its filter values as literals.
-Keep it that way: the model sees the catalog and the question, never a data row, and nothing it writes reaches Trino except as a checked metric query.
+Keep it that way: the model sees the question and the catalog, with the values of the small categorical dimensions, never a query's result or the engine's error text, and nothing it writes reaches Trino except as a checked metric query.
 The LLM settings are the account environment variables `LLM_URL`, `LLM_MODEL` and `LLM_API_KEY` of the member who starts the app, never values in this directory.
 
 ## Incremental runs

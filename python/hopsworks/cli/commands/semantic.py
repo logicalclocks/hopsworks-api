@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import posixpath
 import re
 import shlex
 import subprocess
@@ -1642,6 +1643,11 @@ def test_cmd(
             ctx.exit(1)
     defined = sp.list_metrics()
     names = metrics or [m.name for m in defined]
+    if not names:
+        output.error(
+            "Semantic project %s defines no metric, so there is nothing to test.", name
+        )
+        ctx.exit(1)
     by_time = {m.name for m in defined if m.requires_metric_time}
     results = []
     for metric in names:
@@ -2158,7 +2164,11 @@ def _ensure_dir(datasets: Any, directory: str) -> None:
 
 def _write_scaffold(ctx: click.Context, path: str, files: dict[str, str]) -> str:
     """Upload the scaffold to the HopsFS directory ``path``, which must not exist; return its absolute path."""
-    absolute = _api(ctx)._absolute_path(path)
+    absolute = posixpath.normpath(_api(ctx)._absolute_path(path))
+    if absolute.count("/") < 3:
+        raise click.ClickException(
+            f"--path {path} names no directory inside a project's dataset."
+        )
     datasets = session.get_project(ctx).get_dataset_api()
     if datasets.exists(absolute):
         raise click.ClickException(

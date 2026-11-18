@@ -44,6 +44,7 @@ Compile errors: `EXPORT_AS` (not `table`), `EXPORT_TARGET` (an invalid or duplic
 2. Writes nothing and ends `TRUNCATED` when the result reaches the gateway's row cap, since it may be incomplete.
 3. Writes nothing and ends `TARGET_EXISTS` when a feature group of that name and version exists that the export did not create.
 4. Replaces every row, or with a `lookback` the rows whose `metric_time` is at or after the window start, in one commit that keeps the feature group's id.
+   A `lookback` run that finds the feature group without data, after a first run that failed, writes every row.
    The window starts at the run's logical time (the start of a scheduled run's interval) minus the lookback, truncated to the `metric_time` grain.
    Groups that vanished from the window are removed, rows before it are kept, and an empty result empties the window.
    A `metric_time` at a custom granularity cannot be truncated, so such a run replaces every row and says so.

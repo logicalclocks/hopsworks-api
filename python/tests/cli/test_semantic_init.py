@@ -667,6 +667,31 @@ class TestInitInAFolder:
         assert kwargs["deployment_mode"] == "PINNED"
         assert kwargs["tags"] == {"domain": "sales"}
 
+    def test_a_trailing_slash_names_the_same_directory(
+        self, sl, datasets, feature_groups
+    ):
+        result = _run(
+            "sales", "--from-fg", "orders", "--path", "/Projects/demo/Resources/x/"
+        )
+
+        assert result.exit_code == 0, result.output
+        assert (datasets.uploaded["parent"], datasets.uploaded["name"]) == (
+            "/Projects/demo/Resources",
+            "x",
+        )
+        assert sl.create_project.call_args.args[1] == "/Projects/demo/Resources/x"
+
+    @pytest.mark.parametrize("path", ["Resources/..", ".", "/Projects/demo/x/../.."])
+    def test_a_path_that_names_no_directory_of_its_own_is_refused(
+        self, sl, datasets, feature_groups, path
+    ):
+        result = _run("sales", "--from-fg", "orders", "--path", path)
+
+        assert result.exit_code == 1
+        assert "names no directory" in result.output
+        datasets.upload.assert_not_called()
+        sl.create_project.assert_not_called()
+
     def test_an_existing_directory_is_never_overwritten(
         self, sl, datasets, feature_groups
     ):

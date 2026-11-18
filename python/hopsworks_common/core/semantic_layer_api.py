@@ -991,24 +991,18 @@ def _write_export(
             f"Export '{export.name}' has a lookback, which needs the saved query to group by metric_time."
         )
     fs = client._get_connection()._get_feature_store(api._project_name)
-    # Lets a later run recognise a feature group a first run created but could not report.
-    marker = f"[semantic export {sp.id}/{export.name}]"
-    description = (
-        saved_query.description
-        or f"Export {export.name} of saved query {saved_query.name} of semantic project {sp.name}."
-    )
     fg = fs.get_or_create_feature_group(
         name=export.feature_group,
         version=export.version or 1,
-        description=f"{description} {marker}",
+        description=saved_query.description
+        or f"Export {export.name} of saved query {saved_query.name} of semantic project {sp.name}.",
         primary_key=[c for c in group_bys if c != event_time] or group_bys,
         event_time=event_time,
         time_travel_format="DELTA",
         online_enabled=False,
         statistics_config=False,
     )
-    unreported = export.feature_group_id is None and marker in (fg.description or "")
-    if fg.id is not None and fg.id != export.feature_group_id and not unreported:
+    if fg.id is not None and fg.id != export.feature_group_id:
         raise SemanticLayerException(
             f"Feature group {export.feature_group} version {fg.version} exists and export "
             f"'{export.name}' did not create it, so nothing was written. Delete it, or give "
@@ -1025,6 +1019,9 @@ def _write_export(
             f"Replaced every row: {event_time} has a custom granularity, which a "
             "lookback window cannot be truncated to."
         )
+    elif not fg._delta_has_data():
+        # A first run that failed after it had reported the feature group wrote no history.
+        message = "Wrote every row: the feature group held none."
     else:
         replace = _window_start(logical_time, export.lookback, grain)
         table = _rows_from(table, event_time, replace)
@@ -1112,35 +1109,10 @@ def _transaction_version() -> int:
 def _output_version(fg: FeatureGroup, app_id: str, attempt: int) -> int | None:
     """The Delta version of the commit that carries the run's application transaction `(app_id, attempt)`, `None` when it is not found.
 
-    The log is read with delta-rs from the head back: the commit carrying the transaction is the first version at which `DeltaTable.transaction_version(app_id)` is `attempt`, since each attempt's version is its own.
     Another writer may have committed after the run, so up to `_OUTPUT_VERSION_SEARCH` versions are read.
     """
     try:
-        # The export job's process, not library code: hsfs is there once the job has logged in.
-        from deltalake import DeltaTable
-        from hsfs.core import delta_engine
-
-        engine = delta_engine.DeltaEngine(
-            feature_store_id=fg.feature_store_id,
-            feature_store_name=fg.feature_store_name,
-            feature_group=fg,
-            spark_context=None,
-            spark_session=None,
-        )
-        table = DeltaTable(
-            engine._get_delta_rs_location(),
-            storage_options=engine._get_delta_rs_storage_options() or None,
-        )
-        version = table.version()
-        if table.transaction_version(app_id) != attempt:
-            return None
-        for _ in range(_OUTPUT_VERSION_SEARCH):
-            if version == 0:
-                return 0
-            table.load_as_version(version - 1)
-            if table.transaction_version(app_id) != attempt:
-                return version
-            version -= 1
+        return fg._delta_transaction_commit(app_id, attempt, _OUTPUT_VERSION_SEARCH)
     except Exception as err:
         _logger.warning("The Delta log of %s cannot be read: %s", fg.name, err)
     return None
