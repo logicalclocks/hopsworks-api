@@ -258,7 +258,7 @@ class TestConstants:
     def test_predictor_loading_strategy_constants(self):
         # Arrange
         loading_strategies = {
-            "LOADING_STRATEGY_HOPSFS_MOUNT": "HOPSFS_MOUNT",
+            "LOADING_STRATEGY_MOUNT": "MOUNT",
             "LOADING_STRATEGY_RUNAI_STREAMER": "RUNAI_STREAMER",
             "LOADING_STRATEGY_DOWNLOAD": "DOWNLOAD",
         }

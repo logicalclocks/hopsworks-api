@@ -1578,7 +1578,7 @@ class Deployment:
     @public
     @property
     def loading_strategy(self) -> str | None:
-        """How the model server reads the model files: `'HOPSFS_MOUNT'`, `'RUNAI_STREAMER'` or `'DOWNLOAD'`.
+        """How the model server reads the model files: `'MOUNT'`, `'RUNAI_STREAMER'` or `'DOWNLOAD'`.
 
         `None` lets Hopsworks choose on creation or keeps the stored value on an update.
         See [`Predictor.loading_strategy`][hsml.predictor.Predictor.loading_strategy] for which model servers accept which strategy.
