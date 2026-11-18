@@ -44,9 +44,8 @@ _ADMIN_HINT = (
 class TagSchemasApi:
     """Manage the platform's typed tag-schema registry.
 
-    All write operations on this class require the
-    **platform-administrator** role (``HOPS_ADMIN``); read operations
-    require any authenticated user.
+    All write operations on this class, and `usage`, require the **platform-administrator** role (``HOPS_ADMIN``).
+    The other read operations require any authenticated user.
     """
 
     @staticmethod
@@ -179,11 +178,7 @@ class TagSchemasApi:
             name: Schema name.
 
         Returns:
-            The number of tags created from the schema per kind of artifact
-            (`featureStoreTags`, `modelRegistryTags`, `jobTags`, `datasetTags`,
-            `dataSourceTags`), its `archivedValues` in the tag history, where
-            it is mandatory (`mandatoryIn`), `deletable`, and the `reason` it
-            is not.
+            The number of tags created from the schema per kind of artifact (`featureStoreTags`, `modelRegistryTags`, `jobTags`, `datasetTags`, `dataSourceTags`), its `archivedValues` in the tag history, where it is mandatory (`mandatoryIn`), `deletable`, and the `reason` it is not.
 
         Raises:
             PermissionError: If the caller lacks ``HOPS_ADMIN``.
@@ -204,22 +199,19 @@ class TagSchemasApi:
     def delete(self, name: str) -> None:
         """Remove a tag schema from the registry.
 
-        Only a schema that no tag is created from and that has no archived
-        values in the tag history can be deleted; `usage` shows what still
-        refers to it. A mandatory schema can be deleted, and stops being
-        mandatory. Deleting a schema that does not exist does nothing.
+        Only a schema that no tag is created from and that has no archived values in the tag history can be deleted; `usage` shows what still refers to it.
+        A mandatory schema can be deleted, and stops being mandatory.
+        Deleting a schema that does not exist does nothing.
 
-        Requires **HOPS_ADMIN**. Project-level Data Owner is **not**
-        sufficient.
+        Requires **HOPS_ADMIN**.
+        Project-level Data Owner is **not** sufficient.
 
         Parameters:
             name: Schema name.
 
         Raises:
             PermissionError: If the caller lacks ``HOPS_ADMIN``.
-            hopsworks.client.exceptions.RestAPIError: If tags or archived
-                values still refer to the schema (409, the message says
-                which), or the backend otherwise rejects the request.
+            hopsworks.client.exceptions.RestAPIError: If tags or archived values still refer to the schema (409, the message says which), or the backend otherwise rejects the request.
         """
         if not name:
             raise ValueError("name must be a non-empty schema name")
