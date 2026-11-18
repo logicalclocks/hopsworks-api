@@ -14,8 +14,11 @@
 #   limitations under the License.
 #
 
+import datetime
+
 import pytest
-from hsfs import feature_group
+from hopsworks_common.client.exceptions import FeatureStoreException
+from hsfs import feature_group, feature_group_commit
 from hsfs.constructor import hudi_feature_group_alias
 from hsfs.core import data_source, hudi_engine
 
@@ -691,3 +694,181 @@ class TestHudiEngine:
         assert result.rows_updated == 3
         assert result.rows_deleted == 4
         assert result.commit_time == 5
+
+    def _partition_status(self, mocker, name, is_dir=True):
+        status = mocker.Mock()
+        status.getPath.return_value.getName.return_value = name
+        status.isDirectory.return_value = is_dir
+        return status
+
+    def _hudi_engine_with_listing(self, mocker, tree):
+        spark_context = mocker.MagicMock()
+        fs = mocker.Mock()
+        fs.listStatus.side_effect = lambda path: [
+            self._partition_status(mocker, name, is_dir)
+            for name, is_dir in tree.get(path, [])
+        ]
+
+        class _FakePath(str):
+            def getFileSystem(self, conf):  # noqa: N802
+                return fs
+
+        spark_context._jvm.org.apache.hadoop.fs.Path.side_effect = _FakePath
+        mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        return hudi_engine.HudiEngine(
+            feature_store_id=99,
+            feature_store_name="fs",
+            feature_group=mocker.Mock(),
+            spark_context=spark_context,
+            spark_session=mocker.MagicMock(),
+        )
+
+    def test_list_partition_paths_parses_hive_style_segments(self, mocker):
+        # Arrange
+        h_engine = self._hudi_engine_with_listing(
+            mocker,
+            {
+                "hopsfs://nn/fg": [
+                    (".hoodie", True),
+                    ("region=eu west", True),
+                    ("region=__HIVE_DEFAULT_PARTITION__", True),
+                ],
+                "hopsfs://nn/fg/region=eu west": [("day=2026-09-02", True)],
+                "hopsfs://nn/fg/region=__HIVE_DEFAULT_PARTITION__": [
+                    ("day=2026-09-03", True),
+                    ("part-0.parquet", False),
+                ],
+            },
+        )
+
+        # Act
+        paths = h_engine._list_partition_paths(
+            "hopsfs://nn/fg",
+            ["region", "day"],
+            {h_engine.HUDI_HIVE_STYLE_PARTITIONING: "true"},
+        )
+
+        # Assert
+        assert paths == [
+            (
+                "region=eu west/day=2026-09-02",
+                {"region": "eu west", "day": "2026-09-02"},
+            ),
+            (
+                "region=__HIVE_DEFAULT_PARTITION__/day=2026-09-03",
+                {"region": "__HIVE_DEFAULT_PARTITION__", "day": "2026-09-03"},
+            ),
+        ]
+
+    def test_list_partition_paths_takes_bare_segments_as_values(self, mocker):
+        # Arrange
+        h_engine = self._hudi_engine_with_listing(
+            mocker, {"hopsfs://nn/fg": [("2026-09-02", True), ("2026-09-03", True)]}
+        )
+
+        # Act
+        paths = h_engine._list_partition_paths("hopsfs://nn/fg", ["day"], {})
+
+        # Assert
+        assert paths == [
+            ("2026-09-02", {"day": "2026-09-02"}),
+            ("2026-09-03", {"day": "2026-09-03"}),
+        ]
+
+    def _instant(self, mocker, action, completion_time):
+        instant = mocker.Mock()
+        instant.getAction.return_value = action
+        instant.getCompletionTime.return_value = completion_time
+        return instant
+
+    def _hudi_partition_delete(self, mocker, after_action="replacecommit"):
+        from hsfs.core.partition_selection import PartitionSelection
+
+        spark_session = mocker.MagicMock()
+        h_engine = hudi_engine.HudiEngine(
+            feature_store_id=99,
+            feature_store_name="fs",
+            feature_group=mocker.Mock(partitioned_by=None),
+            spark_context=mocker.MagicMock(),
+            spark_session=spark_session,
+        )
+        h_engine._feature_group.prepare_spark_location.return_value = "hopsfs://nn/fg"
+        mocker.patch.object(
+            h_engine,
+            "_setup_hudi_write_opts",
+            return_value={h_engine.HUDI_PARTITION_FIELD: "day:SIMPLE"},
+        )
+        mocker.patch.object(
+            h_engine,
+            "_list_partition_paths",
+            return_value=[
+                ("2026-09-01", {"day": "2026-09-01"}),
+                ("2026-09-02", {"day": "2026-09-02"}),
+                ("default", {"day": "default"}),
+            ],
+        )
+        mocker.patch.object(
+            h_engine,
+            "_latest_completed_instant",
+            side_effect=[
+                self._instant(mocker, "commit", "20260901"),
+                self._instant(mocker, after_action, "20260902"),
+            ],
+        )
+        mocker.patch.object(h_engine, "_migrate_table")
+        mocker.patch.object(
+            h_engine,
+            "_get_last_commit_metadata",
+            return_value=feature_group_commit.FeatureGroupCommit(
+                commit_time=5, rows_inserted=1, rows_updated=2, rows_deleted=0
+            ),
+        )
+        table = spark_session.read.format.return_value.load.return_value
+        table.columns = ["_hoodie_commit_time", "id", "day"]
+        selection = PartitionSelection(
+            {"day": [datetime.date(2026, 9, 2), None]}, {"day": "date"}
+        )
+        return h_engine, table, selection
+
+    def test_delete_partitions_writes_delete_partition_for_matched_paths(self, mocker):
+        # Arrange
+        h_engine, table, selection = self._hudi_partition_delete(mocker)
+
+        # Act
+        fg_commit, committed = h_engine._delete_partitions(selection)
+
+        # Assert
+        table.select.assert_called_once_with("id", "day")
+        writer = table.select.return_value.limit.return_value.write.format.return_value
+        options = writer.options.call_args.kwargs
+        assert options[h_engine.HUDI_PARTITIONS_TO_DELETE] == "2026-09-02,default"
+        h_engine._setup_hudi_write_opts.assert_called_once_with("delete_partition", {})
+        assert committed == "Hudi instant 20260902"
+        assert fg_commit.rows_inserted == 0
+        assert fg_commit.rows_updated == 0
+        assert fg_commit.rows_deleted is None
+
+    def test_delete_partitions_no_matching_path_writes_nothing(self, mocker):
+        # Arrange
+        from hsfs.core.partition_selection import PartitionSelection
+
+        h_engine, table, _ = self._hudi_partition_delete(mocker)
+
+        # Act
+        result = h_engine._delete_partitions(
+            PartitionSelection({"day": [datetime.date(2030, 1, 1)]}, {"day": "date"})
+        )
+
+        # Assert
+        assert result is None
+        table.select.assert_not_called()
+
+    def test_delete_partitions_requires_a_replacecommit(self, mocker):
+        # Arrange
+        h_engine, _, selection = self._hudi_partition_delete(
+            mocker, after_action="commit"
+        )
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="replacecommit"):
+            h_engine._delete_partitions(selection)

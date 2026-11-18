@@ -31,6 +31,7 @@ from hsfs.core import (
     hudi_engine,
     iceberg_engine,
     job_api,
+    partition_selection,
     partition_transforms,
     transformation_execution_dag,
     transformation_function_engine,
@@ -758,6 +759,77 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         if engine_instance is None:
             return None
         return engine_instance._cleanup_metadata()
+
+    def _delete_partitions(self, feature_group, partitions):
+        fmt = feature_group.time_travel_format
+        on_spark = engine._get_type().startswith("spark")
+        if fmt not in ("DELTA", "ICEBERG", "HUDI"):
+            raise exceptions.FeatureStoreException(
+                "delete_partitions requires a DELTA, ICEBERG or HUDI feature group; "
+                f"this feature group has time_travel_format={fmt!r}."
+            )
+        if fmt == "HUDI" and not on_spark:
+            raise exceptions.FeatureStoreException(
+                "delete_partitions on a HUDI feature group requires the Spark engine."
+            )
+        if fmt == "ICEBERG" and not on_spark and not HAS_PYICEBERG:
+            raise exceptions.FeatureStoreException(
+                "delete_partitions on an ICEBERG feature group without Spark requires "
+                "pyiceberg. Install 'pyiceberg' to enable it."
+            )
+        # Validated before any table is opened, so a bad request changes nothing.
+        selection = partition_selection.PartitionSelection._from_user_input(
+            feature_group, partitions
+        )
+
+        spark_session, spark_context = (
+            FeatureGroupEngine._get_spark_session_and_context()
+        )
+        if fmt == "DELTA":
+            result = delta_engine.DeltaEngine(
+                feature_group.feature_store_id,
+                feature_group.feature_store_name,
+                feature_group,
+                spark_session,
+                spark_context,
+            )._delete_partitions(selection)
+        elif fmt == "ICEBERG":
+            result = iceberg_engine.IcebergEngine(
+                feature_group.feature_store_id,
+                feature_group.feature_store_name,
+                feature_group,
+                spark_session,
+                spark_context,
+            )._delete_partitions(selection)
+        else:
+            if spark_context is None:
+                raise exceptions.FeatureStoreException(
+                    "delete_partitions on a HUDI feature group is not supported with "
+                    "Spark Connect. Run it from a classic Spark session, such as a "
+                    "Spark job."
+                )
+            result = hudi_engine.HudiEngine(
+                feature_group.feature_store_id,
+                feature_group.feature_store_name,
+                feature_group,
+                spark_context,
+                spark_session,
+            )._delete_partitions(selection)
+
+        if result is None:
+            return None
+        fg_commit, committed = result
+        try:
+            return self._feature_group_api._commit(feature_group, fg_commit)
+        except Exception as e:
+            # The storage commit cannot be undone and a retry would match nothing, so
+            # this message is the only record that the partitions are gone.
+            raise exceptions.FeatureStoreException(
+                f"The partitions of {feature_group.name} v{feature_group.version} were "
+                f"deleted in {committed}, but registering the commit with Hopsworks "
+                f"failed: {e}. The data is deleted; the commit is missing from "
+                "commit_details() and from the time-travel timeline Hopsworks reports."
+            ) from e
 
     @staticmethod
     def _delta_vacuum(feature_group, retention_hours):
