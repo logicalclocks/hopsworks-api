@@ -382,14 +382,14 @@ class TestDeployment:
             model_name="my_model",
             model_version=1,
             model_framework=MODEL.FRAMEWORK_SKLEARN,
-            loading_strategy=PREDICTOR.LOADING_STRATEGY_HOPSFS_MOUNT,
+            loading_strategy=PREDICTOR.LOADING_STRATEGY_MOUNT,
         )
 
         # Act
         d = deployment.Deployment(predictor=p)
 
         # Assert
-        assert d.loading_strategy == PREDICTOR.LOADING_STRATEGY_HOPSFS_MOUNT
+        assert d.loading_strategy == PREDICTOR.LOADING_STRATEGY_MOUNT
 
         d.loading_strategy = PREDICTOR.LOADING_STRATEGY_DOWNLOAD
         assert p.loading_strategy == PREDICTOR.LOADING_STRATEGY_DOWNLOAD

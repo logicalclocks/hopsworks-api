@@ -93,7 +93,7 @@
       "modelName": "m",
       "modelVersion": 1,
       "predictor": "predictor.py",
-      "loadingStrategy": "HOPSFS_MOUNT"
+      "loadingStrategy": "MOUNT"
     }
   }
 }

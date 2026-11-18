@@ -110,5 +110,5 @@ class TestDeploymentVersion:
 
         again = DeploymentVersion.from_response_json(json.loads(version.json()))
 
-        assert version.loading_strategy == "HOPSFS_MOUNT"
-        assert again.loading_strategy == "HOPSFS_MOUNT"
+        assert version.loading_strategy == "MOUNT"
+        assert again.loading_strategy == "MOUNT"

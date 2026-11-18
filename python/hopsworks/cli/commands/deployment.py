@@ -290,10 +290,8 @@ DEFAULT_MEMORY_MB = 1024
 )
 @click.option(
     "--loading-strategy",
-    type=click.Choice(
-        ["HOPSFS_MOUNT", "RUNAI_STREAMER", "DOWNLOAD"], case_sensitive=False
-    ),
-    help="How the model server reads the model files: HOPSFS_MOUNT (read in place from HopsFS, not vLLM), "
+    type=click.Choice(["MOUNT", "RUNAI_STREAMER", "DOWNLOAD"], case_sensitive=False),
+    help="How the model server reads the model files: MOUNT (read in place from HopsFS, not vLLM), "
     "RUNAI_STREAMER (vLLM only, safetensors weights, streamed from HopsFS) or DOWNLOAD (copied to the pod's disk). "
     "The mount strategies need the HopsFS CSI driver. Omit to let Hopsworks choose.",
 )

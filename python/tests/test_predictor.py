@@ -1788,8 +1788,8 @@ class TestPredictor:
         p2 = predictor.Predictor.from_response_json(serialized)
 
         # Assert
-        assert p.loading_strategy == PREDICTOR.LOADING_STRATEGY_HOPSFS_MOUNT
-        assert serialized["loadingStrategy"] == PREDICTOR.LOADING_STRATEGY_HOPSFS_MOUNT
+        assert p.loading_strategy == PREDICTOR.LOADING_STRATEGY_MOUNT
+        assert serialized["loadingStrategy"] == PREDICTOR.LOADING_STRATEGY_MOUNT
         assert p2.loading_strategy == p.loading_strategy
 
     def test_loading_strategy_absent_from_response_is_none(
@@ -1832,13 +1832,13 @@ class TestPredictor:
     @pytest.mark.parametrize(
         "model_server, loading_strategy",
         [
-            (PREDICTOR.MODEL_SERVER_PYTHON, PREDICTOR.LOADING_STRATEGY_HOPSFS_MOUNT),
+            (PREDICTOR.MODEL_SERVER_PYTHON, PREDICTOR.LOADING_STRATEGY_MOUNT),
             (PREDICTOR.MODEL_SERVER_PYTHON, PREDICTOR.LOADING_STRATEGY_DOWNLOAD),
             (
                 PREDICTOR.MODEL_SERVER_TF_SERVING,
-                PREDICTOR.LOADING_STRATEGY_HOPSFS_MOUNT,
+                PREDICTOR.LOADING_STRATEGY_MOUNT,
             ),
-            (PREDICTOR.MODEL_SERVER_TRITON, PREDICTOR.LOADING_STRATEGY_HOPSFS_MOUNT),
+            (PREDICTOR.MODEL_SERVER_TRITON, PREDICTOR.LOADING_STRATEGY_MOUNT),
             (PREDICTOR.MODEL_SERVER_TRITON, PREDICTOR.LOADING_STRATEGY_DOWNLOAD),
             (PREDICTOR.MODEL_SERVER_VLLM, PREDICTOR.LOADING_STRATEGY_RUNAI_STREAMER),
             (PREDICTOR.MODEL_SERVER_VLLM, PREDICTOR.LOADING_STRATEGY_DOWNLOAD),
@@ -1872,7 +1872,7 @@ class TestPredictor:
             )
 
         assert "Loading strategy 'STREAM' is not valid" in str(e_info.value)
-        assert "DOWNLOAD, HOPSFS_MOUNT, RUNAI_STREAMER" in str(e_info.value)
+        assert "DOWNLOAD, MOUNT, RUNAI_STREAMER" in str(e_info.value)
 
     @pytest.mark.parametrize(
         "model_server",
@@ -1897,7 +1897,7 @@ class TestPredictor:
             )
 
         assert "is not supported by the" in str(e_info.value)
-        assert "'DOWNLOAD, HOPSFS_MOUNT'" in str(e_info.value)
+        assert "'DOWNLOAD, MOUNT'" in str(e_info.value)
 
     def test_loading_strategy_hopsfs_mount_on_vllm_raises(self, mocker):
         # Arrange
@@ -1908,7 +1908,7 @@ class TestPredictor:
         with pytest.raises(ValueError) as e_info:
             LLMPredictor(
                 name="my_llm",
-                loading_strategy=PREDICTOR.LOADING_STRATEGY_HOPSFS_MOUNT,
+                loading_strategy=PREDICTOR.LOADING_STRATEGY_MOUNT,
             )
 
         assert "is not supported by the 'VLLM' model server" in str(e_info.value)
@@ -1941,7 +1941,7 @@ class TestPredictor:
         # Assert
         assert p.loading_strategy == PREDICTOR.LOADING_STRATEGY_RUNAI_STREAMER
         with pytest.raises(ValueError, match="not supported"):
-            p.loading_strategy = PREDICTOR.LOADING_STRATEGY_HOPSFS_MOUNT
+            p.loading_strategy = PREDICTOR.LOADING_STRATEGY_MOUNT
         with pytest.raises(ValueError, match="not valid"):
             p.loading_strategy = "INVALID"
         assert p.loading_strategy == PREDICTOR.LOADING_STRATEGY_RUNAI_STREAMER
@@ -1952,7 +1952,7 @@ class TestPredictor:
         "model_class, script_file, loading_strategy",
         [
             ("hsml.llm.model", None, PREDICTOR.LOADING_STRATEGY_RUNAI_STREAMER),
-            ("hsml.triton.model", None, PREDICTOR.LOADING_STRATEGY_HOPSFS_MOUNT),
+            ("hsml.triton.model", None, PREDICTOR.LOADING_STRATEGY_MOUNT),
             ("hsml.sklearn.model", "predictor.py", PREDICTOR.LOADING_STRATEGY_DOWNLOAD),
         ],
     )
@@ -1992,7 +1992,7 @@ class TestPredictor:
             predictor.Predictor.for_model(
                 model,
                 name="my_llm",
-                loading_strategy=PREDICTOR.LOADING_STRATEGY_HOPSFS_MOUNT,
+                loading_strategy=PREDICTOR.LOADING_STRATEGY_MOUNT,
             )
 
     def test_update_from_response_json_preserves_loading_strategy(

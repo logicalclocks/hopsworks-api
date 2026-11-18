@@ -287,7 +287,7 @@ class Predictor(DeployableComponent):
         # vLLM reads mounted files through the Run:ai Model Streamer, every other
         # model server reads them in place.
         unsupported = (
-            PREDICTOR.LOADING_STRATEGY_HOPSFS_MOUNT
+            PREDICTOR.LOADING_STRATEGY_MOUNT
             if model_server == PREDICTOR.MODEL_SERVER_VLLM
             else PREDICTOR.LOADING_STRATEGY_RUNAI_STREAMER
         )
@@ -1194,10 +1194,10 @@ class Predictor(DeployableComponent):
     @public
     @property
     def loading_strategy(self) -> str | None:
-        """How the model server reads the model files: `'HOPSFS_MOUNT'`, `'RUNAI_STREAMER'` or `'DOWNLOAD'`.
+        """How the model server reads the model files: `'MOUNT'`, `'RUNAI_STREAMER'` or `'DOWNLOAD'`.
 
-        `'HOPSFS_MOUNT'` mounts the model files read-only from HopsFS and the model server reads them in place; it is accepted by every model server except vLLM.
-        `'RUNAI_STREAMER'` mounts the files the same way and vLLM loads them with the Run:ai Model Streamer; it is accepted by vLLM only, for a model with safetensors weights and not with the vLLM-Omni variant.
+        `'MOUNT'` mounts the model files read-only from HopsFS and the model server reads them in place; it is accepted by every model server except vLLM.
+        `'RUNAI_STREAMER'` mounts the files the same way and vLLM loads them with the Run:ai Model Streamer; it is accepted by vLLM only, for a model with safetensors weights at the top of its files.
         `'DOWNLOAD'` copies the files to the local disk of the pod before the model server starts; it is accepted by every model server.
         The two mount strategies need the HopsFS CSI driver on the cluster.
         The values are also available as `PREDICTOR.LOADING_STRATEGY_*` constants in `hsml.constants`.

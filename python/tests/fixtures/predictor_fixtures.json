@@ -640,7 +640,7 @@
       "serving_tool": "KSERVE",
       "api_protocol": "REST",
       "tritonImageTag": "26.09-py3",
-      "loadingStrategy": "HOPSFS_MOUNT",
+      "loadingStrategy": "MOUNT",
       "knativeMode": false,
       "requested_instances": 1,
       "predictor_resources": {
