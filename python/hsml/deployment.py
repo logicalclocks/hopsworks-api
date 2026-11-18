@@ -24,17 +24,20 @@ from hopsworks_common.client.exceptions import ModelServingException
 from hsml import predictor as predictor_mod
 from hsml.constants import DEPLOYABLE_COMPONENT, MODEL_SERVING, PREDICTOR_STATE
 from hsml.core import model_api, serving_api
+from hsml.core.openai_client import _build_openai_client
+from hsml.deployment_tracing_config import DeploymentTracingConfig
 from hsml.engine import serving_engine
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+    from datetime import date, datetime
 
+    import openai
     from hsfs.core.feature_monitoring_config import FeatureMonitoringConfig
     from hsml.client.istio.utils.infer_type import InferInput
     from hsml.deployment_logging_config import DeploymentLoggingConfig
     from hsml.deployment_schema import DeploymentSchema
-    from hsml.deployment_tracing_config import DeploymentTracingConfig
     from hsml.deployment_version import DeploymentVersion
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_logger import InferenceLogger
@@ -191,6 +194,88 @@ class Deployment:
         if not isinstance(version, int):
             version = version.version
         self._serving_engine._rollback(self, version, await_update)
+
+    @public
+    @usage._method_logger
+    def set_tracing(
+        self,
+        active: bool | None = None,
+        sampling_percentage: float | None = None,
+        duration_days: int | None = None,
+    ) -> None:
+        """Switch tracing on or off, or change the share of requests it traces or how long it stays on, without restarting the deployment.
+
+        Works on a model or feature view deployment created with tracing enabled, for example `model.deploy(tracing={"enabled": True})`.
+        Turned off, the deployment records no transformation metrics and no traces, and runs no timing code.
+        The running instances apply the change within about a minute; new instances start with it.
+
+        Tracing stays on for `duration_days`, 7 by default, from when it is switched on; Hopsworks then switches it off and records the time in `tracing.expired_at`.
+        Switching it on again, or changing `duration_days` while it is on, starts a new period from now.
+        A longer period stores more traces in the online feature store, so make sure it has the space.
+
+        ```python
+        deployment.set_tracing(active=False)
+        deployment.set_tracing(active=True, sampling_percentage=50)
+        deployment.set_tracing(active=True, duration_days=30)
+        ```
+
+        Parameters:
+            active: Whether to record traces and transformation metrics; `None` keeps the current value.
+            sampling_percentage: Percentage of requests to trace, from 0 to 100, for example `0.1` for one in 1,000; `None` keeps the current value.
+            duration_days: Days tracing stays on, from 1; `None` keeps the current value.
+
+        Raises:
+            ValueError: If `sampling_percentage` is outside 0 to 100, or `duration_days` is below 1.
+            hopsworks.client.exceptions.RestAPIError: If the deployment was not created with tracing enabled, which a running deployment cannot gain: update it with tracing enabled, which restarts it.
+        """
+        DeploymentTracingConfig._validate_sampling_percentage(sampling_percentage)
+        DeploymentTracingConfig._validate_duration_days(duration_days)
+        self._predictor.tracing = DeploymentTracingConfig.from_response_json(
+            self._serving_api._set_tracing(
+                self, active, sampling_percentage, duration_days
+            )
+        )
+
+    @public
+    @usage._method_logger
+    def delete_traces(
+        self,
+        until_datetime: str | datetime | date | int | None = None,
+        batch_size: int = 1000,
+    ) -> int:
+        """Delete the deployment's traces before they expire.
+
+        A model or feature view deployment's traces are kept online for the time to live of the project's `serving_traces` feature group (`serving_tracing_online_ttl_hours`, 36 hours by default) and then expire on their own.
+        Each request deletes at most `batch_size` of their rows in one transaction, since the online feature store caps the rows one transaction can hold; the method repeats it until no rows are left.
+        An agent's traces are in the agent trace tables, and each request deletes at most `batch_size` rows from each of them.
+
+        ```python
+        deployment.delete_traces()
+        deployment.delete_traces(until_datetime=datetime.now() - timedelta(days=1))
+        ```
+
+        Parameters:
+            until_datetime: Delete the traces started before this time (for an agent, written before it), as a datetime, a date, a string such as `"2026-10-28 12:00:00"` or epoch milliseconds; a time without a timezone is taken as UTC.
+                A model or feature view deployment's trace is deleted whole, with the spans it recorded after this time.
+                `None` deletes all of them.
+            batch_size: Rows to delete per transaction (for an agent, per table), from 1 to 10000.
+
+        Returns:
+            The number of rows deleted.
+
+        Raises:
+            ValueError: If `batch_size` is outside 1 to 10000.
+            hopsworks.client.exceptions.RestAPIError: If the backend could not delete them; rows deleted before the failure stay deleted, and calling it again continues.
+        """
+        if not 1 <= batch_size <= 10000:
+            raise ValueError("batch_size must be from 1 to 10000.")
+        until_ms = util._convert_event_time_to_timestamp(until_datetime)
+        deleted = 0
+        while True:
+            batch = self._serving_api._delete_traces(self, until_ms, batch_size)
+            if batch == 0:
+                return deleted
+            deleted += batch
 
     @public
     @usage._method_logger
@@ -408,6 +493,7 @@ class Deployment:
         data: dict | InferInput = None,
         inputs: list | dict = None,
         validate: bool = True,
+        outputs: list[str | dict] | None = None,
     ) -> dict:
         """Send inference requests to the deployment.
 
@@ -417,10 +503,17 @@ class Deployment:
         against it before the request is sent, and a gRPC deployment sends them
         as one v2 tensor per field; the pod validates again regardless.
 
+        A Triton deployment speaks Open Inference Protocol v2 over REST as well as gRPC, so it takes tensors instead of rows.
+        Over REST, `data` is a complete v2 request body sent as given, and `inputs` is one tensor or a list of them, each a dictionary with `name`, `shape`, `datatype` and `data`, and optionally `parameters`.
+        The tensor names and data types are the ones the model's `config.pbtxt` declares.
+
         Parameters:
             data: Payload dictionary for the inference request including the model input(s).
             inputs: Model inputs used in the inference requests.
             validate: Whether to validate the rows against `schema` before sending.
+            outputs:
+                Output tensors to return from a Triton deployment over REST, each by name or as a dictionary with `name` and optionally `parameters`.
+                Triton returns every output when none is requested.
 
         Returns:
             Inference response.
@@ -448,9 +541,20 @@ class Deployment:
             # or using more sophisticated inference request payloads
             data = { "instances": [ my_model.input_example ], "key2": "value2" }
             predictions = my_deployment.predict(data)
+
+            # a Triton deployment takes v2 tensors named as in its config.pbtxt
+            triton_deployment = ms.get_deployment("my_triton_deployment")
+            predictions = triton_deployment.predict(
+                inputs=[
+                    {"name": "input", "shape": [1, 4], "datatype": "FP32", "data": [[5.1, 3.5, 1.4, 0.2]]}
+                ],
+                outputs=["probabilities"],
+            )
             ```
         """
-        return self._serving_engine._predict(self, data, inputs, validate=validate)
+        return self._serving_engine._predict(
+            self, data, inputs, validate=validate, outputs=outputs
+        )
 
     @public
     @usage._method_logger
@@ -1031,10 +1135,75 @@ class Deployment:
         return self._predictor.get_openai_url()
 
     @public
+    def get_anthropic_url(self) -> str | None:
+        """Get the Anthropic-compatible base URL for vLLM deployments.
+
+        This is the value for `ANTHROPIC_BASE_URL`, used by Claude Code and the Anthropic SDK.
+        The deployment serves the Anthropic Messages API natively, so requests go to `url + "/v1/messages"`.
+        This method only returns a URL for LLM (vLLM) deployments, and the vLLM version must support the Messages API.
+
+        Returns:
+            The Anthropic-compatible base URL (the OpenAI-compatible URL without the trailing "/v1"), or `None` if not a LLM deployment.
+
+        Example:
+            ```python
+            deployment = ms.get_deployment("my_llm_deployment")
+            url = deployment.get_anthropic_url()
+            # url = "https://host:port/v1/project/name"
+            # Then use: url + "/v1/messages"
+            ```
+        """
+        openai_url = self.get_openai_url()
+        if openai_url is None:
+            return None
+        return openai_url.removesuffix("/v1")
+
+    @public
+    def get_openai_client(self, **kwargs: Any) -> openai.OpenAI:
+        """Get an OpenAI client that talks to this vLLM deployment only.
+
+        The client authenticates with the Hopsworks token of the current connection.
+        Pass the deployment name as `model` in each request.
+        Requires the `openai` package, installed with `pip install "hopsworks[openai]"`.
+        Keyword arguments are passed to `openai.OpenAI`, for example `timeout`, `max_retries` or `http_client`.
+        `default_headers` are merged over the authorization header set by Hopsworks.
+        `base_url` and `api_key` are set by Hopsworks and cannot be passed.
+        Without an `http_client`, certificates are verified as the main Hopsworks connection does.
+        With `hostname_verification=True`, the certificate of the inference endpoint must cover its host; otherwise pass an `http_client` with a matching CA, or one with `verify=False`.
+
+        Returns:
+            The configured OpenAI client.
+
+        Raises:
+            hopsworks.client.exceptions.ModelServingException: If the deployment is not a vLLM deployment, or no endpoint URL is available.
+            ValueError: If `base_url` or `api_key` is passed.
+            ModuleNotFoundError: If the `openai` package is not installed.
+
+        Example: Chat with this deployment
+            ```python
+            deployment = ms.get_deployment("my_llm_deployment")
+            openai_client = deployment.get_openai_client()
+            response = openai_client.chat.completions.create(
+                model=deployment.name,
+                messages=[{"role": "user", "content": "Hello"}],
+            )
+            ```
+        """
+        url = self.get_openai_url()
+        if url is None:
+            raise ModelServingException(
+                f"Deployment '{self.name}' has no OpenAI-compatible URL. "
+                "Only vLLM deployments serve one, and it requires the Istio client, "
+                "which is not set up when KServe is not installed or the Istio ingress gateway has no load balancer address."
+            )
+        return _build_openai_client(url, **kwargs)
+
+    @public
     def get_inference_url(self) -> str | None:
         """Get the KServe inference URL for standard model deployments.
 
         Returns the full URL with `:predict` suffix for KServe inference protocol.
+        A Triton deployment speaks Open Inference Protocol v2 instead, so its URL ends in `/v2/models/<name>/infer`, or in `:infer` through the Hopsworks REST API.
         This method only returns a URL for standard model deployments (non-vLLM,
         with a model attached).
 
@@ -1264,10 +1433,6 @@ class Deployment:
         """Model server ran by the predictor."""
         return self._predictor.model_server
 
-    @model_server.setter
-    def model_server(self, model_server: str):
-        self._predictor.model_server = model_server
-
     @public
     @property
     def serving_tool(self):
@@ -1413,6 +1578,44 @@ class Deployment:
     @knative_mode.setter
     def knative_mode(self, knative_mode: bool | None):
         self._predictor.knative_mode = knative_mode
+
+    @public
+    @property
+    def llm_gateway(self) -> bool:
+        """The LLM gateway switch of this deployment, as stored by the backend.
+
+        It does not tell whether the deployment is served by the LLM gateway.
+        See [`Predictor.llm_gateway`][hsml.predictor.Predictor.llm_gateway].
+        Setting it only changes the local object; use [`set_llm_gateway`][hsml.deployment.Deployment.set_llm_gateway] to change an existing deployment.
+        """
+        return self._predictor.llm_gateway
+
+    @llm_gateway.setter
+    def llm_gateway(self, llm_gateway: bool):
+        self._predictor.llm_gateway = llm_gateway
+
+    @public
+    def set_llm_gateway(self, enabled: bool):
+        """Switch an existing deployment on or off the LLM gateway.
+
+        The change does not restart the deployment.
+        Requires the data owner role in the project.
+        When the backend stores the switch but cannot apply it yet, it applies it within a minute and the call logs this at INFO level.
+
+        Parameters:
+            enabled: Whether the LLM gateway serves this deployment.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+
+        Example: Take a deployment off the LLM gateway
+            ```python
+            deployment = ms.get_deployment("my_llm_deployment")
+            deployment.set_llm_gateway(False)
+            ```
+        """
+        self._serving_api._set_deployment_llm_gateway(self, enabled)
+        self._predictor.llm_gateway = enabled
 
     @public
     @property

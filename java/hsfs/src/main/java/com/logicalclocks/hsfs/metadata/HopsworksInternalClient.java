@@ -173,17 +173,19 @@ public class HopsworksInternalClient implements HopsworksHttpClient {
       throws IOException, FeatureStoreException {
     LOGGER.debug("Handling metadata request: " + request);
     AuthorizationHandler<T> authHandler = new AuthorizationHandler<>(responseHandler);
-    request.setHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwt);
-    try {
-      return httpClient.execute(httpHost, request, authHandler);
-    } catch (UnauthorizedException e) {
-      // re-read the jwt and try one more time
-      refreshJwt();
+    return RateLimitRetry.DEFAULT.execute(request, () -> {
       request.setHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwt);
-      return httpClient.execute(httpHost, request, authHandler);
-    } catch (InternalException e) {
-      // Internal exception, try one more time
-      return httpClient.execute(httpHost, request, authHandler);
-    }
+      try {
+        return httpClient.execute(httpHost, request, authHandler);
+      } catch (UnauthorizedException e) {
+        // re-read the jwt and try one more time
+        refreshJwt();
+        request.setHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwt);
+        return httpClient.execute(httpHost, request, authHandler);
+      } catch (InternalException e) {
+        // Internal exception, try one more time
+        return httpClient.execute(httpHost, request, authHandler);
+      }
+    });
   }
 }

@@ -33,6 +33,7 @@ _SECRETS = {
     "CRMAndAnalyticsConnector": ["api_key", "password", "dev_token", "refresh_token"],
     "ElasticsearchConnector": ["password", "api_key", "trust_store_password"],
     "GcsConnector": ["encryption_key"],
+    "GmailConnector": ["client_secret", "refresh_token"],
     "GlueConnector": ["access_key", "secret_key", "session_token"],
     "HopsworksConnector": ["api_key"],
     "KafkaConnector": [
@@ -42,6 +43,7 @@ _SECRETS = {
     ],
     "MongoDBConnector": ["password"],
     "OpenSearchConnector": ["password", "trust_store_password"],
+    "OutlookConnector": ["client_secret", "refresh_token"],
     "RedshiftConnector": ["database_password"],
     "S3Connector": [
         "access_key",

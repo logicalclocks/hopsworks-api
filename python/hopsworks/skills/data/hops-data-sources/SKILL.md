@@ -1,6 +1,6 @@
 ---
 name: hops-data-sources
-description: Mount or ingest a table from a supported datasource. Mount tables from a datasource as an external feature group or ingest data into a new feature group using DLTHub. Auto-invoke when user works with external data (Snowflake, BigQuery, Redshift, S3, ADLS, GCS, JDBC, SQL, Databricks Unity Catalog, Postgres, MySQL, Oracle, ClickHouse, Teradata, SQL Server, SAP, MongoDB, Elasticsearch, another Hopsworks cluster, CRM, REST APIs) or copies files from SharePoint into a dataset.
+description: Mount or ingest a table from a supported datasource. Mount tables from a datasource as an external feature group or ingest data into a new feature group using DLTHub. Auto-invoke when user works with external data (Snowflake, BigQuery, Redshift, S3, ADLS, GCS, JDBC, SQL, Databricks Unity Catalog, Postgres, MySQL, Oracle, ClickHouse, Teradata, SQL Server, SAP, MongoDB, Elasticsearch, another Hopsworks cluster, CRM, REST APIs, Gmail) or copies files from SharePoint into a dataset. For searching copied emails use hops-email-search.
 ---
 
 Prefer the `hops` CLI for mounting or ingesting external tables from a datasource. Use the `hopsworks` Python SDK if the CLI is unsuccessful.
@@ -142,6 +142,13 @@ Files a connector points at (`--key-path`, truststores, keystores, wallets) are 
 
 **Confirm before deleting.** `hops datasource delete` removes the storage connector irreversibly; confirm the exact name with the user, and never delete one that feature groups still read from unless they asked.
 
+## Tag a data source
+
+Schematized tags classify a data source (owner, source system, sensitivity) and make it findable in search.
+A tag that an admin made mandatory for data sources must be passed when the data source is created.
+`hops datasource create` cannot attach tags, so it fails while a tag is mandatory; create the data source from Python with `sc.save(tags=[...])` or `fs.create_data_source(sc, tags=[...])` instead.
+The SDK calls, mandatory tags and search are in [references/tags.md](references/tags.md).
+
 ## Provided credentials (Oracle)
 
 A data source has a credentials mode.
@@ -166,7 +173,7 @@ A mounted table a member cannot read shows `no_access` in `hops fg list`; their 
 Fetching a `PROVIDED` data source never returns credential values, only the names of your secrets and env var; the SDK reads the values from your account when it connects.
 Inside Hopsworks runtimes your credentials are also available as `HOPS_DS_<NAME>_USER`, `HOPS_DS_<NAME>_PASSWORD`, `HOPS_DS_<NAME>_WALLET_PATH` and `HOPS_DS_<NAME>_WALLET_PASSWORD`, with `HOPS_DS_<NAME>_CONNECTOR_ID` naming the data source they belong to.
 A Trino catalog on a `PROVIDED` data source is private to the member who creates it (`_<username>__<name>`), so each member creates their own with `sc.create_trino_catalog()`.
-It runs the owner's queries with their own login when they connect through `project.get_trino_api()`; other Trino clients must send the extra credentials described in the reference.
+It reads the data source with the owner's own login from every Trino client, Superset included.
 SDK equivalents, the naming rules and the access states are in [references/provided-credentials.md](references/provided-credentials.md).
 
 ## Ingest into a new feature group with DLTHub
@@ -174,6 +181,10 @@ SDK equivalents, the naming rules and the access states are in [references/provi
 DLTHub copies a source into a managed feature group for the cases mounting cannot serve: loading the online store or a vector index, or pulling from an API/SaaS/REST endpoint. Ingestion runs server-side in the `dlthub-ingestion-pipeline` environment, driven by a `SinkJobConfiguration` attached to a sink-enabled feature group. It is configuration plus a server job, not an in-process `dlt` call.
 
 The per-feature-group `sink_job` shown here is for ingesting a **single** table. When ingesting more than one table from the same connector, default to one multi-table job for all of them — see [Ingest many tables with one job](#ingest-many-tables-with-one-job) — instead of looping this pattern.
+
+A SQL source is ingested from a table: give the feature group a `DataSource` with its `database` and `table`, such as one from `get_tables()`.
+The ingestion job cannot run a SQL query, so a `DataSource` with a `query` and no `table` is rejected with HTTP 400 and error code 270136; a cluster without that check fails with HTTP 422 "A database must be specified".
+To use a query's result, mount it as an external feature group by passing `DataSource(storage_connector=..., query="SELECT ...")` to `create_external_feature_group`, or ingest the table and derive the subset in a feature pipeline.
 
 ```python
 import hopsworks
@@ -509,6 +520,50 @@ Each run writes the rows of new, changed, renamed and removed files with delta-r
 Deleting a sync deletes its index feature group unless `keep_files=True`.
 
 The audit log is CSV in `date=YYYY-MM-DD` partitions (columns `execution_id, op, kind, path, src_path`), written only by runs that changed something and kept 7 days by default; read it with DuckDB `read_csv(..., hive_partitioning = true)` to prune by date.
+
+## Copy a Gmail mailbox into a feature group
+
+A `gmail` data source is a mailbox, read with an OAuth refresh token or a Workspace service account with domain-wide delegation, both with the `gmail.readonly` scope.
+Its credentials are write-only; code that calls Gmail itself asks for a short-lived token with `get_access_token()`.
+It is not browsed or mounted: a sync job upserts its emails into a Delta feature group named after the mailbox (`jane.doe@gmail.com` → `jane_doe_gmails`), partitioned by the `day` of the UTC receive time (an hourly job adds a file per run, and the first run after midnight compacts the finished day), and writes attachments as files whose paths the `attachments` column lists.
+
+```bash
+hops datasource create gmail support_inbox --mailbox support@example.com --auth-type OAUTH --client-id CID --client-secret - --refresh-token - < secrets.txt
+hops datasource labels support_inbox    # label ids and names: INBOX, SENT, Label_12 (receipts), ...
+hops datasource sync support_inbox --label INBOX --label SENT --start-date 2026-01-01 --schedule hourly
+hops datasource sync-jobs support_inbox
+```
+
+Each `--label` (SDK `labels=[...]`) adds the messages carrying that label; without any label, every message except spam, trash and drafts is copied.
+
+```python
+fs.get_data_source("support_inbox").sync(query="-category:promotions", schedule="daily")
+emails = fs.get_feature_group("support_examples", version=1)
+```
+
+`INCREMENTAL_TIMESTAMP` (the default) upserts messages received since the previous run, and its first run backfills from `initial_value`; `FULL_LOAD` copies every selected message on every run, then removes the rows and attachments of the messages it did not copy.
+The copy is an archive: deletions and label changes in Gmail after a message was copied do not reach it until a full load.
+A sync job is a Python job; schedule it `hourly` or `daily`, and monitor it like any job.
+To search the emails, use **hops-email-search**.
+
+## Copy an Outlook mailbox into a feature group
+
+An `outlook` data source is a Microsoft 365 or Outlook.com mailbox, read through Microsoft Graph with an app registration in Microsoft Entra ID:
+- `OAUTH`: a refresh token the mailbox owner granted with `Mail.Read offline_access`;
+- `CLIENT_CREDENTIALS`: a client secret of an app with the `Mail.Read` application permission in the mailbox's tenant, which needs `--tenant-id`.
+
+Its credentials are write-only, and Hopsworks stores the new refresh token Microsoft returns on each use.
+It syncs exactly like Gmail, into a feature group with the same columns (`jane.doe@outlook.com` → `jane_doe_outlooks`), so **hops-email-search** works on it too.
+It selects folders instead of labels and takes no query:
+
+```bash
+hops datasource create outlook support_outlook --mailbox support@contoso.com --auth-type CLIENT_CREDENTIALS --tenant-id contoso.com --client-id APP_ID --client-secret - < secret.txt
+hops datasource labels support_outlook    # folder ids and paths: Inbox, Inbox/Projects, Sent Items, ...
+hops datasource sync support_outlook --label <inbox folder id> --start-date 2026-01-01 --schedule hourly
+```
+
+Without `--label` (SDK `folders=[...]`), every folder but Deleted Items, Junk Email, Drafts and Outbox and the folders below them is copied; a chosen folder's subfolders need choosing too.
+A message keeps its key when moved between folders, but its `labels` keep the folder it was in when copied.
 
 ## Next Steps
 

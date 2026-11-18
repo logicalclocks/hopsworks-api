@@ -356,7 +356,7 @@ class JobApi:
             name,
         ]
         headers = {"content-type": "application/json"}
-        json_value = json.dumps(value)
+        json_value = tag.Tag._encode(value)
         _client._send_request("PUT", path_params, headers=headers, data=json_value)
 
     def _delete_tag(self, job: job.Job, name: str) -> None:

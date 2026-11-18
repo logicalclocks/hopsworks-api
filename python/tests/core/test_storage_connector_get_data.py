@@ -286,3 +286,46 @@ class TestStorageConnectorGetDataBatch:
 
         assert "deals" in str(excinfo.value)
         assert "boom" in str(excinfo.value)
+
+
+class TestFileColumns:
+    def test_file_columns_reach_the_request(self, mocker):
+        connector = SqlConnector(id=1, name="erp", featurestore_id=1)
+        mocker.patch.object(connector, "_require_credentials")
+        browse = mocker.patch.object(
+            connector._data_source_api, "_browse", return_value={"features": []}
+        )
+        mocker.patch("hopsworks_common.client._get_instance")
+        source = data_source.DataSource(database="sales", group="dbo", table="docs")
+        source._storage_connector = connector
+
+        source.get_data(file_columns=["Body"])
+        assert browse.call_args.args[2]["fileColumns"] == ["Body"]
+        assert browse.call_args.args[2]["storeFiles"] is True
+
+        source.get_data(file_columns=[])
+        assert browse.call_args.args[2]["storeFiles"] is True
+        assert "fileColumns" not in browse.call_args.args[2]
+
+        source.get_data()
+        assert "fileColumns" not in browse.call_args.args[2]
+        assert "storeFiles" not in browse.call_args.args[2]
+
+    def test_column_metadata_is_kept(self):
+        data = DataSourceData.from_response_json(
+            {
+                "features": [],
+                "columnMetadata": [
+                    {
+                        "name": "Body",
+                        "sourceType": "varbinary",
+                        "fileStream": False,
+                        "fileCandidate": True,
+                        "file": True,
+                    }
+                ],
+            }
+        )
+        assert data.column_metadata[0]["source_type"] == "varbinary"
+        assert data.column_metadata[0]["file"] is True
+        assert DataSourceData().column_metadata == []

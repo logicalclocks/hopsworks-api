@@ -47,6 +47,7 @@ def test_model_job_and_deployment_hits_are_listed(mock_project):
             "apps": [_item("dashboard", jobType="PYTHON_APP")],
             "deployments": [_item("fraud_v3", servingTool="KSERVE")],
             "agents": [_item("support_bot", servingTool="KSERVE")],
+            "dataSources": [_item("sales_s3", connectorType="S3")],
             "featuregroups": [
                 _item("transactions", version=2, description="Card rows\nmore")
             ],
@@ -59,10 +60,19 @@ def test_model_job_and_deployment_hits_are_listed(mock_project):
     lines = result.output.splitlines()
     assert lines[0].split() == ["KIND", "NAME", "VERSION", "PROJECT", "DETAIL"]
     kinds = [line.split()[0] for line in lines[2:]]
-    assert kinds == ["feature_group", "job", "app", "model", "deployment", "agent"]
+    assert kinds == [
+        "feature_group",
+        "job",
+        "app",
+        "model",
+        "deployment",
+        "agent",
+        "data_source",
+    ]
     by_kind = {line.split()[0]: line.split() for line in lines[2:]}
     assert by_kind["model"] == ["model", "all_MiniLM_L6_v2", "1", "demo", "PYTHON"]
     assert by_kind["job"] == ["job", "nightly_ingest", "-", "demo", "PYSPARK"]
+    assert by_kind["data_source"] == ["data_source", "sales_s3", "-", "demo", "S3"]
     assert by_kind["feature_group"][:5] == [
         "feature_group",
         "transactions",
@@ -80,6 +90,7 @@ def test_type_option_maps_to_the_backend_doc_type(mock_project):
         ("model", "MODEL"),
         ("training_dataset", "TRAININGDATASET"),
         ("Agent", "AGENT"),
+        ("data_source", "DATASOURCE"),
     ):
         CliRunner().invoke(cli, ["search", "x", "--type", spelling])
         assert api._search.call_args.kwargs["doc_type"] == doc_type

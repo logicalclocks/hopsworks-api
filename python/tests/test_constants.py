@@ -41,6 +41,7 @@ class TestConstants:
             "FRAMEWORK_PYTHON": "PYTHON",
             "FRAMEWORK_SKLEARN": "SKLEARN",
             "FRAMEWORK_LLM": "LLM",
+            "FRAMEWORK_TRITON": "TRITON",
         }
 
         # Assert
@@ -228,6 +229,7 @@ class TestConstants:
             "MODEL_SERVER_PYTHON": "PYTHON",
             "MODEL_SERVER_TF_SERVING": "TENSORFLOW_SERVING",
             "MODEL_SERVER_VLLM": "VLLM",
+            "MODEL_SERVER_TRITON": "TRITON",
         }
 
         # Assert

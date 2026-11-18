@@ -83,22 +83,31 @@ def _judge_for(
     separately — and, being asked wrongly, silently skipped every judge while the
     run reported success.
     """
-    from .judge_config import PROVIDERS, JudgeConfig, _completer_for
+    from .judge_config import (
+        PROVIDERS,
+        JudgeConfig,
+        _api_key_for,
+        _api_key_source,
+        _completer_for,
+    )
 
     chosen = (provider or os.environ.get("EVAL_JUDGE_PROVIDER") or "anthropic").lower()
     registry = PROVIDERS.get(chosen)
     if registry is None:
         log.warning("unknown judge provider %s; falling back to anthropic", chosen)
         chosen, registry = "anthropic", PROVIDERS["anthropic"]
-    env_var = registry["env_var"]
-    api_key = os.environ.get("EVAL_JUDGE_API_KEY") or os.environ.get(env_var)
+    # The provider's own variable, or for Anthropic the Claude Code login the
+    # user connected, which the job is handed as an agent deployment is.
+    api_key = os.environ.get("EVAL_JUDGE_API_KEY") or _api_key_for(
+        JudgeConfig(provider=chosen)
+    )
     if not api_key:
         log.info(
             "no default judge key in EVAL_JUDGE_API_KEY or %s. Set one in your "
             "account's environment variables and it reaches every job. A judge "
             "naming its own variable is unaffected; tasks graded only by the "
             "default judge report nothing.",
-            env_var,
+            _api_key_source(JudgeConfig(provider=chosen)),
         )
         return None
 
@@ -468,6 +477,7 @@ def _execute(run_id: str, session, base: str, project, host: str, args) -> bool:
         except Exception:  # noqa: BLE001 — never mask the real failure
             log.exception("could not report status %s", status)
 
+    sources = None
     try:
         run = session.get(f"{base}/runs/{run_id}", timeout=60).json()
 
@@ -486,6 +496,7 @@ def _execute(run_id: str, session, base: str, project, host: str, args) -> bool:
             project_name=project.name,
             deployment_id=run["deploymentId"],
         )
+        sources = _check_sources(session, base, host, project, run)
 
         # Which question this run answers. Read off the row rather than taken as
         # an argument, so a scheduled execution and a hand-started one cannot
@@ -500,14 +511,20 @@ def _execute(run_id: str, session, base: str, project, host: str, args) -> bool:
             _write_trials(store, finished)
             written.update(t.trial_id for t in finished)
 
+        from .checks import _preload
+
         if run.get("runType") == "ONLINE_SAMPLE":
+            evaluators = _evaluators_for(
+                run, judge_completer=completer, sources=sources
+            )
+            _preload(evaluators)
             result = _run_sample(
                 client,
                 session,
                 host,
                 project.id,
                 run,
-                _evaluators_for(run, judge_completer=completer),
+                evaluators,
                 strategy=args.sample_strategy,
                 shared=not args.sample_independent,
                 on_progress=record,
@@ -533,17 +550,18 @@ def _execute(run_id: str, session, base: str, project, host: str, args) -> bool:
         ).json()
         suite = _to_suite(run, tasks)
 
+        # One list for the whole suite: every task is measured the same way,
+        # which is what makes the run's pass rate comparable to the next one's.
+        evaluators = _evaluators_for_suite(
+            suite, judge_completer=completer, query=query, sources=sources
+        )
+        _preload(evaluators)
         result = _run_suite(
             client,
             suite,
             run_id=run_id,
             deployment_id=run["deploymentId"],
-            # One list for the whole suite: every task is measured the same
-            # way, which is what makes the run's pass rate comparable to the
-            # next one's.
-            evaluators=_evaluators_for_suite(
-                suite, judge_completer=completer, query=query
-            ),
+            evaluators=evaluators,
             config=RunnerConfig(
                 n_trials=_run_trials(run, 1),
                 **({"timeout_s": args.trial_timeout_s} if args.trial_timeout_s else {}),
@@ -575,6 +593,56 @@ def _execute(run_id: str, session, base: str, project, host: str, args) -> bool:
         log.exception("run %s failed", run_id)
         report("FAILED", str(err))
         return False
+    finally:
+        if sources is not None:
+            sources._close()
+
+
+def _check_sources(session, base: str, host: str, project, run: dict[str, Any]):
+    """Where this run's ``python`` checks read their code from.
+
+    One per run, because two things on it are the run's: the deployment under
+    test (for a check in the deployment's own repository) and the published
+    suite's snapshot directory, which freezes a git check on the first run of a
+    published version and is ``None`` for a draft or a monitor so neither pins.
+    Nothing here fails the run: a check whose source cannot be read reports
+    that on its own rows.
+    """
+    from .checks import _CheckSources
+
+    deployment_id = run.get("deploymentId")
+
+    def serving_view() -> dict[str, Any]:
+        return session.get(
+            f"{host.rstrip('/')}/hopsworks-api/api/project/{project.id}"
+            f"/serving/{deployment_id}",
+            timeout=60,
+        ).json()
+
+    snapshot_dir = None
+    suite_id, version = run.get("suiteId"), run.get("suiteVersion")
+    if suite_id and run.get("runType") != "ONLINE_SAMPLE":
+        try:
+            suite = session.get(
+                f"{base}/suites/{suite_id}", params={"version": version}, timeout=60
+            ).json()
+            if str(suite.get("status") or "").upper() == "PUBLISHED":
+                snapshot_dir = (
+                    f"/Projects/{project.name}/Resources/agent_evals/suites/"
+                    f"{suite_id}/v{suite.get('version') or version or 1}/checks"
+                )
+        except Exception:  # noqa: BLE001 -- then this run does not pin
+            log.warning("could not read suite %s; checks are not pinned", suite_id)
+    try:
+        dataset_api = project.get_dataset_api()
+    except Exception:  # noqa: BLE001 -- only file sources need it
+        dataset_api = None
+    return _CheckSources(
+        dataset_api=dataset_api,
+        project_name=project.name,
+        serving_view=serving_view,
+        snapshot_dir=snapshot_dir,
+    )
 
 
 @public

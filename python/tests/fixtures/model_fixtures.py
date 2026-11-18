@@ -23,6 +23,7 @@ from hsml.python.model import Model as PythonModel
 from hsml.sklearn.model import Model as SklearnModel
 from hsml.tensorflow.model import Model as TensorflowModel
 from hsml.torch.model import Model as TorchModel
+from hsml.triton.model import Model as TritonModel
 
 
 MODEL_BASE_ID = 0
@@ -31,6 +32,7 @@ MODEL_SKLEARN_ID = 2
 MODEL_TENSORFLOW_ID = 3
 MODEL_TORCH_ID = 4
 MODEL_LLM_ID = 5
+MODEL_TRITON_ID = 6
 
 MODEL_BASE_NAME = "basemodel"
 MODEL_PYTHON_NAME = "pythonmodel"
@@ -38,6 +40,7 @@ MODEL_SKLEARN_NAME = "sklearnmodel"
 MODEL_TENSORFLOW_NAME = "tensorflowmodel"
 MODEL_TORCH_NAME = "torchmodel"
 MODEL_LLM_NAME = "llmmodel"
+MODEL_TRITON_NAME = "tritonmodel"
 
 # models
 
@@ -70,6 +73,11 @@ def model_torch():
 @pytest.fixture
 def model_llm():
     return LLMModel(MODEL_LLM_ID, MODEL_LLM_NAME)
+
+
+@pytest.fixture
+def model_triton():
+    return TritonModel(MODEL_TRITON_ID, MODEL_TRITON_NAME)
 
 
 # input example

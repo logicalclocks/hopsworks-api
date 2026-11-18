@@ -50,6 +50,35 @@ def test_writes_each_requested_agents_own_directory(tmp_path):
     assert not (tmp_path / ".claude/skills").exists()
 
 
+def test_agents_sharing_a_directory_get_one_copy(tmp_path):
+    result = _run(
+        "--dir",
+        str(tmp_path),
+        "--agent",
+        "copilot",
+        "--agent",
+        "pi",
+        "--agent",
+        "hermes",
+        "--json",
+    )
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / ".agents/skills/hops-fg/SKILL.md").is_file()
+    payload = json.loads(result.stdout)
+    # Written once, not reported as rewritten or kept by the second and third agent.
+    assert payload["copilot"]["written"]
+    assert payload["pi"] == payload["copilot"] == payload["hermes"]
+
+
+def test_hermes_is_told_to_trust_the_repository(tmp_path):
+    repo = tmp_path / "my repo"
+    repo.mkdir()
+    result = _run("--dir", str(repo), "--agent", "hermes")
+    assert result.exit_code == 0, result.output
+    assert f"hermes skills trust '{repo.resolve()}'" in result.output
+    assert "hermes skills trust" not in _run("--dir", str(tmp_path)).output
+
+
 def test_opencode_gets_a_config_pointer(tmp_path):
     assert _run("--dir", str(tmp_path), "--agent", "opencode").exit_code == 0
     config = json.loads((tmp_path / "opencode.json").read_text())

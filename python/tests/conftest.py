@@ -22,6 +22,7 @@ pytest_plugins = [
     "tests.fixtures.backend_fixtures",
     "tests.fixtures.model_fixtures",
     "tests.fixtures.dataframe_fixtures",
+    "tests.fixtures.tracing_fixtures",
 ]
 
 os.environ["PYSPARK_PYTHON"] = sys.executable

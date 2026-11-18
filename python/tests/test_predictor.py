@@ -97,6 +97,68 @@ class TestPredictor:
         assert p.artifact_path == p.artifact_files_path
         assert p.artifact_path.endswith("/Deployments/my_model/5")
 
+    def test_agent_framework_and_chat_config_round_trip(self, mocker, backend_fixtures):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        json = copy.deepcopy(
+            backend_fixtures["predictor"]["get_deployments_singleton"]["response"]
+        )
+        json["items"][0]["agent_framework"] = "langgraph"
+        # The backend sends the contract camelCase; the keys under extraBody are the agent's own.
+        json["items"][0]["chatConfig"] = {
+            "protocol": "simple",
+            "path": "/chat",
+            "messageFieldIn": "body",
+            "messageFieldName": "message",
+            "extraBody": {"conversationId": "$SESSION", "user_tag": "x"},
+            "extraQuery": {"apiVersion": "2"},
+        }
+
+        # Act
+        pred = predictor.Predictor.from_response_json(json)[0]
+        d = pred.to_dict()
+
+        # Assert
+        assert pred.agent_framework == "langgraph"
+        assert d["agentFramework"] == "langgraph"
+        assert d["chatConfig"] == {
+            "protocol": "simple",
+            "path": "/chat",
+            "messageFieldIn": "body",
+            "messageFieldName": "message",
+            "extraBody": {"conversationId": "$SESSION", "user_tag": "x"},
+            "extraQuery": {"apiVersion": "2"},
+        }
+        assert pred.chat_config["message_field_in"] == "body"
+        assert pred.chat_config["extra_body"] == {
+            "conversationId": "$SESSION",
+            "user_tag": "x",
+        }
+
+    def test_agent_fields_come_after_the_existing_arguments(self):
+        # Callers that pass the constructor's arguments by position must keep their bindings.
+        import inspect
+
+        params = list(inspect.signature(predictor.Predictor.__init__).parameters)
+        assert params.index("agent_framework") > params.index("llm_gateway")
+        assert params.index("chat_config") > params.index("llm_gateway")
+
+    def test_to_dict_omits_unset_agent_fields(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p = predictor.Predictor(
+            name="my_agent",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            script_file="/Projects/p/Resources/agents/my_agent/agent.py",
+        )
+
+        # Act
+        d = p.to_dict()
+
+        # Assert
+        assert "agentFramework" not in d
+        assert "chatConfig" not in d
+
     def test_to_dict_sends_both_environment_fields(self, mocker):
         # predictorEnvironment for a current backend, environmentDTO so an older one
         # still applies it.
@@ -502,6 +564,13 @@ class TestPredictor:
 
         # Assert
         assert ms == PREDICTOR.MODEL_SERVER_VLLM
+
+    def test_infer_model_server_triton(self):
+        # Act
+        ms = predictor.Predictor._infer_model_server(MODEL.FRAMEWORK_TRITON)
+
+        # Assert
+        assert ms == PREDICTOR.MODEL_SERVER_TRITON
 
     # default serving tool
 
@@ -1060,6 +1129,56 @@ class TestPredictor:
 
         # Assert
         assert url is None
+
+    @pytest.mark.parametrize(("project_name", "project_namespace"), NAMESPACE_CASES)
+    def test_get_inference_url_triton_with_istio_is_v2(
+        self, mocker, project_name, project_namespace
+    ):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mock_istio_client = mocker.MagicMock()
+        mock_istio_client._base_url = "https://istio.example.com"
+        mocker.patch(
+            "hopsworks_common.client.istio._get_instance",
+            return_value=mock_istio_client,
+        )
+        p = self._triton_predictor()
+        p._project_name = project_name
+        p._project_namespace = project_namespace
+
+        # Act
+        url = p.get_inference_url()
+
+        # Assert
+        assert url == (
+            f"https://istio.example.com/v1/{project_namespace}"
+            "/mytriton/v2/models/mytriton/infer"
+        )
+
+    def test_get_inference_url_triton_fallback_hopsworks_uses_infer_verb(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mocker.patch(
+            "hopsworks_common.client.istio._get_instance",
+            return_value=None,
+        )
+        mock_hopsworks_client = mocker.MagicMock()
+        mock_hopsworks_client._base_url = "https://hopsworks.example.com"
+        mock_hopsworks_client._project_id = 123
+        mocker.patch(
+            "hopsworks_common.client._get_instance",
+            return_value=mock_hopsworks_client,
+        )
+        p = self._triton_predictor()
+
+        # Act
+        url = p.get_inference_url()
+
+        # Assert
+        assert (
+            url
+            == "https://hopsworks.example.com/hopsworks-api/api/project/123/inference/serving/mytriton:infer"
+        )
 
     def test_get_inference_url_no_model_returns_none(self, mocker):
         # Arrange
@@ -1635,6 +1754,90 @@ class TestPredictor:
         assert p.vllm_variant == "VLLM_OMNI"
         assert p.vllm_image_tag == "v0.14.0"
 
+    # Triton
+
+    def test_triton_image_tag_round_trip(self, mocker, backend_fixtures):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p_json = backend_fixtures["predictor"]["get_deployment_triton_kserve"][
+            "response"
+        ]
+
+        # Act
+        p = predictor.Predictor.from_response_json(copy.deepcopy(p_json))
+        serialized = p.to_dict()
+        p2 = predictor.Predictor.from_response_json(serialized)
+
+        # Assert
+        assert p.model_server == PREDICTOR.MODEL_SERVER_TRITON
+        assert p.model_framework == MODEL.FRAMEWORK_TRITON
+        assert p.triton_image_tag == "26.09-py3"
+        assert serialized["tritonImageTag"] == "26.09-py3"
+        assert p2.triton_image_tag == p.triton_image_tag
+        assert "vllmVariant" not in serialized
+        assert "vllmImageTag" not in serialized
+
+    def test_triton_predictor_wire_format(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        from hsml.triton.predictor import Predictor as TritonPredictor
+
+        # Act
+        p = TritonPredictor(
+            name="mytriton",
+            inference_logger=inference_logger.InferenceLogger(kafka_topic=None),
+            inference_batcher={"enabled": False},
+            api_protocol=IE.API_PROTOCOL_GRPC,
+        )
+        serialized = p.to_dict()
+
+        # Assert
+        assert serialized["modelServer"] == PREDICTOR.MODEL_SERVER_TRITON
+        assert serialized["modelFramework"] == MODEL.FRAMEWORK_TRITON
+        assert serialized["apiProtocol"] == IE.API_PROTOCOL_GRPC
+        assert serialized["tritonImageTag"] is None
+
+    def test_non_triton_to_dict_does_not_emit_triton_image_tag(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+            triton_image_tag="26.09-py3",
+        )
+
+        # Act
+        serialized = p.to_dict()
+
+        # Assert
+        assert "tritonImageTag" not in serialized
+
+    @pytest.mark.parametrize(
+        ("option", "message"),
+        [
+            ({"script_file": "predictor.py"}, "Predictor scripts"),
+            ({"transformer": {"script_file": "transformer.py"}}, "Transformers"),
+            (
+                {"inference_logger": {"mode": "ALL", "kafka_topic": {"name": "t"}}},
+                "Inference logging",
+            ),
+            ({"inference_batcher": {"enabled": True}}, "Request batching"),
+        ],
+    )
+    def test_triton_predictor_rejects_unsupported_options(
+        self, mocker, option, message
+    ):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        from hsml.triton.predictor import Predictor as TritonPredictor
+
+        # Act + Assert
+        with pytest.raises(ValueError, match=message):
+            TritonPredictor(name="mytriton", **option)
+
     # Knative mode
 
     def test_knative_mode_none_omitted_from_to_dict(self, mocker):
@@ -1851,6 +2054,15 @@ class TestPredictor:
         assert p.knative_mode is True
 
     # auxiliary methods
+
+    def _triton_predictor(self):
+        return predictor.Predictor(
+            name="mytriton",
+            model_server=PREDICTOR.MODEL_SERVER_TRITON,
+            model_name="tritonmodel",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_TRITON,
+        )
 
     def _mock_serving_variables(
         self,

@@ -76,5 +76,5 @@ dep.start()
 dep.predict({"instances": [[1, 2, 3]]})
 ```
 
-Framework subclasses (`TorchModel`, `SkLearnModel`, `TensorFlowModel`, `PythonModel`, `LlmModel`) add framework-specific `save()` and `load()` logic.
+Framework subclasses (`TorchModel`, `SkLearnModel`, `TensorFlowModel`, `PythonModel`, `LlmModel`, `TritonModel`) add framework-specific `save()` and `load()` logic.
 Accessed via `mr.<framework>.create_model(...)`.

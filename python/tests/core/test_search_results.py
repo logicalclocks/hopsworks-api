@@ -230,3 +230,52 @@ class TestSearchResults:
         assert [m["name"] for m in as_json["models"]] == ["all_MiniLM_L6_v2"]
         assert as_json["modelsTotal"] == 3
         assert as_json["agents"][0]["name"] == "bot"
+
+    def test_search_result_parses_data_sources(self):
+        json_dict = {
+            "dataSources": [
+                {
+                    "name": "sales_s3",
+                    "description": "Raw sales exports",
+                    "connectorType": "S3",
+                    "featurestoreId": 67,
+                    "parentProjectId": 1,
+                    "parentProjectName": "test_project",
+                }
+            ],
+            "dataSourcesFrom": 10,
+            "dataSourcesTotal": 11,
+        }
+
+        result = search_results.FeaturestoreSearchResult(json_dict)
+
+        assert [d.name for d in result.data_sources] == ["sales_s3"]
+        assert result.data_sources[0].raw_data["connectorType"] == "S3"
+        assert result.data_sources[0].project.name == "test_project"
+        assert result.data_sources_offset == 10
+        assert result.data_sources_total == 11
+
+        as_json = result.json()
+        assert [d["name"] for d in as_json["dataSources"]] == ["sales_s3"]
+        assert as_json["dataSourcesFrom"] == 10
+        assert as_json["dataSourcesTotal"] == 11
+
+    def test_search_without_data_sources_bucket_is_empty(self):
+        result = search_results.FeaturestoreSearchResult({})
+
+        assert result.data_sources == []
+        assert result.data_sources_total == 0
+
+    def test_search_api_sends_the_data_source_doc_type(self, mocker):
+        from hopsworks_common.core.search_api import SearchApi
+
+        client_mock = mocker.Mock()
+        client_mock._project_id = 119
+        client_mock._send_request.return_value = {"dataSources": [{"name": "s3"}]}
+        mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
+
+        result = SearchApi()._search(doc_type="DATASOURCE", search_term="s3")
+
+        query_params = client_mock._send_request.call_args.kwargs["query_params"]
+        assert query_params["docType"] == "DATASOURCE"
+        assert [d.name for d in result.data_sources] == ["s3"]

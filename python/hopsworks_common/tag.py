@@ -31,7 +31,7 @@ class Tag:
     """Represents a tag in Hopsworks.
 
     Each tag is a name-value pair, where the name is a string and the value is a JSON-serializable object of the tag's schema.
-    Tags are used to attach metadata to various entities in Hopsworks; namely feature groups, feature views, training datasets, and models.
+    Tags are used to attach metadata to various entities in Hopsworks; namely feature groups, feature views, training datasets, models, deployments, jobs, datasets, and data sources.
     """
 
     NOT_FOUND_ERROR_CODE = 370002
@@ -97,6 +97,18 @@ class Tag:
             elif isinstance(tags, dict):
                 normalized_tags.append(Tag(**tags))
         return normalized_tags
+
+    @staticmethod
+    def _encode(value: Any) -> str:
+        """The request body that attaches `value` as a tag.
+
+        Raises:
+            ValueError: If `value` is `None`.
+                A string schema stores it as the text `null`, which every later read of the tags decodes back to `None` and refuses.
+        """
+        if value is None:
+            raise ValueError("Tag value cannot be None")
+        return json.dumps(value)
 
     @staticmethod
     def _tags_to_dict(tags: list[Tag] | None) -> dict[str, Any] | None:

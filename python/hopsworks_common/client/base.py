@@ -54,6 +54,9 @@ class Client:
     TOKEN_FILE = "token.jwt"
     TOKEN_EXPIRED_RETRY_INTERVAL = 0.6
     TOKEN_EXPIRED_MAX_RETRIES = 10
+    # GenericErrorCode.TOO_MANY_REQUESTS: the backend's rate limiter refused the request before any resource ran, so it is safe to resend.
+    RATE_LIMITED_ERROR_CODE = 120015
+    RATE_LIMITED_RETRY_BUDGET_SECONDS = 60
 
     APIKEY_FILE = "api.key"
     REST_ENDPOINT = "REST_ENDPOINT"
@@ -132,10 +135,12 @@ class Client:
         files: dict | None = None,
         with_base_path_params: bool = True,
         timeout: float | tuple[float, float] | None = None,
+        deadline: float | None = None,
     ) -> dict:
         """Send REST request to Hopsworks.
 
         Uses the client it is executed from. Path parameters are url encoded automatically.
+        A request refused by the backend's per-user rate limiter is resent after the advertised `Retry-After`, for up to 60 seconds in total, as long as its body can be resent.
 
         Parameters:
             method: 'GET', 'PUT' or 'POST'
@@ -148,6 +153,8 @@ class Client:
             with_base_path_params: Whether to include the base path parameters (hopsworks-api/api) in the request URL.
             timeout: How long to wait for the connection and for each block of the response, in seconds, passed straight through to `requests`.
                 Without it a stalled connection blocks the caller indefinitely, so pass one wherever the caller has its own deadline to honour.
+            deadline: Monotonic time after which no request, token refresh or rate-limit retry starts.
+                Each socket wait is clipped to the time left, so a response can finish after it; a successful one is returned.
 
         Returns:
             Response json
@@ -175,17 +182,53 @@ class Client:
 
         _logger.debug(f"url:{url} hostname_verification:{self._verify}")
 
-        prepped = self._session.prepare_request(request)
-        response = self._session.send(
-            prepped, verify=self._verify, stream=stream, timeout=timeout
+        replayable = self._is_replayable(data, files) and self._is_replayable(
+            query_params, None
         )
-
-        if response.status_code == 401 and self.REST_ENDPOINT in os.environ:
-            # refresh token and retry request - only on hopsworks
-            response = self._retry_token_expired(
-                request, stream, self.TOKEN_EXPIRED_RETRY_INTERVAL, 1, timeout
+        retry_deadline = time.monotonic() + self.RATE_LIMITED_RETRY_BUDGET_SECONDS
+        if deadline is not None:
+            retry_deadline = min(retry_deadline, deadline)
+        rate_limited = False
+        while True:
+            prepped = self._session.prepare_request(request)
+            response = self._session.send(
+                prepped,
+                verify=self._verify,
+                stream=stream,
+                timeout=self._deadline_timeout(timeout, deadline),
             )
 
+            if response.status_code == 401 and self.REST_ENDPOINT in os.environ:
+                # refresh token and retry request - only on hopsworks
+                refreshed = self._retry_token_expired(
+                    request,
+                    stream,
+                    self.TOKEN_EXPIRED_RETRY_INTERVAL,
+                    1,
+                    timeout,
+                    retry_deadline if rate_limited or deadline is not None else None,
+                )
+                # A requests.Response is falsy for any 4xx or 5xx, so `or` would drop a refreshed 429.
+                if refreshed is not None:
+                    response = refreshed
+
+            wait = self._rate_limited_wait(response) if replayable else None
+            if wait is None or wait > retry_deadline - time.monotonic():
+                break
+            _logger.info("Rate limited by Hopsworks, retrying in %s s: %s", wait, url)
+            response.close()
+            time.sleep(wait)
+            if time.monotonic() > retry_deadline:
+                break
+            rate_limited = True
+
+        if (
+            deadline is not None
+            and time.monotonic() >= deadline
+            and response.status_code // 100 != 2
+        ):
+            response.close()
+            raise requests.exceptions.Timeout("HTTP request exceeded its deadline")
         if response.status_code // 100 != 2:
             raise exceptions.RestAPIError(url, response)
 
@@ -196,11 +239,72 @@ class Client:
             return None
         return response.json()
 
-    def _retry_token_expired(self, request, stream, wait, retries, timeout=None):
+    @staticmethod
+    def _deadline_timeout(timeout, deadline):
+        """Share the remaining budget between connection and response waits."""
+        if deadline is None:
+            return timeout
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise requests.exceptions.Timeout("HTTP request deadline expired")
+        connect, read = timeout if isinstance(timeout, tuple) else (timeout, timeout)
+        return urllib3.util.Timeout(
+            total=remaining,
+            connect=min(connect, remaining) if connect is not None else remaining,
+            read=min(read, remaining) if read is not None else remaining,
+        )
+
+    @staticmethod
+    def _is_replayable(data, files) -> bool:
+        """Whether the request body can be sent again, which a stream or generator already read cannot."""
+        if isinstance(data, dict):
+            # requests reads each value once; an iterator value would be empty on the retry.
+            for value in data.values():
+                items = value if isinstance(value, (list, tuple)) else [value]
+                if not all(
+                    item is None or isinstance(item, (str, bytes, int, float))
+                    for item in items
+                ):
+                    return False
+        elif not (data is None or isinstance(data, (str, bytes))):
+            return False
+        if files is None:
+            return True
+        if not isinstance(files, dict):
+            return False
+        for value in files.values():
+            # A value is the content itself or a (filename, content, ...) tuple.
+            content = value[1] if isinstance(value, tuple) else value
+            if not isinstance(content, (str, bytes)):
+                return False
+        return True
+
+    def _rate_limited_wait(self, response) -> int | None:
+        """Seconds the rate limiter asks the client to wait, or None if the response is not a rate-limit refusal."""
+        if (
+            response.status_code
+            != exceptions.RestAPIError.STATUS_CODE_TOO_MANY_REQUESTS
+        ):
+            return None
+        try:
+            wait = int(response.headers.get("Retry-After"))
+            error_code = response.json().get("errorCode")
+        except (TypeError, ValueError, AttributeError):
+            return None
+        if error_code != self.RATE_LIMITED_ERROR_CODE or wait < 0:
+            return None
+        return wait
+
+    def _retry_token_expired(
+        self, request, stream, wait, retries, timeout=None, deadline=None
+    ):
         """Refresh the JWT token and retry the request. Only on Hopsworks.
 
         As the token might take a while to get refreshed. Keep trying.
+        A request already retried after a 429 passes the rate-limit deadline, which this stops at.
         """
+        if deadline is not None and time.monotonic() + wait > deadline:
+            return None
         # Sleep the waited time before re-issuing the request
         time.sleep(wait)
 
@@ -208,15 +312,22 @@ class Client:
         # Update request with the new token
         request.auth = self._auth
         prepped = self._session.prepare_request(request)
+        # The sleep can overshoot, for example while the process is suspended.
+        if deadline is not None and time.monotonic() > deadline:
+            return None
         response = self._session.send(
-            prepped, verify=self._verify, stream=stream, timeout=timeout
+            prepped,
+            verify=self._verify,
+            stream=stream,
+            timeout=self._deadline_timeout(timeout, deadline),
         )
 
         if response.status_code == 401 and retries < self.TOKEN_EXPIRED_MAX_RETRIES:
             # Try again.
-            return self._retry_token_expired(
-                request, stream, wait * 2, retries + 1, timeout
+            refreshed = self._retry_token_expired(
+                request, stream, wait * 2, retries + 1, timeout, deadline
             )
+            return refreshed if refreshed is not None else response
         # If the number of retries have expired, the _send_request method
         # will throw an exception to the user as part of the status_code validation.
         return response

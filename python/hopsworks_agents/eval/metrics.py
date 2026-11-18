@@ -53,6 +53,9 @@ EVALUATOR_FAMILIES: dict[str, str] = {
     "tool_order": "trajectory",
     "tool_result_used": "trajectory",
     "sql_state": "trajectory",
+    # A check the project wrote may read anything; its family is its own, so a
+    # dashboard neither folds it into the answer rate nor leaves it uncounted.
+    "python": "custom",
 }
 
 # Coarse enough to read at a glance, fine enough to show a judge clustering at

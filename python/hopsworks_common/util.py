@@ -649,6 +649,7 @@ def _set_model_class(model):
     from hsml.sklearn.model import Model as SkLearnModel
     from hsml.tensorflow.model import Model as TFModel
     from hsml.torch.model import Model as TorchModel
+    from hsml.triton.model import Model as TritonModel
 
     if "href" in model:
         _ = model.pop("href")
@@ -671,6 +672,8 @@ def _set_model_class(model):
         return PyModel(**model)
     if framework == MODEL.FRAMEWORK_LLM:
         return LLMModel(**model)
+    if framework == MODEL.FRAMEWORK_TRITON:
+        return TritonModel(**model)
     raise ValueError(f"framework {str(framework)} is not a supported framework")
 
 
@@ -798,6 +801,8 @@ def _get_predictor_for_model(model, **kwargs):
     from hsml.tensorflow.predictor import Predictor as TFPredictor
     from hsml.torch.model import Model as TorchModel
     from hsml.torch.predictor import Predictor as TorchPredictor
+    from hsml.triton.model import Model as TritonModel
+    from hsml.triton.predictor import Predictor as TritonPredictor
 
     if not isinstance(model, BaseModel):
         raise ValueError(
@@ -814,6 +819,8 @@ def _get_predictor_for_model(model, **kwargs):
         return PyPredictor(**kwargs)
     if type(model) is LLMModel:
         return vLLMPredictor(**kwargs)
+    if type(model) is TritonModel:
+        return TritonPredictor(**kwargs)
     if type(model) is BaseModel:
         return BasePredictor(  # python as default framework and model server
             model_framework=MODEL.FRAMEWORK_PYTHON,

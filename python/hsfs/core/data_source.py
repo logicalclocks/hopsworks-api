@@ -27,7 +27,9 @@ from hsfs import storage_connector as sc
 
 
 if TYPE_CHECKING:
+    from hopsworks_common.job import Job
     from hopsworks_common.job_schedule import JobSchedule
+    from hopsworks_common.tag import Tag
     from hsfs import feature_group as fg
     from hsfs.core import data_source_data as dsd
     from hsfs.core.explicit_provenance import Links
@@ -273,6 +275,31 @@ class DataSource:
         self._storage_connector = storage_connector
 
     @public
+    def sync(self, **kwargs: Any) -> Job:
+        """Copy a Gmail or Outlook data source into a Delta feature group with a job.
+
+        Takes the arguments of [`GmailConnector.sync`][hsfs.storage_connector.GmailConnector.sync] or [`OutlookConnector.sync`][hsfs.storage_connector.OutlookConnector.sync].
+
+        Example:
+            ```python
+            job = fs.get_data_source("support_inbox").sync(schedule="daily")
+            ```
+
+        Returns:
+            The sync job.
+
+        Raises:
+            ValueError: If the data source is not a Gmail or Outlook data source.
+        """
+        if not isinstance(
+            self._storage_connector, (sc.GmailConnector, sc.OutlookConnector)
+        ):
+            raise ValueError(
+                "Only Gmail and Outlook data sources can be synced into a feature group."
+            )
+        return self._storage_connector.sync(**kwargs)
+
+    @public
     def get_databases(self) -> list[str]:
         """Retrieve the list of available databases.
 
@@ -331,7 +358,9 @@ class DataSource:
         return None
 
     @public
-    def get_data(self, use_cached: bool = True) -> dsd.DataSourceData | None:
+    def get_data(
+        self, use_cached: bool = True, file_columns: list[str] | None = None
+    ) -> dsd.DataSourceData | None:
         """Retrieve the data from the data source.
 
         Example:
@@ -349,6 +378,10 @@ class DataSource:
                 Whether to use cached data if available.
                 Only supported for CRM, Google Sheets, and REST connectors.
                 Defaults to `True`.
+            file_columns:
+                SQL Server only: `varbinary(max)` or `image` columns to store as files, besides the FILESTREAM columns; `[]` for the FILESTREAM columns alone.
+                Leave it `None` to read the source schema, as for an external feature group.
+                Each file column is returned as a string path feature and a bigint `<column>_size` feature, and the preview shows its size instead of the bytes.
 
         Returns:
             An object containing the data retrieved from the data source, or `None` when the backend answered with an empty body.
@@ -356,7 +389,9 @@ class DataSource:
         Raises:
             hopsworks.client.exceptions.DataSourceException: If the schema fetch failed for the data source.
         """
-        return self._storage_connector.get_data(self, use_cached=use_cached)
+        return self._storage_connector.get_data(
+            self, use_cached=use_cached, file_columns=file_columns
+        )
 
     @public
     def get_metadata(self) -> dict:
@@ -659,6 +694,132 @@ class DataSource:
             List of training datasets.
         """
         return self._storage_connector.get_training_datasets()
+
+    def _connector_to_tag(self) -> sc.StorageConnector:
+        if self._storage_connector is None:
+            raise ValueError("The data source has no storage connector to tag.")
+        return self._storage_connector
+
+    @public
+    def add_tag(self, name: str, value: Any) -> None:
+        """Attach a tag to the data source.
+
+        The tag is stored on the data source's storage connector, so every data source of that connector shares it.
+        A tag consists of a name-value pair.
+        Tag names are unique identifiers across the whole cluster.
+        The value of a tag can be any valid json -- primitives, arrays or json objects.
+        Attaching a tag that is already attached replaces its value.
+        Only a data owner of the project that owns the feature store can attach tags, and the online feature store connectors cannot be tagged.
+
+        Example:
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            ds = fs.get_data_source("conn_name")
+
+            ds.add_tag(name="example_tag", value={"owner": "risk"})
+            ```
+
+        Parameters:
+            name: Name of the tag to be added.
+            value: Value of the tag to be added.
+
+        Raises:
+            ValueError: If the data source has no storage connector.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        self._connector_to_tag().add_tag(name, value)
+
+    @public
+    def delete_tag(self, name: str) -> None:
+        """Delete a tag attached to the data source's storage connector.
+
+        The tag belongs to the storage connector, so it is removed from every data source that uses that connector, whatever table, query or path it names.
+        Only a data owner of the project that owns the feature store can delete tags.
+
+        Parameters:
+            name: Name of the tag to be removed.
+
+        Raises:
+            ValueError: If the data source has no storage connector.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        self._connector_to_tag().delete_tag(name)
+
+    @public
+    def get_tag(self, name: str) -> Any | None:
+        """Get the value of a tag attached to the data source's storage connector.
+
+        Parameters:
+            name: Name of the tag to get.
+
+        Returns:
+            Tag value or `None` if it does not exist.
+
+        Raises:
+            ValueError: If the data source has no storage connector.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._connector_to_tag().get_tag(name)
+
+    @public
+    def get_tags(self) -> dict[str, Any]:
+        """Retrieve all tags attached to the data source's storage connector.
+
+        Returns:
+            The dictionary of tag names and values.
+
+        Raises:
+            ValueError: If the data source has no storage connector.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._connector_to_tag().get_tags()
+
+    @public
+    def get_tag_metadata(self, name: str) -> Tag | None:
+        """Get a tag with its metadata, including the time it was attached.
+
+        Unlike [`DataSource.get_tag`][hsfs.core.data_source.DataSource.get_tag], which returns only the tag's value, this returns the [`Tag`][hopsworks.tag.Tag] object, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Parameters:
+            name: Name of the tag to get.
+
+        Returns:
+            The tag object or `None` if it does not exist.
+
+        Raises:
+            ValueError: If the data source has no storage connector.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._connector_to_tag().get_tag_metadata(name)
+
+    @public
+    def get_tags_metadata(self) -> dict[str, Tag]:
+        """Retrieve all tags attached to the data source's storage connector, with their metadata.
+
+        Unlike [`DataSource.get_tags`][hsfs.core.data_source.DataSource.get_tags], which returns only the tag values, this keeps the [`Tag`][hopsworks.tag.Tag] objects, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Returns:
+            The dictionary of tag names to tag objects.
+
+        Raises:
+            ValueError: If the data source has no storage connector.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._connector_to_tag().get_tags_metadata()
+
+    @public
+    @property
+    def missing_mandatory_tags(self) -> list[dict[str, Any]]:
+        """Mandatory tags the data source's storage connector does not carry, as reported when it was last fetched.
+
+        Adding a tag does not update this list on the object in hand; fetch the data source again to see the change.
+        The list is empty when the data source has no storage connector.
+        """
+        if self._storage_connector is None:
+            return []
+        return self._storage_connector.missing_mandatory_tags
 
     @public
     @property

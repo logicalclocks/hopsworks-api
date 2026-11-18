@@ -15,6 +15,8 @@
 #
 from __future__ import annotations
 
+import functools
+import inspect
 import json
 import logging
 import os
@@ -30,7 +32,7 @@ from typing import (
 import humps
 import pandas as pd
 from hopsworks_apigen import public
-from hopsworks_common import client
+from hopsworks_common import client, tracing
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core import alerts_api
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
@@ -128,6 +130,39 @@ DeprecatedSpineTypes = (
 
 
 _logger = logging.getLogger(__name__)
+
+
+def _timed_stage(kind: str):
+    """Time a feature view method as stage `kind` of the current request, named by this feature view, while tracing is on.
+
+    Only a call inside a request is timed: the default predictor's log worker calls `log` after the response, on its own thread.
+    Inside the default predictor's stage of the same kind the method is not timed again.
+    """
+
+    def decorate(method):
+        # The class-level @typechecked finds no annotations on the wrapper, so the method is checked here.
+        method = typechecked(method)
+        if inspect.iscoroutinefunction(method):
+
+            @functools.wraps(method)
+            async def timed_async(self, *args, **kwargs):
+                if not tracing._enabled or tracing._request_stages_ns.get() is None:
+                    return await method(self, *args, **kwargs)
+                with tracing._stage(kind, f"{self.name}:{self.version}"):
+                    return await method(self, *args, **kwargs)
+
+            return timed_async
+
+        @functools.wraps(method)
+        def timed(self, *args, **kwargs):
+            if not tracing._enabled or tracing._request_stages_ns.get() is None:
+                return method(self, *args, **kwargs)
+            with tracing._stage(kind, f"{self.name}:{self.version}"):
+                return method(self, *args, **kwargs)
+
+        return timed
+
+    return decorate
 
 
 @public
@@ -520,6 +555,9 @@ class FeatureView:
     ) -> None:
         """Initialise feature view to retrieve feature vector from online and offline feature store.
 
+        Calling this again replaces the clients and closes the previous SQL client.
+        Do not call it while other threads are reading feature vectors from this feature view, because their in-flight reads fail.
+
         Example:
             ```python
             # get feature store instance
@@ -855,6 +893,7 @@ class FeatureView:
             )
 
     @public
+    @_timed_stage("feature_lookup")
     def get_feature_vector(
         self,
         serving_keys: dict[str, Any] | None = None,
@@ -867,7 +906,7 @@ class FeatureView:
         transform: bool | None = True,
         on_demand_features: bool | None = True,
         request_parameters: dict[str, Any] | None = None,
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         logging_data: bool = False,
         n_processes: int | None = None,
         timeout: float | None = None,
@@ -1049,6 +1088,7 @@ class FeatureView:
         )
 
     @public
+    @_timed_stage("feature_lookup")
     async def get_feature_vector_async(self, **kwargs: Any) -> Any:
         """Awaitable [`get_feature_vector`][hsfs.feature_view.FeatureView.get_feature_vector].
 
@@ -1090,6 +1130,7 @@ class FeatureView:
         )
 
     @public
+    @_timed_stage("feature_lookup")
     async def get_feature_vectors_async(self, **kwargs: Any) -> Any:
         """Awaitable [`get_feature_vectors`][hsfs.feature_view.FeatureView.get_feature_vectors].
 
@@ -1125,6 +1166,7 @@ class FeatureView:
         )
 
     @public
+    @_timed_stage("feature_lookup")
     def get_feature_vectors(
         self,
         serving_keys: list[dict[str, Any]] | None = None,
@@ -1137,7 +1179,7 @@ class FeatureView:
         transform: bool | None = True,
         on_demand_features: bool | None = True,
         request_parameters: list[dict[str, Any]] | None = None,
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         logging_data: bool = False,
         n_processes: int | None = None,
         timeout: float | None = None,
@@ -1433,7 +1475,7 @@ class FeatureView:
             serving_keys, entry, "get_inference_helpers"
         )
 
-        if self._vector_server is None:
+        if not self._vector_server._serving_initialized:
             self.init_serving(external=external, init_rest_client=force_rest_client)
         return self._vector_server._get_inference_helpers(
             serving_keys, return_type, force_rest_client, force_sql_client
@@ -1607,7 +1649,7 @@ class FeatureView:
             "default", "spark", "pandas", "polars", "numpy", "python"
         ] = "default",
         transformed: bool | None = True,
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         logging_data: bool = False,
         extra_filter: filter.Filter | filter.Logic | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
@@ -2124,7 +2166,7 @@ class FeatureView:
         statistics_config: StatisticsConfig | bool | dict | None = None,
         write_options: dict[Any, Any] | None = None,
         spine: DeprecatedSpineTypes | None = None,
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
@@ -2393,7 +2435,7 @@ class FeatureView:
         statistics_config: StatisticsConfig | bool | dict | None = None,
         write_options: dict[Any, Any] | None = None,
         spine: DeprecatedSpineTypes | None = None,
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
@@ -2721,7 +2763,7 @@ class FeatureView:
         statistics_config: StatisticsConfig | bool | dict | None = None,
         write_options: dict[Any, Any] | None = None,
         spine: DeprecatedSpineTypes | None = None,
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
@@ -3030,7 +3072,7 @@ class FeatureView:
         write_options: dict[Any, Any] | None = None,
         spine: DeprecatedSpineTypes | None = None,
         spine_df: SpineDataFrameTypes | None = None,
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
     ) -> job.Job:
         """Recreate a training dataset.
 
@@ -3136,7 +3178,7 @@ class FeatureView:
         event_time: bool = False,
         training_helper_columns: bool = False,
         dataframe_type: str | None = "default",
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
         n_processes: int | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
@@ -3331,7 +3373,7 @@ class FeatureView:
         event_time: bool = False,
         training_helper_columns: bool = False,
         dataframe_type: str | None = "default",
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
         n_processes: int | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
@@ -3563,7 +3605,7 @@ class FeatureView:
         event_time: bool = False,
         training_helper_columns: bool = False,
         dataframe_type: str | None = "default",
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
         n_processes: int | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
@@ -3819,7 +3861,7 @@ class FeatureView:
         event_time: bool = False,
         training_helper_columns: bool = False,
         dataframe_type: str | None = "default",
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         n_processes: int | None = None,
         spine_df: SpineDataFrameTypes | None = None,
         **kwargs,
@@ -3912,7 +3954,7 @@ class FeatureView:
         event_time: bool = False,
         training_helper_columns: bool = False,
         dataframe_type: str | None = "default",
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         n_processes: int | None = None,
         spine_df: SpineDataFrameTypes | None = None,
         **kwargs,
@@ -4002,7 +4044,7 @@ class FeatureView:
         event_time: bool = False,
         training_helper_columns: bool = False,
         dataframe_type: str = "default",
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         n_processes: int | None = None,
         spine_df: SpineDataFrameTypes | None = None,
         **kwargs,
@@ -4967,6 +5009,7 @@ class FeatureView:
         env_vars: dict[str, str] | None = None,
         tags: Any = None,
         feature_logging: Any = None,
+        tracing: Any = None,
     ) -> Any:
         """Deploy this feature view as an online endpoint that returns transformed feature vectors.
 
@@ -5002,6 +5045,8 @@ class FeatureView:
             env_vars: Environment variables to set on the predictor.
             tags: Tags to attach to the deployment when it is created.
             feature_logging: Feature logging configuration for the predictor and its feature-log sidecar, a [`DeploymentLoggingConfig`][hsml.deployment_logging_config.DeploymentLoggingConfig] or an equivalent dict.
+            tracing: Transformation tracing for the deployment, a [`DeploymentTracingConfig`][hsml.deployment_tracing_config.DeploymentTracingConfig] or an equivalent dict such as `{"enabled": True, "sampling_percentage": 10}`.
+                Off by default.
 
         Returns:
             The deployment metadata object, created but not started.
@@ -5028,6 +5073,7 @@ class FeatureView:
             env_vars=env_vars,
             tags=tags,
             feature_logging=feature_logging,
+            tracing=tracing,
         )
         return predictor.deploy()
 
@@ -5589,6 +5635,7 @@ class FeatureView:
             self._feature_logger = None
 
     @public
+    @_timed_stage("feature_log")
     def log(
         self,
         logging_data: pd.DataFrame
@@ -5800,31 +5847,43 @@ class FeatureView:
                     "explicitly as `log(features, predictions=...)`.",
                     stacklevel=1,
                 )
-        return self._feature_view_engine._log_features(
-            self,
-            feature_logging=self.feature_logging,
-            logs=logging_data,
-            untransformed_features=untransformed_features,
-            transformed_features=transformed_features,
-            predictions=predictions,
-            inference_helper_columns=inference_helper_columns,
-            request_parameters=request_parameters,
-            event_time=event_time,
-            serving_keys=serving_keys,
-            request_id=request_id,
-            write_options=write_options,
-            training_dataset_version=(
-                training_dataset_version
-                or self._serving_training_dataset_version
-                or (model.training_dataset_version if model else None)
-                or self.get_last_accessed_training_dataset()
-            ),
-            extra_logging_features=extra_logging_features,
-            hsml_model=model,
-            logger=self._feature_logger,
-            model_name=model_name,
-            model_version=model_version,
+        span = (
+            tracing._child_span(
+                "feature_view.log",
+                {
+                    "hopsworks.feature_view.name": self.name,
+                    "hopsworks.feature_view.version": str(self.version),
+                },
+            )
+            if tracing._enabled
+            else tracing._NO_SPAN
         )
+        with span:
+            return self._feature_view_engine._log_features(
+                self,
+                feature_logging=self.feature_logging,
+                logs=logging_data,
+                untransformed_features=untransformed_features,
+                transformed_features=transformed_features,
+                predictions=predictions,
+                inference_helper_columns=inference_helper_columns,
+                request_parameters=request_parameters,
+                event_time=event_time,
+                serving_keys=serving_keys,
+                request_id=request_id,
+                write_options=write_options,
+                training_dataset_version=(
+                    training_dataset_version
+                    or self._serving_training_dataset_version
+                    or (model.training_dataset_version if model else None)
+                    or self.get_last_accessed_training_dataset()
+                ),
+                extra_logging_features=extra_logging_features,
+                hsml_model=model,
+                logger=self._feature_logger,
+                model_name=model_name,
+                model_version=model_version,
+            )
 
     @public
     def get_log_timeline(
@@ -6714,11 +6773,8 @@ class FeatureView:
         Idempotent, and safe on a feature view that never initialised serving.
         `init_serving` can be called again afterwards.
 
-        Needed because the pools cannot be reclaimed by garbage collection: each
-        one is owned by a client that its own running task thread keeps
-        reachable. A pool holds one connection per feature group in the view, so
-        a long-lived process that initialises serving for many feature views can
-        exhaust the online store's `max_connections`.
+        Releases them now; otherwise they are released only after this feature view is garbage collected.
+        A pool holds one connection per feature group in the view, so a long-lived process that keeps many feature views alive can exhaust the online store's `max_connections`.
         """
         for server in (self.__vector_server, self.__batch_scoring_server):
             if server is not None:
