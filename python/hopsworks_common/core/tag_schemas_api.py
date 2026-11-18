@@ -180,9 +180,10 @@ class TagSchemasApi:
 
         Returns:
             The number of tags created from the schema per kind of artifact
-            (`featureStoreTags`, `modelRegistryTags`, `jobTags`, `datasetTags`),
-            its `archivedValues` in the tag history, where it is mandatory
-            (`mandatoryIn`), `deletable`, and the `reason` it is not.
+            (`featureStoreTags`, `modelRegistryTags`, `jobTags`, `datasetTags`,
+            `dataSourceTags`), its `archivedValues` in the tag history, where
+            it is mandatory (`mandatoryIn`), `deletable`, and the `reason` it
+            is not.
 
         Raises:
             PermissionError: If the caller lacks ``HOPS_ADMIN``.
