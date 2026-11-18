@@ -207,43 +207,29 @@ class TestDeltaEngine:
         # Assert
         # env should be set
         assert os.environ["PEMS_DIR"] == "/tmp/pems"
-        assert os.environ["HOPSFS_CLOUD_DATANODE_HOSTNAME_OVERRIDE"] == "dn.example.com"
+        assert os.environ["HOPSFS_CLIENT_REMOTE_ACCESS_ENABLED"] == "true"
         assert os.environ["LIBHDFS_DEFAULT_USER"] == f"{cl.project_name}__user1"
 
     def test_setup_delta_rs_external_no_datanode_lb(self, mocker):
         # Arrange
-        _patch_client(mocker, is_external=True)
-        _patch_apis(mocker, lb_domain=None, username="user1")
+        cl = _patch_client(mocker, is_external=True)
+        var_api, _ = _patch_apis(mocker, lb_domain=None, username="user1")
         fg = _make_fg("hopsfs://nn:8020/projects/p1")
 
-        # Act & Assert
-        with pytest.raises(FeatureStoreException) as e:
-            DeltaEngine(
-                feature_store_id=1,
-                feature_store_name="fs",
-                feature_group=fg,
-                spark_session=None,
-                spark_context=None,
-            )
-        assert "datanode load balancer" in str(e.value)
+        # Act
+        DeltaEngine(
+            feature_store_id=1,
+            feature_store_name="fs",
+            feature_group=fg,
+            spark_session=None,
+            spark_context=None,
+        )
 
-    def test_setup_delta_rs_external_empty_datanode_lb(self, mocker):
-        # Arrange
-        _patch_client(mocker, is_external=True)
-        _patch_apis(mocker, datanode_lb="", username="user1")
-        fg = _make_fg("hopsfs://nn:8020/projects/p1")
-
-        # Act & Assert
-        with pytest.raises(FeatureStoreException) as e:
-            DeltaEngine(
-                feature_store_id=1,
-                feature_store_name="fs",
-                feature_group=fg,
-                spark_session=None,
-                spark_context=None,
-            )
-        assert "datanode load balancer" in str(e.value)
-        assert "contact your system administrator" in str(e.value.__cause__)
+        # Assert
+        # datanodes publish their own external address, so setup needs no datanode LB
+        var_api._get_loadbalancer_external_domain.assert_not_called()
+        assert os.environ["HOPSFS_CLIENT_REMOTE_ACCESS_ENABLED"] == "true"
+        assert os.environ["LIBHDFS_DEFAULT_USER"] == f"{cl.project_name}__user1"
 
     @pytest.mark.parametrize("spark_context", [mock.Mock(), None])
     def test_setup_delta_rs_external_spark_skipped(self, mocker, spark_context):
