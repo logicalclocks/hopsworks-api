@@ -280,6 +280,25 @@ class TestModel:
             knative_mode=None,
             tracing=None,
             triton_image_tag=None,
+            loading_strategy=None,
+        )
+        mock_predictor.deploy.assert_called_once()
+
+    def test_deploy_forwards_loading_strategy(self, mocker, backend_fixtures):
+        # Arrange
+        m_json = backend_fixtures["model"]["get_triton"]["response"]["items"][0]
+        mock_predictor = mocker.Mock()
+        mock_predictor_for_model = mocker.patch(
+            "hsml.predictor.Predictor.for_model", return_value=mock_predictor
+        )
+
+        # Act
+        m = model.Model.from_response_json(m_json)
+        m.deploy(name="test", loading_strategy="DOWNLOAD")
+
+        # Assert
+        assert mock_predictor_for_model.call_args.kwargs["loading_strategy"] == (
+            "DOWNLOAD"
         )
         mock_predictor.deploy.assert_called_once()
 

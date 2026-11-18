@@ -43,6 +43,7 @@
           "gitCurrentCommit": null,
           "vllmVariant": null,
           "vllmImageTag": null,
+          "loadingStrategy": "DOWNLOAD",
           "tracing": null,
           "featureLogging": null
         },
@@ -76,6 +77,7 @@
           "gitCurrentCommit": null,
           "vllmVariant": null,
           "vllmImageTag": null,
+          "loadingStrategy": null,
           "tracing": null,
           "featureLogging": null
         }
@@ -90,7 +92,8 @@
       "createdBy": "Ada Lovelace",
       "modelName": "m",
       "modelVersion": 1,
-      "predictor": "predictor.py"
+      "predictor": "predictor.py",
+      "loadingStrategy": "HOPSFS_MOUNT"
     }
   }
 }

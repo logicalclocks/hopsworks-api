@@ -119,6 +119,7 @@ class Predictor(DeployableComponent):
         # position keeps its bindings.
         agent_framework: str | None = None,
         chat_config: dict[str, Any] | None = None,
+        loading_strategy: str | None = None,
         **kwargs,
     ):
         self._missing_mandatory_tags = missing_mandatory_tags or []
@@ -201,6 +202,9 @@ class Predictor(DeployableComponent):
         self._triton_image_tag = triton_image_tag
         self._knative_mode = knative_mode
         self._llm_gateway = llm_gateway
+        self._loading_strategy = self._validate_loading_strategy(
+            loading_strategy, model_server
+        )
 
     @public
     def deploy(self) -> deployment.Deployment:
@@ -266,6 +270,35 @@ class Predictor(DeployableComponent):
                     )
                 )
         return serving_tool
+
+    @classmethod
+    def _validate_loading_strategy(cls, loading_strategy, model_server):
+        if loading_strategy is None:
+            return None
+        strategies = sorted(util._get_members(PREDICTOR, prefix="LOADING_STRATEGY"))
+        if loading_strategy not in strategies:
+            raise ValueError(
+                "Loading strategy '{}' is not valid. Possible values are '{}'".format(
+                    loading_strategy, ", ".join(strategies)
+                )
+            )
+        if model_server is None:
+            return loading_strategy
+        # vLLM reads mounted files through the Run:ai Model Streamer, every other
+        # model server reads them in place.
+        unsupported = (
+            PREDICTOR.LOADING_STRATEGY_HOPSFS_MOUNT
+            if model_server == PREDICTOR.MODEL_SERVER_VLLM
+            else PREDICTOR.LOADING_STRATEGY_RUNAI_STREAMER
+        )
+        if loading_strategy == unsupported:
+            allowed = [s for s in strategies if s != unsupported]
+            raise ValueError(
+                "Loading strategy '{}' is not supported by the '{}' model server. Possible values are '{}'".format(
+                    loading_strategy, model_server, ", ".join(allowed)
+                )
+            )
+        return loading_strategy
 
     @classmethod
     def _validate_script_file(
@@ -599,6 +632,9 @@ class Predictor(DeployableComponent):
         kwargs["llm_gateway"] = util._extract_field_from_json(
             json_decamelized, "llm_gateway"
         )
+        kwargs["loading_strategy"] = util._extract_field_from_json(
+            json_decamelized, "loading_strategy"
+        )
         return kwargs
 
     def update_from_response_json(self, json_dict):
@@ -624,6 +660,8 @@ class Predictor(DeployableComponent):
             "configFile": self._config_file,
             "apiProtocol": self._api_protocol,
             "projectNamespace": self._project_namespace,
+            # None lets the backend choose on create and keeps the stored value on update.
+            "loadingStrategy": self._loading_strategy,
         }
         if self._model_server == PREDICTOR.MODEL_SERVER_VLLM:
             predictor_dict = {
@@ -1152,6 +1190,29 @@ class Predictor(DeployableComponent):
     @vllm_variant.setter
     def vllm_variant(self, vllm_variant: str):
         self._vllm_variant = vllm_variant
+
+    @public
+    @property
+    def loading_strategy(self) -> str | None:
+        """How the model server reads the model files: `'HOPSFS_MOUNT'`, `'RUNAI_STREAMER'` or `'DOWNLOAD'`.
+
+        `'HOPSFS_MOUNT'` mounts the model files read-only from HopsFS and the model server reads them in place; it is accepted by every model server except vLLM.
+        `'RUNAI_STREAMER'` mounts the files the same way and vLLM loads them with the Run:ai Model Streamer; it is accepted by vLLM only.
+        `'DOWNLOAD'` copies the files to the local disk of the pod before the model server starts; it is accepted by every model server.
+        The two mount strategies need the HopsFS CSI driver on the cluster.
+        The values are also available as `PREDICTOR.LOADING_STRATEGY_*` constants in `hsml.constants`.
+
+        `None` lets Hopsworks choose when the deployment is created: a mount strategy when the cluster has the HopsFS CSI driver, `'DOWNLOAD'` otherwise.
+        Setting it to `None` before a save call keeps the stored value unchanged.
+        A saved deployment of a model reports the strategy in effect; a deployment without a model reports `None`.
+        """
+        return self._loading_strategy
+
+    @loading_strategy.setter
+    def loading_strategy(self, loading_strategy: str | None):
+        self._loading_strategy = self._validate_loading_strategy(
+            loading_strategy, self._model_server
+        )
 
     @public
     @property
