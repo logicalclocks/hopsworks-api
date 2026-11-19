@@ -36,6 +36,10 @@ _ADMIN_HINT = (
     "in a single project is not enough."
 )
 
+# usage and delete count the schema's tags and scan its tag history by name,
+# so a large history makes them slow; the Admin UI gives up after the same time.
+_USAGE_TIMEOUT_SECONDS = 30
+
 
 @public(
     "hopsworks.core.tag_schemas_api.TagSchemasApi",
@@ -182,14 +186,18 @@ class TagSchemasApi:
 
         Raises:
             PermissionError: If the caller lacks ``HOPS_ADMIN``.
-            hopsworks.client.exceptions.RestAPIError: If the schema does
-                not exist.
+            hopsworks.client.exceptions.RestAPIError: If the schema does not exist.
+            requests.exceptions.Timeout: If the backend does not answer within 30 seconds.
         """
         if not name:
             raise ValueError("name must be a non-empty schema name")
         _client = client._get_instance()
         try:
-            return _client._send_request("GET", self._path() + [name, "usage"])
+            return _client._send_request(
+                "GET",
+                self._path() + [name, "usage"],
+                timeout=_USAGE_TIMEOUT_SECONDS,
+            )
         except RestAPIError as e:
             if getattr(e.response, "status_code", None) == 403:
                 raise PermissionError(_ADMIN_HINT) from e
@@ -212,12 +220,16 @@ class TagSchemasApi:
         Raises:
             PermissionError: If the caller lacks ``HOPS_ADMIN``.
             hopsworks.client.exceptions.RestAPIError: If tags or archived values still refer to the schema (409, the message says which), or the backend otherwise rejects the request.
+            requests.exceptions.Timeout: If the backend does not answer within 30 seconds.
+                The schema may have been deleted all the same; `get` shows whether it still exists.
         """
         if not name:
             raise ValueError("name must be a non-empty schema name")
         _client = client._get_instance()
         try:
-            _client._send_request("DELETE", self._path() + [name])
+            _client._send_request(
+                "DELETE", self._path() + [name], timeout=_USAGE_TIMEOUT_SECONDS
+            )
         except RestAPIError as e:
             if getattr(e.response, "status_code", None) == 403:
                 raise PermissionError(_ADMIN_HINT) from e

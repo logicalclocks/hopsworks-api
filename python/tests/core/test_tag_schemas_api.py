@@ -108,6 +108,18 @@ class TestTagSchemasApiUsage:
         # Assert
         assert c._send_request.call_args.args == ("GET", ["tags", "ownership", "usage"])
 
+    # A stalled connection must not hang admin automation.
+    @pytest.mark.parametrize("call", ["usage", "delete"])
+    def test_usage_and_delete_are_bounded(self, mocker, call):
+        # Arrange
+        c = _patch_client(mocker)
+
+        # Act
+        getattr(TagSchemasApi(), call)("ownership")
+
+        # Assert
+        assert c._send_request.call_args.kwargs["timeout"] == 30
+
     def test_usage_refuses_an_empty_name(self, mocker):
         # Arrange
         c = _patch_client(mocker)
