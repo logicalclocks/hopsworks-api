@@ -285,7 +285,7 @@ class ServingApi:
         """
         _client = client._get_instance()
         path_params = ["project", _client._project_id, "serving", "llmGateway"]
-        return self._send_llm_gateway_switch("PUT", path_params, enabled)
+        return self._send_switch("PUT", path_params, {"enabled": enabled})
 
     def _set_deployment_llm_gateway(
         self, deployment_instance: deployment.Deployment, enabled: bool
@@ -304,27 +304,77 @@ class ServingApi:
             deployment_instance.id,
             "llmGateway",
         ]
-        return self._send_llm_gateway_switch("POST", path_params, enabled)
+        return self._send_switch("POST", path_params, {"enabled": enabled})
 
-    def _send_llm_gateway_switch(
-        self, method: str, path_params: list, enabled: bool
+    def _get_deployment_sharing(
+        self, deployment_instance: deployment.Deployment
+    ) -> dict[str, Any]:
+        """Get the projects a deployment is shared with.
+
+        Parameters:
+            deployment_instance: Metadata object of the deployment.
+
+        Returns:
+            A dict with the keys `allProjects` and `projects` (project names).
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "serving",
+            deployment_instance.id,
+            "sharing",
+        ]
+        return _client._send_request("GET", path_params)
+
+    def _change_deployment_sharing(
+        self,
+        deployment_instance: deployment.Deployment,
+        all_projects: bool | None,
+        add: list[str],
+        remove: list[str],
     ) -> dict[str, Any] | None:
-        """Send an LLM gateway switch and return the response body, if any.
+        """Change the projects a deployment is shared with, applied by the backend to what it stores.
 
-        The backend answers 202 when it stored the switch but could not apply it to the LLM gateway yet; it retries on its own.
+        Parameters:
+            deployment_instance: Metadata object of the deployment.
+            all_projects: Whether the deployment is shared with every project; `None` keeps the stored value.
+            add: Names of the projects to share with.
+            remove: Names of the projects to stop sharing with.
+
+        Returns:
+            A dict with the keys `allProjects` and `projects`.
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "serving",
+            deployment_instance.id,
+            "sharing",
+        ]
+        body: dict[str, Any] = {"add": add, "remove": remove}
+        if all_projects is not None:
+            body["allProjects"] = all_projects
+        return self._send_switch("PATCH", path_params, body)
+
+    def _send_switch(
+        self, method: str, path_params: list, body: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Send a switch or access change and return the response body, if any.
+
+        The backend answers 202 when it stored the change but could not apply it yet; it retries on its own.
         """
         _client = client._get_instance()
         response = _client._send_request(
             method,
             path_params,
             headers={"content-type": "application/json"},
-            data=json.dumps({"enabled": enabled}),
+            data=json.dumps(body),
             stream=True,
         )
         if response.status_code == 202:
-            _logger.info(
-                "The LLM gateway switch is saved; the LLM gateway applies it within a minute."
-            )
+            _logger.info("The change is saved; the backend applies it within a minute.")
         return response.json() if response.content else None
 
     def _get_schema(
