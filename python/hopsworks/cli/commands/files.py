@@ -15,6 +15,7 @@ from typing import Any
 
 import click
 from hopsworks.cli import output, session
+from hopsworks_common.client.exceptions import RestAPIError
 
 
 @click.group("files")
@@ -59,6 +60,36 @@ def _entry_row(entry: Any) -> list[Any]:
     )
     size = getattr(entry, "size", "-")
     return [name, kind, size]
+
+
+def makedirs(dataset_api: Any, path: str) -> bool:
+    """Create `path` and its missing parents, like `mkdir -p`.
+
+    Hopsworks creates one level per request and refuses a missing parent
+    (HTTP 422), so the walk goes up to the first existing ancestor and
+    creates the rest top-down. A level another caller creates between the
+    walk and its create (two deployments created at once both make
+    `Resources/deployments`) answers 400; it is there, so the walk goes on.
+
+    Args:
+        dataset_api: The project's `DatasetApi`.
+        path: HopsFS path, relative to the project or absolute.
+
+    Returns:
+        `True` if a directory was created, `False` if `path` already existed.
+    """
+    missing = []
+    current = path.rstrip("/")
+    while current not in ("", ".") and not dataset_api.exists(current):
+        missing.append(current)
+        current = current.rpartition("/")[0]
+    for directory in reversed(missing):
+        try:
+            dataset_api.mkdir(directory)
+        except RestAPIError:
+            if not dataset_api.exists(directory):
+                raise
+    return bool(missing)
 
 
 @files_group.command("mkdir")

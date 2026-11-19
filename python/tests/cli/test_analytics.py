@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -78,6 +79,22 @@ def _silver(tmp_path, monkeypatch, answers, registered):
         ),
     )
     return _create(monkeypatch, "silver", path, "--no-launch")
+
+
+def test_silver_json_prints_only_the_build_payload(tmp_path, monkeypatch):
+    path = tmp_path / "answers.json"
+    path.write_text(json.dumps(ANSWERS), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        mlsystem, "register", lambda ctx, target, name=None, factory=None: {}
+    )
+    done = _create(monkeypatch, "silver", path, "--no-launch", "--json")
+    assert done.exit_code == 0, done.output
+    payload = json.loads(done.stdout)
+    assert set(payload) == {"path", "build"}
+    assert payload["build"].endswith(
+        f"claude '/hops-silver {Path(payload['path']).name}'"
+    )
 
 
 def test_silver_records_the_layer_from_the_answers_and_registers_it(
@@ -763,6 +780,11 @@ def test_silver_and_gold_share_one_analytics_repository(tmp_path, monkeypatch):
     assert (repo / ".git").is_dir() and not (repo / "sales-gold" / ".git").exists()
     found = CliRunner().invoke(cli, ["factory", "system", "dir", "sales-gold"])
     assert found.exit_code == 0 and found.output.strip() == str(repo / "sales-gold")
+    found = CliRunner().invoke(
+        cli, ["--json", "factory", "system", "dir", "sales-gold"]
+    )
+    assert found.exit_code == 0
+    assert json.loads(found.output) == {"path": str(repo / "sales-gold")}
 
 
 def test_a_layer_can_name_its_repository(tmp_path, monkeypatch):

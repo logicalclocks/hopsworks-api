@@ -528,7 +528,11 @@ def system_dir(slug: str) -> None:
     Args:
         slug: The system.
     """
-    click.echo(_require_path(slug))
+    path = _require_path(slug)
+    if output.JSON_MODE:
+        output.print_json({"path": str(path)})
+        return
+    click.echo(path)
 
 
 @system_group.command("write-doc")

@@ -9,6 +9,7 @@ commands and ``hops login``.
 
 from __future__ import annotations
 
+import contextlib
 import io
 import logging
 import sys
@@ -163,13 +164,21 @@ def _quiet_login(hopsworks: Any, kwargs: dict[str, Any]) -> Project:
     command payload (``--json``, pipelines), so the banner is discarded, for
     the calling thread only.
     """
+    with quiet():
+        return hopsworks.login(**kwargs)
+
+
+@contextlib.contextmanager
+def quiet():
+    """Discard what the SDK prints, for the calling thread: a CLI's stdout carries its payload."""
     if not isinstance(sys.stdout, _ThreadSilencedStdout):
         sys.stdout = _ThreadSilencedStdout(sys.stdout)
+    previous = getattr(_ThreadSilencedStdout._silenced, "on", False)
     _ThreadSilencedStdout._silenced.on = True
     try:
-        return hopsworks.login(**kwargs)
+        yield
     finally:
-        _ThreadSilencedStdout._silenced.on = False
+        _ThreadSilencedStdout._silenced.on = previous
 
 
 def verify(

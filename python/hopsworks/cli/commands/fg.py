@@ -19,11 +19,15 @@ from typing import Any
 
 import click
 from hopsworks.cli import joinspec, lineage, output, session, versions
+from hopsworks.cli.commands.embed import fg_embed_group
 
 
 @click.group("fg")
 def fg_group() -> None:
     """Feature group commands."""
+
+
+fg_group.add_command(fg_embed_group)
 
 
 @fg_group.command("list")
@@ -514,18 +518,19 @@ def fg_create(
         online = True
 
     try:
-        fg = fs.create_feature_group(
-            name=name,
-            version=version,
-            description=description,
-            online_enabled=online,
-            primary_key=pk_list or None,
-            partition_key=partition_list or None,
-            event_time=event_time,
-            features=features or None,
-            embedding_index=embedding_index,
-        )
-        fg.save()
+        with output.sdk_quiet():
+            fg = fs.create_feature_group(
+                name=name,
+                version=version,
+                description=description,
+                online_enabled=online,
+                primary_key=pk_list or None,
+                partition_key=partition_list or None,
+                event_time=event_time,
+                features=features or None,
+                embedding_index=embedding_index,
+            )
+            fg.save()
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not create feature group: {exc}") from exc
 
@@ -672,18 +677,19 @@ def fg_create_external(
 
     fg = None
     try:
-        fg = fs.create_external_feature_group(
-            name=name,
-            data_source=data_source,
-            data_format=data_format.lower() if data_format else None,
-            version=version,
-            description=description,
-            primary_key=_split_csv(primary_key) or None,
-            event_time=event_time,
-            online_enabled=online,
-            features=_build_features(features_spec) or None,
-        )
-        fg.save()
+        with output.sdk_quiet():
+            fg = fs.create_external_feature_group(
+                name=name,
+                data_source=data_source,
+                data_format=data_format.lower() if data_format else None,
+                version=version,
+                description=description,
+                primary_key=_split_csv(primary_key) or None,
+                event_time=event_time,
+                online_enabled=online,
+                features=_build_features(features_spec) or None,
+            )
+            fg.save()
     except Exception as exc:  # noqa: BLE001
         # save() registers the metadata first and computes statistics after, so
         # a failure in the second step leaves a usable feature group behind.
@@ -766,7 +772,8 @@ def fg_insert(
     write_options = {"start_offline_materialization": False} if online else None
 
     try:
-        job, _ = fg.insert(df, write_options=write_options)
+        with output.sdk_quiet():
+            job, _ = fg.insert(df, write_options=write_options)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Insert failed: {exc}") from exc
 
@@ -848,15 +855,16 @@ def fg_derive(
         )
 
     try:
-        fg = fs.create_feature_group(
-            name=name,
-            description=description or f"Derived from {base_fg}",
-            primary_key=_split_csv(primary_key) or None,
-            event_time=event_time,
-            online_enabled=online,
-            parents=parents,
-        )
-        fg.insert(query.read())
+        with output.sdk_quiet():
+            fg = fs.create_feature_group(
+                name=name,
+                description=description or f"Derived from {base_fg}",
+                primary_key=_split_csv(primary_key) or None,
+                event_time=event_time,
+                online_enabled=online,
+                parents=parents,
+            )
+            fg.insert(query.read())
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not derive feature group: {exc}") from exc
 
@@ -1358,13 +1366,11 @@ def _build_embedding(spec: str) -> tuple[Any, Any]:
     except ValueError as exc:
         raise click.BadParameter(f"Embedding dim must be int: {exc}") from exc
     metric = parts[2].strip() if len(parts) >= 3 else "cosine"
-    from hsfs.embedding import EmbeddingFeature, EmbeddingIndex  # noqa: PLC0415
+    from hsfs.embedding import EmbeddingIndex  # noqa: PLC0415
     from hsfs.feature import Feature  # noqa: PLC0415
 
     index = EmbeddingIndex()
-    index.add_embedding(
-        EmbeddingFeature(name=col, dimension=dim, similarity_function_type=metric)
-    )
+    index.add_embedding(col, dim, similarity_function_type=metric)
     feature = Feature(col, "array<float>")
     return index, feature
 
