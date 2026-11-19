@@ -22,11 +22,13 @@ Authentication is handled automatically via the Hopsworks Superset login endpoin
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING, Any
 
 import requests
 from hopsworks_apigen import public
 from hopsworks_common import client, usage
+from hopsworks_common.core.superset_query_context import build_query_context
 from hopsworks_common.core.variable_api import VariableApi
 
 
@@ -75,7 +77,7 @@ class SupersetApi:
             params=json.dumps({                  # chart config as a JSON string
                 "metrics": [{"label": "count", "expressionType": "SQL", "sqlExpression": "COUNT(*)"}],
                 "groupby": [],
-                "time_column": "event_time",
+                "x_axis": "event_time",
                 "time_grain_sqla": "P1D",
                 "row_limit": 1000,
             }),
@@ -141,10 +143,7 @@ class SupersetApi:
             + SUPERSET_BASE_PATH
             + "/api/v1/security/csrf_token/"
         )
-        headers = {
-            "Content-Type": "application/json",
-            "Cookie": f"session={self._session_token}",
-        }
+        headers = {"Cookie": f"session={self._session_token}"}
         resp = self._http.get(url, headers=headers, timeout=60)
         resp.raise_for_status()
         # Update session cookie if the server rotated it during CSRF token generation
@@ -168,10 +167,9 @@ class SupersetApi:
             self._get_csrf_token()
 
         url = self._get_superset_url() + SUPERSET_BASE_PATH + path
-        headers = {
-            "Content-Type": "application/json",
-            "Cookie": f"session={self._session_token}",
-        }
+        # requests sets Content-Type with a JSON body. Superset answers 400 to a
+        # bodiless GET that claims JSON, such as /api/v1/chart/<id>/data/.
+        headers = {"Cookie": f"session={self._session_token}"}
         if needs_csrf:
             headers["X-CSRFToken"] = self._csrf_token
 
@@ -321,9 +319,12 @@ class SupersetApi:
     ) -> dict:
         """Create a Superset chart.
 
+        The chart is saved with the query context Superset's explore view would build,
+        so its data endpoint answers without the chart being opened first.
+
         Parameters:
             slice_name: Display name of the chart.
-            viz_type: Visualization type (e.g., "table", "big_number", "echarts_timeseries").
+            viz_type: Visualization type (e.g., "table", "big_number", "echarts_timeseries_line").
             datasource_id: ID of the dataset to use as data source.
             params: JSON string of chart configuration parameters.
             datasource_type: Type of datasource (default "table").
@@ -333,6 +334,9 @@ class SupersetApi:
 
         Returns:
             The created chart as a dict.
+
+        Raises:
+            ValueError: The params hold a value Superset's explore view also refuses.
         """
         payload: dict[str, Any] = {
             "slice_name": slice_name,
@@ -340,6 +344,7 @@ class SupersetApi:
             "datasource_id": datasource_id,
             "datasource_type": datasource_type,
             "params": params,
+            **self._query_context(datasource_id, datasource_type, viz_type, params),
         }
         if description is not None:
             payload["description"] = description
@@ -378,14 +383,45 @@ class SupersetApi:
         """Update a Superset chart.
 
         Pass fields to update as keyword arguments (e.g., slice_name, viz_type, params, owners).
+        A change of params, viz_type, datasource_id or datasource_type also rebuilds the chart's
+        query context from the chart's current fields and the new ones, and sends the context
+        with all four fields in the same PUT, so the saved fields match the context.
 
         Parameters:
             chart_id: The chart ID.
 
         Returns:
             The updated chart as a dict.
+
+        Raises:
+            ValueError: The params hold a value Superset's explore view also refuses.
         """
+        query_fields = ("params", "viz_type", "datasource_id", "datasource_type")
+        if any(f in kwargs for f in query_fields):
+            chart = {**self.get_chart(chart_id)["result"], **kwargs}
+            kwargs = {
+                **kwargs,
+                **{f: chart[f] for f in query_fields},
+                **self._query_context(
+                    chart["datasource_id"],
+                    chart["datasource_type"],
+                    chart["viz_type"],
+                    chart["params"],
+                ),
+            }
         return self._request("PUT", f"/api/v1/chart/{chart_id}", json_data=kwargs)
+
+    @staticmethod
+    def _query_context(
+        datasource_id: int, datasource_type: str, viz_type: str, params: str | None
+    ) -> dict:
+        query_context = build_query_context(
+            datasource_id, viz_type, json.loads(params or "{}"), datasource_type
+        )
+        # Superset stores what its explore view sends: the context as a JSON string.
+        # No query_context_generation: a PUT of only that and query_context skips
+        # Superset's owner check, which exists for its report workers.
+        return {"query_context": json.dumps(query_context)}
 
     @public
     @usage._method_logger
