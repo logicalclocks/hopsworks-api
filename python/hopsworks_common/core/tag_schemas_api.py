@@ -133,9 +133,8 @@ class TagSchemasApi:
             PermissionError: If the caller lacks ``HOPS_ADMIN``.
             ValueError: If ``name`` is empty or ``schema`` is not a dict
                 or a JSON string.
-            hopsworks.client.exceptions.RestAPIError: If the schema
-                payload is rejected by the backend (invalid JSON Schema,
-                duplicate name, etc.).
+            hopsworks.client.exceptions.RestAPIError: If the schema payload is rejected by the backend (invalid JSON Schema, duplicate name, etc.).
+                A name is also refused (409) while a deleted schema of that name still has archived values in the tag history, which the new schema would otherwise take over.
         """
         if not name:
             raise ValueError("name must be a non-empty schema name")
