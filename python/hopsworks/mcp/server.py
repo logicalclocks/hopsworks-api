@@ -43,6 +43,7 @@ from .tools import (
     DatasetTools,
     FeatureGroupTools,
     JobTools,
+    OntologyTools,
     ProjectTools,
     TerminalTools,
 )
@@ -98,6 +99,7 @@ def build_mcp(
     JobTools(server)
     DatasetTools(server)
     FeatureGroupTools(server)
+    OntologyTools(server)
 
     if enable_shell_tools:
         TerminalTools(server)

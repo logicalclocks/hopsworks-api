@@ -435,6 +435,132 @@ def test_the_inventory_takes_a_rag_system_from_the_helpdesk_example(tmp_path):
     assert not any("helpdesk-docs" in p for p in plan)
 
 
+def _ontology(slug: str) -> dict:
+    """The system.yaml keys an ontology factory build records (HWORKS-3744 contract, section 4)."""
+    pkg = slug.replace("-", "_")
+    llm, embedder = (
+        "NVIDIA_Nemotron_3_5_Lightning_30B_A3B_FP8",
+        "Nemotron_3_5_Embed_1B_BF16",
+    )
+    return {
+        "app": {"name": slug, "url": f"/hopsworks-api/pythonapp/demo/{slug}/"},
+        "features": {
+            "pipelines": [
+                {
+                    "name": "ingest",
+                    "job": {"name": f"{slug}-ingest", "schedule": "0 0 2 * * ?"},
+                },
+                {
+                    "name": "compile",
+                    "job": {"name": f"{slug}-compile", "schedule": "0 0 3 * * ?"},
+                },
+                {"name": "embed", "job": {"name": f"{slug}-embed"}},
+                {"name": "reset", "job": {"name": f"{slug}-reset"}},
+                {"name": "import", "job": {"name": f"{slug}-import"}},
+            ],
+            "writes": [
+                {"feature_group": f"{pkg}_data_objects", "version": 1},
+                {"feature_group": f"{pkg}_semantic", "version": 1},
+            ],
+        },
+        "embedding_model": {"name": embedder, "version": 1},
+        "model": {"name": llm, "version": 1},
+        "serving": {
+            "deployments": [
+                {
+                    "deployment": "nemotronllm",
+                    "role": "llm",
+                    "model": llm,
+                    "model_version": 1,
+                    "shared": True,
+                },
+                {
+                    "deployment": "nemotronembed",
+                    "role": "embed",
+                    "model": embedder,
+                    "model_version": 1,
+                    "shared": True,
+                },
+            ]
+        },
+    }
+
+
+def test_the_inventory_takes_an_ontology_systems_shared_deployments():
+    from hopsworks.cli import teardown
+
+    plan = [
+        str(a)
+        for a in teardown.inventory(_ontology("sales-ontology"), "sales-ontology")
+    ]
+    assert plan == [
+        "app sales-ontology",
+        "deployment nemotronllm",
+        "deployment nemotronembed",
+        "job sales-ontology-ingest",
+        "job sales-ontology-compile",
+        "job sales-ontology-embed",
+        "job sales-ontology-reset",
+        "job sales-ontology-import",
+        "jobs sales-ontology-* (any not named above)",
+        "model NVIDIA_Nemotron_3_5_Lightning_30B_A3B_FP8",
+        "model Nemotron_3_5_Embed_1B_BF16",
+        "feature group sales_ontology_semantic v1",
+        "feature group sales_ontology_semantic (every other version sales-ontology made)",
+        "feature group sales_ontology_data_objects v1",
+        "feature group sales_ontology_data_objects (every other version sales-ontology made)",
+        "directory Resources/sales-ontology",
+    ]
+
+
+def test_deployments_another_ontology_system_names_are_kept():
+    from hopsworks.cli import teardown
+
+    assets, kept = teardown.plan(
+        _ontology("sales-ontology"),
+        "sales-ontology",
+        {"hr-ontology": _ontology("hr-ontology")},
+    )
+    names = {(a.kind, a.name) for a in assets}
+    for key in [
+        ("deployment", "nemotronllm"),
+        ("deployment", "nemotronembed"),
+        ("model", "NVIDIA_Nemotron_3_5_Lightning_30B_A3B_FP8"),
+        ("model", "Nemotron_3_5_Embed_1B_BF16"),
+    ]:
+        assert key not in names
+        assert f"kept {key[0]} {key[1]}: hr-ontology names it too" in kept
+    assert ("app", "sales-ontology") in names
+    assert ("feature group", "sales_ontology_semantic") in names
+
+
+def test_the_last_ontology_system_deletes_only_the_deployments_it_created():
+    from hopsworks.cli import teardown
+
+    assets, kept = teardown.plan(_ontology("sales-ontology"), "sales-ontology", {})
+    assert kept == []
+    deployments = [a for a in assets if a.kind == "deployment"]
+    # Their names do not carry the slug, so only a description naming it proves whose they are.
+    assert {a.owned_by for a in deployments} == {"sales-ontology"}
+
+    deleted = []
+    described = {
+        "nemotronllm": "Nemotron LLM for ontology systems, created by sales-ontology",
+        "nemotronembed": "Nemotron embeddings for ontology systems, created by hr-ontology",
+    }
+    serving = SimpleNamespace(
+        get_deployment=lambda name: SimpleNamespace(
+            description=described[name], delete=lambda force: deleted.append(name)
+        )
+    )
+    deleter = teardown.Deleter(SimpleNamespace(get_model_serving=lambda: serving))
+    outcomes = [deleter.delete(a) for a in deployments]
+    assert deleted == ["nemotronllm"]
+    assert outcomes[1] == (
+        "kept deployment nemotronembed (if sales-ontology made it): not created by sales-ontology"
+    )
+
+
 def test_a_group_another_system_only_reads_is_kept():
     from hopsworks.cli import teardown
 

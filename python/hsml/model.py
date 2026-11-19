@@ -31,7 +31,6 @@ from hopsworks_common.constants import MODEL_REGISTRY
 from hsml.core import explicit_provenance
 from hsml.engine import model_engine
 from hsml.model_schema import ModelSchema
-from hsml.predictor import Predictor
 from hsml.schema import Schema
 
 
@@ -495,6 +494,10 @@ class Model:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
+        # Imported here: hsml.predictor imports this module through hsml.deployment, so a
+        # module-level import breaks `from hsml.llm.predictor import Predictor` as the first hsml import.
+        from hsml.predictor import Predictor
+
         if name is None:
             name = self._get_default_serving_name()
 

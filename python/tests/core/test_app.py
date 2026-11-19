@@ -502,6 +502,10 @@ class TestAppTables:
         assert app.table_prefix == "app_reviews__"
         assert app.table_count == 2
 
+    def test_identity_signing_from_response(self, mocker):
+        assert self._app(mocker, signIdentity=True).sign_identity is True
+        assert self._app(mocker).sign_identity is False
+
     def test_older_app_is_not_managed(self, mocker):
         app = self._app(mocker)
         assert app.managed_db is False

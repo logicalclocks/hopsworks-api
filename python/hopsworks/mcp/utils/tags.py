@@ -9,6 +9,7 @@ class TAGS:
     DATASET = "dataset"
     ENVIRONMENT = "environment"
     JOB = "job"
+    ONTOLOGY = "ontology"
     SYSTEM = "system"
     TERMINAL = "terminal"
 

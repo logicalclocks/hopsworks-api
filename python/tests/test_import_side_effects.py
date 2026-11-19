@@ -68,3 +68,12 @@ def test_loading_a_validation_module_does_not_log_ge_metric_chatter():
             f"great_expectations was not loaded: {result.get('error', 'absent')}"
         )
     assert "Multiple declarations of metric" not in out.stderr, out.stderr
+
+
+def test_the_vllm_predictor_imports_after_hopsworks():
+    # The hops-ontology build and the vLLM serving docs start with these two imports. In a
+    # fresh interpreter hsml.llm.predictor reached hsml.model while hsml.predictor was still
+    # initialising, and the import failed; within this process an earlier test hides it.
+    code = "import hopsworks\nfrom hsml.llm.predictor import Predictor\n"
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr

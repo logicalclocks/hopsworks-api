@@ -41,7 +41,20 @@ def test_mcp_server_registers_tools():
 
     tools = asyncio.run(mcp.get_tools())
     assert len(tools) >= 15, f"expected the MCP tools to register, got {len(tools)}"
-    for expected in ("login", "use_project", "create_project"):
+    for expected in (
+        "login",
+        "use_project",
+        "create_project",
+        "search_terms",
+        "get_term",
+        "get_term_columns",
+        "get_term_sql_attributes",
+        "get_sql_attribute",
+        "describe_table",
+        "check_answerable",
+        "ask_question",
+        "check_readiness",
+    ):
         assert expected in tools, f"MCP tool '{expected}' is missing"
     # Security: shell tools must not be on the default surface.
     assert not (_SHELL_TOOLS & set(tools)), (

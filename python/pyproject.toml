@@ -232,6 +232,7 @@ include = [
     "skills/**/*.js",
     "skills/**/*.json",
     "skills/**/*.css",
+    "skills/**/*.template",
     "skills/**/*.svg",
     "skills/**/*.png",
     "skills/**/*.ttf",
