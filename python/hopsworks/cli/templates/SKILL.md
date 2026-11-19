@@ -251,10 +251,9 @@ hops superset chart generate --dataset N --config @chart.json
 
 hops superset dashboard list
 hops superset dashboard create "My Dashboard" [--published]
-hops superset dashboard update N [--title T] [--published] [--refresh 300] [--metadata '{...}'] [--css @f]
 ```
 
-`chart generate` and `dashboard update` go through Superset 7.0's MCP service: Superset validates the config against the dataset, and `dashboard update` changes only the fields given.
+`chart generate` goes through Superset's MCP service, which validates the config against the dataset before it saves the chart.
 
 ## Semantic Layer
 

@@ -134,7 +134,7 @@ hops semantic saved-queries sales                                  # NAME, LABEL
 hops semantic query sales --saved-query revenue_by_country -o csv
 hops semantic query sales --saved-query revenue_by_country --group-by metric_time__quarter --where "{{ Dimension('customer__country') }} = 'SE'"
 hops semantic sql sales --saved-query revenue_by_country
-hops semantic dashboard sales --saved-query revenue_by_country     # Superset 7.0, over the view sales.revenue_by_country
+hops semantic dashboard sales --saved-query revenue_by_country     # over the view sales.revenue_by_country
 ```
 
 ```python

@@ -1296,7 +1296,7 @@ def dashboard_cmd(
 ) -> None:
     """Build a Superset dashboard of metrics, or of a saved query, on your semantic connection in Superset, and print its URL.
 
-    Needs Superset 7.0 with semantic dashboards on. The dashboard has a line chart per
+    Needs semantic dashboards on. The dashboard has a line chart per
     metric over metric_time, a big number for the first metric, a breakdown table and
     native filters, and you own it.
 

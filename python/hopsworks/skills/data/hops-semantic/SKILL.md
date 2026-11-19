@@ -284,7 +284,7 @@ Answer metric questions with these tools rather than SQL over feature groups: th
 ## Related skills
 - [hops-semantic-views](../hops-semantic-views/SKILL.md): what goes in one semantic project, and keeping it under 100k tokens for agents.
 - [hops-dbt](../hops-dbt/SKILL.md): the dbt project the semantic YAML lives in, and the models that write the feature groups.
-- [hops-superset](../../dashboards/hops-superset/SKILL.md): charts and dashboards of the metrics, on Superset 7.0 or 6.
+- [hops-superset](../../dashboards/hops-superset/SKILL.md): charts and dashboards of the metrics.
 - [hops-analytics](../hops-analytics/SKILL.md): the Factory's silver and gold layers, which register their dbt projects as semantic projects.
 - [hops-trino-sql](../hops-trino-sql/SKILL.md): table naming and ad-hoc SQL over the same feature groups.
 - [hops-fg](../../ml/hops-fg/SKILL.md): primary keys and event time, which the semantic models' entities and time dimensions should match.

@@ -1,4 +1,4 @@
-"""CliRunner tests for the Superset MCP commands: chart generate, chart types, dashboard update."""
+"""CliRunner tests for the Superset MCP commands: chart generate and chart types."""
 
 from __future__ import annotations
 
@@ -227,65 +227,6 @@ def test_types_prints_one_schema(api):
     assert result.exit_code == 0, result.output
     api.chart_type_schema.assert_called_once_with("pie")
     assert json.loads(result.output)["chart_type"] == "pie"
-
-
-def test_dashboard_update_sends_only_the_options_given(api, tmp_path):
-    css = tmp_path / "print.css"
-    css.write_text(".header-controls {display: none;}")
-    api.patch_dashboard.return_value = {"dashboard": {"id": 7}}
-
-    result = CliRunner().invoke(
-        cli,
-        [
-            "superset",
-            "dashboard",
-            "update",
-            "7",
-            "--title",
-            "Fraud",
-            "--published",
-            "--refresh",
-            "300",
-            "--filter-bar",
-            "horizontal",
-            "--css",
-            f"@{css}",
-            "--metadata",
-            '{"color_scheme": "supersetColors"}',
-            "--tags",
-            "3,7",
-        ],
-    )
-
-    assert result.exit_code == 0, result.output
-    api.patch_dashboard.assert_called_once_with(
-        7,
-        dashboard_title="Fraud",
-        published=True,
-        css=".header-controls {display: none;}",
-        refresh_frequency=300,
-        filter_bar_orientation="HORIZONTAL",
-        tags=[3, 7],
-        json_metadata_overrides={"color_scheme": "supersetColors"},
-    )
-    assert "hopsworks-api/superset/dashboard/7/" in result.output
-
-
-def test_dashboard_update_with_nothing_to_change_is_a_usage_error(api):
-    result = CliRunner().invoke(cli, ["superset", "dashboard", "update", "7"])
-
-    assert result.exit_code == 2
-    api.patch_dashboard.assert_not_called()
-
-
-def test_dashboard_update_rejects_bad_json(api):
-    result = CliRunner().invoke(
-        cli, ["superset", "dashboard", "update", "7", "--metadata", "{nope"]
-    )
-
-    assert result.exit_code == 2
-    assert "not valid JSON" in result.output
-    api.patch_dashboard.assert_not_called()
 
 
 def test_commas_inside_parentheses_and_quotes_do_not_split():

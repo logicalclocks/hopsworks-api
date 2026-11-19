@@ -18,4 +18,4 @@ They act on the logged-in project; the parent skill's "Agent tools" section says
 | `get_semantic_project_tags` | the project's tags |
 | `validate_semantic_project` | check the definitions as a compile would, storing nothing: status and issues |
 | `compile_semantic_project` | compile, and the build's id, status and issues (tagged `write`) |
-| `create_dashboard_from_metrics` | a Superset 7.0 dashboard of the metrics: its id, title and URL (tagged `write`) |
+| `create_dashboard_from_metrics` | a Superset dashboard of the metrics: its id, title and URL (tagged `write`) |

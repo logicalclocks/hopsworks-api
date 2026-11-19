@@ -28,7 +28,7 @@ Hopsworks MCP Server provides the following tools for hopsworks-related function
 | get_semantic_project_tags | The schematised tags of a semantic project. | semantic_project (str) | Name and value per tag. |
 | validate_semantic_project | Check a semantic project's definitions and report their errors and warnings, storing nothing. | semantic_project (str) | Status and issues. |
 | compile_semantic_project | Compile a semantic project into a build. | semantic_project (str) | Build id, status and issues. |
-| create_dashboard_from_metrics | Build a Superset 7.0 dashboard of metrics. | semantic_project (str), metrics (list[str]), group_by (list[str], optional), title (str, optional) | Dashboard id, title and URL. |
+| create_dashboard_from_metrics | Build a Superset dashboard of metrics. | semantic_project (str), metrics (list[str]), group_by (list[str], optional), title (str, optional) | Dashboard id, title and URL. |
 
 ## Usage
 

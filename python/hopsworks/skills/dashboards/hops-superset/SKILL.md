@@ -33,8 +33,7 @@ quickest path to list/inspect/clean up (delete takes `--yes`). Re-run
 
 ## Charts and dashboard edits without Python
 
-On Superset 7.0, `hops superset chart generate --dataset N --type xy --x <col> --y 'SUM(<col>)'` creates a chart from a short typed config that Superset checks against the dataset before saving, so no `params` JSON (§4) is needed; prefer it to `create_chart` and to `chart create --params`.
-`hops superset dashboard update ID` changes only the fields given.
+`hops superset chart generate --dataset N --type xy --x <col> --y 'SUM(<col>)'` creates a chart from a short typed config that Superset checks against the dataset before saving, so no `params` JSON (§4) is needed; prefer it to `create_chart` and to `chart create --params`.
 `hops superset chart types [TYPE]` lists the types and a type's config schema; every flag, the metric syntax and the limits: [references/typed_charts.md](references/typed_charts.md).
 
 ## Ask the user (only when state is ambiguous)
@@ -80,9 +79,8 @@ Methods available on `api`:
 | Databases | `list_databases()` |
 | Datasets | `create_dataset`, `get_dataset`, `list_datasets`, `update_dataset`, `delete_dataset` |
 | Charts | `create_chart`, `get_chart`, `list_charts`, `update_chart`, `delete_chart` |
-| Charts, typed (Superset 7.0 MCP) | `generate_chart(dataset_id, config, name=None, save=True)`, `chart_type_schema(chart_type)` |
+| Charts, typed (Superset MCP) | `generate_chart(dataset_id, config, name=None, save=True)`, `chart_type_schema(chart_type)` |
 | Dashboards | `create_dashboard`, `get_dashboard`, `list_dashboards`, `update_dashboard`, `delete_dashboard` |
-| Dashboards, partial (Superset 7.0 MCP) | `patch_dashboard(dashboard_id, **fields)`: only the given fields, `json_metadata_overrides` merged |
 
 Signatures (from the Hopsworks SDK):
 
@@ -333,9 +331,9 @@ def ensure_dashboard(api, title, chart_ids, chart_slices):
     return dashboard_id
 ```
 
-Dashboard URL on Superset 7.0 (Superset 6 has `/superset` before `/dashboard`):
+Dashboard URL on Superset 6.1 (Superset 7.0 drops the second `/superset`):
 ```
-https://<hopsworks-host>/hopsworks-api/superset/dashboard/<id>/
+https://<hopsworks-host>/hopsworks-api/superset/superset/dashboard/<id>/
 ```
 
 ---
@@ -422,8 +420,8 @@ Every dashboard `/hops dashboard` builds has one program that builds it, filled
 in from [references/dashboard_program.py](references/dashboard_program.py): a
 module docstring naming the title, the feature groups and the charts; `TITLE`,
 `FEATURE_GROUPS` and `CHARTS`; the idempotent steps above; `--delete`; and a
-last line printing the dashboard URL. On Superset 7.0, a dashboard that shows
-only metrics needs no program: `hops semantic dashboard` builds it (§2).
+last line printing the dashboard URL. A dashboard that shows only metrics needs
+no program: `hops semantic dashboard` builds it (§2).
 
 - **Where they live:** `Users/<user>/dashboards/<slug>.py` in the project, which
   is `~/dashboards/<slug>.py` in a Hopsworks terminal (the FUSE mount) and

@@ -455,124 +455,6 @@ def superset_dashboard_create(
     output.success("✓ Created Superset dashboard %s (id=%s)", title, _id(result))
 
 
-@superset_dashboard_group.command(
-    "update",
-    epilog="""\b
-Examples:
-  hops superset dashboard update 7 --title 'Fraud overview' --published --refresh 300
-  hops superset dashboard update 7 --metadata '{"color_scheme": "supersetColors"}'
-  hops superset dashboard update 7 --css @print.css
-""",
-)
-@click.argument("dashboard_id")
-@click.option("--title", help="Dashboard title.")
-@click.option("--description", help="Dashboard description.")
-@click.option("--slug", help="URL slug.")
-@click.option("--published/--draft", default=None, help="Publish or unpublish.")
-@click.option("--css", help="Custom CSS, as text or @file.")
-@click.option(
-    "--refresh",
-    "refresh_frequency",
-    type=int,
-    help="Auto-refresh interval in seconds; 0 turns it off.",
-)
-@click.option(
-    "--cross-filters/--no-cross-filters",
-    default=None,
-    help="Turn cross filtering on or off.",
-)
-@click.option(
-    "--filter-bar",
-    "filter_bar_orientation",
-    type=click.Choice(["vertical", "horizontal"]),
-    help="Native filter bar orientation.",
-)
-@click.option(
-    "--tags",
-    callback=lambda _c, _p, v: [int(t) for t in v.split(",")] if v else None,
-    help="Replace the dashboard's tags with these tag IDs, comma-separated.",
-)
-@click.option(
-    "--metadata",
-    "metadata_json",
-    help="json_metadata keys to set, as JSON or @file; merged into the existing metadata.",
-)
-@click.option(
-    "--position",
-    "position_json",
-    help="Complete layout (position_json) as JSON or @file; replaces the current one.",
-)
-@click.pass_context
-def superset_dashboard_update(
-    ctx: click.Context,
-    dashboard_id: str,
-    title: str | None,
-    description: str | None,
-    slug: str | None,
-    published: bool | None,
-    css: str | None,
-    refresh_frequency: int | None,
-    cross_filters: bool | None,
-    filter_bar_orientation: str | None,
-    tags: list[int] | None,
-    metadata_json: str | None,
-    position_json: str | None,
-) -> None:
-    """Change only the given fields of a Superset dashboard; everything else is left as it is.
-
-    Args:
-        ctx: Click context.
-        dashboard_id: Dashboard ID or slug.
-        title: Dashboard title.
-        description: Dashboard description.
-        slug: URL slug.
-        published: Publish or unpublish.
-        css: Custom CSS or @file.
-        refresh_frequency: Refresh interval in seconds.
-        cross_filters: Cross filtering on or off.
-        filter_bar_orientation: Filter bar orientation.
-        tags: Tag IDs.
-        metadata_json: json_metadata overrides as JSON or @file.
-        position_json: Layout as JSON or @file.
-    """
-    fields: dict[str, Any] = {
-        "dashboard_title": title,
-        "description": description,
-        "slug": slug,
-        "published": published,
-        "css": _text_arg(css),
-        "refresh_frequency": refresh_frequency,
-        "cross_filters_enabled": cross_filters,
-        "filter_bar_orientation": filter_bar_orientation.upper()
-        if filter_bar_orientation
-        else None,
-        "tags": tags,
-        "json_metadata_overrides": _json_arg(metadata_json, "--metadata"),
-        "position_json": _json_arg(position_json, "--position"),
-    }
-    fields = {k: v for k, v in fields.items() if v is not None}
-    if not fields:
-        raise click.UsageError("Nothing to update: pass at least one option.")
-    identifier: int | str = (
-        int(dashboard_id) if dashboard_id.isdigit() else dashboard_id
-    )
-    try:
-        result = _api(ctx).patch_dashboard(identifier, **fields)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Update dashboard failed: {exc}") from exc
-    dashboard = result.get("dashboard") or {}
-    url = _superset_link(f"dashboard/{dashboard.get('id', dashboard_id)}/")
-    if output.JSON_MODE:
-        output.print_json({**result, "hopsworks_url": url})
-        return
-    output.success(
-        "✓ Updated Superset dashboard %s (%s): %s",
-        dashboard.get("id", dashboard_id),
-        ", ".join(sorted(fields)),
-        url,
-    )
-
-
 @superset_dashboard_group.command("delete")
 @click.argument("dashboard_id", type=int)
 @click.option("--yes", is_flag=True, help="Skip confirmation.")
@@ -647,7 +529,7 @@ def _id(payload: Any) -> Any:
     return "?"
 
 
-# The core chart types of Superset 7.0's generate_chart and the fields each requires.
+# The core chart types of Superset's generate_chart and the fields each requires.
 _CHART_TYPES = {
     "xy": "y; optional x, kind, group_by, time_grain",
     "table": "columns",

@@ -201,7 +201,7 @@ class TestSupersetMcpClient:
         )
 
         with pytest.raises(SupersetException, match="permission denied"):
-            mcp._call("update_dashboard", {"request": {"identifier": 1}})
+            mcp._call("generate_chart", {"request": {"dataset_id": 1}})
 
     def test_a_refused_token_raises_and_is_dropped(self, mcp, hopsworks_client):
         self._serve(mcp, _response({}, status=401))
@@ -266,20 +266,6 @@ class TestSupersetApiMcpMethods:
 
         api._mcp_client._call.assert_called_once_with(
             "get_chart_type_schema", {"chart_type": "pie", "include_examples": True}
-        )
-
-    def test_patch_dashboard_sends_only_the_given_fields(self, api):
-        api.patch_dashboard(7, dashboard_title="T", refresh_frequency=300)
-
-        api._mcp_client._call.assert_called_once_with(
-            "update_dashboard",
-            {
-                "request": {
-                    "identifier": 7,
-                    "dashboard_title": "T",
-                    "refresh_frequency": 300,
-                }
-            },
         )
 
     def test_outside_the_cluster_it_refuses_before_calling(self, api, mocker):

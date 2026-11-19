@@ -302,7 +302,7 @@ def ensure_dashboard(api, existing: int | None, chart_ids: list[int]) -> int:
 def dashboard_url(api, project_url: str, dashboard_id: int) -> str:
     """The dashboard's URL through Hopsworks, on the path Superset reports for it.
 
-    Superset 7.0 serves a dashboard at /dashboard/<id>/, and Superset 6 at /superset/dashboard/<id>/.
+    Superset 6.1 serves a dashboard at /superset/dashboard/<id>/, and Superset 7.0 at /dashboard/<id>/.
     """
     host = urlparse(project_url)
     path = api.get_dashboard(dashboard_id)["result"]["url"]
