@@ -108,10 +108,11 @@ def transformation_create(
 
     fs = session.get_feature_store(ctx)
     try:
-        tf = fs.create_transformation_function(
-            transformation_function=udf, version=version
-        )
-        tf.save()
+        with output.sdk_quiet():
+            tf = fs.create_transformation_function(
+                transformation_function=udf, version=version
+            )
+            tf.save()
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not create transformation: {exc}") from exc
     output.success(

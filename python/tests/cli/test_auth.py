@@ -37,3 +37,32 @@ def test_cli_quiets_sdk_info_logging(tmp_home):
     logging.getLogger().setLevel(logging.INFO)
     CliRunner().invoke(cli, ["project", "list"])
     assert logging.getLogger().level == logging.WARNING
+
+
+def test_sdk_prints_stay_off_stdout_only_in_json_mode(capsys):
+    """`--json` keeps stdout for the payload: the SDK's banners (job created, launching job) are dropped."""
+    from hopsworks.cli import output
+
+    try:
+        output.set_json_mode(True)
+        with output.sdk_quiet():
+            print("Job created successfully, explore it at https://h/p/1/jobs/named/x")
+        output.print_json({"job": "x", "execution": 7})
+        assert capsys.readouterr().out == '{\n  "job": "x",\n  "execution": 7\n}\n'
+
+        output.set_json_mode(False)
+        with output.sdk_quiet():
+            print("Launching job: x")
+        assert capsys.readouterr().out == "Launching job: x\n"
+    finally:
+        output.set_json_mode(False)
+
+
+def test_a_nested_quiet_keeps_the_outer_silence(capsys):
+    """An inner SDK call's quiet must not end the silence of the block around it."""
+    with auth.quiet():
+        with auth.quiet():
+            print("inner banner")
+        print("outer banner")
+    print("after")
+    assert capsys.readouterr().out == "after\n"
