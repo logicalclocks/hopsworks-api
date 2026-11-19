@@ -195,6 +195,8 @@ if HAS_PYARROW:
                     precision = int(params[0].strip())
                     scale = int(params[1].strip())
                     return pa.decimal128(precision, scale)
+                if len(params) == 1:
+                    return pa.decimal128(int(params[0].strip()), 0)
             # Default decimal type
             return pa.decimal128(10, 0)
 

@@ -258,6 +258,7 @@ class TestTypeSystems:
             ("binary", pa.binary()),
             ("decimal", pa.decimal128(10, 0)),
             ("decimal(12,4)", pa.decimal128(12, 4)),
+            ("decimal(7)", pa.decimal128(7, 0)),
             ("array<int>", pa.list_(pa.int32())),
             ("array< double >", pa.list_(pa.float64())),
             (
