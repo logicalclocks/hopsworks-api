@@ -1194,7 +1194,7 @@ class Predictor(DeployableComponent):
     def loading_strategy(self) -> str | None:
         """How the model server reads the model files: `'MOUNT'`, `'RUNAI_STREAMER'` or `'DOWNLOAD'`.
 
-        `'MOUNT'` mounts the model files read-only from HopsFS and the model server reads them in place; it is accepted by every model server, and vLLM reads a mount this way several times slower than with `'RUNAI_STREAMER'`.
+        `'MOUNT'` mounts the model files read-only from HopsFS and the model server reads them in place; it is accepted by every model server, and vLLM reads each safetensors file whole into memory before loading it, unless its configuration file sets `safetensors_load_strategy`.
         `'RUNAI_STREAMER'` mounts the files the same way and vLLM loads them with the Run:ai Model Streamer; it is accepted by vLLM only, for a model with safetensors weights at the top of its files and not with the vLLM-Omni variant.
         `'DOWNLOAD'` copies the files to the local disk of the pod before the model server starts; it is accepted by every model server.
         The two mount strategies need the HopsFS CSI driver on the cluster.

@@ -376,7 +376,7 @@ class ModelServing:
                 A deployment also keeps its tag after an admin stops advertising it.
                 Ignored for non-Triton model servers.
             loading_strategy: How the model server reads the model files.
-                `'MOUNT'` mounts them read-only from HopsFS and the model server reads them in place; every model server accepts it, and vLLM reads a mount this way several times slower than with `'RUNAI_STREAMER'`.
+                `'MOUNT'` mounts them read-only from HopsFS and the model server reads them in place; every model server accepts it, and vLLM reads each safetensors file whole into memory before loading it, unless its configuration file sets `safetensors_load_strategy`.
                 `'RUNAI_STREAMER'` mounts them the same way and vLLM loads them with the Run:ai Model Streamer; only vLLM accepts it, for a model with safetensors weights at the top of its files and not with the vLLM-Omni variant.
                 `'DOWNLOAD'` copies them to the local disk of the pod before the model server starts; every model server accepts it.
                 The two mount strategies need the HopsFS CSI driver on the cluster.
