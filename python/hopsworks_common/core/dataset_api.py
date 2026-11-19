@@ -181,6 +181,8 @@ class DatasetApi:
         simultaneous_chunks: int = DEFAULT_UPLOAD_SIMULTANEOUS_CHUNKS,
         max_chunk_retries: int = DEFAULT_UPLOAD_MAX_CHUNK_RETRIES,
         chunk_retry_interval: int = 1,
+        *,
+        _into_new_folder: bool = False,
     ) -> str:
         """Upload a file or directory to the Hopsworks filesystem.
 
@@ -227,7 +229,8 @@ class DatasetApi:
 
         destination_path = upload_path + "/" + file_name
 
-        if self.exists(destination_path):
+        # A folder this client just made holds nothing yet: no lookup per file.
+        if not _into_new_folder and self.exists(destination_path):
             if overwrite:
                 if "datasetType" in self._get(destination_path):
                     raise DatasetException(

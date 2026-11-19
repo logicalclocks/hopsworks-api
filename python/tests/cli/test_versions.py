@@ -113,6 +113,7 @@ def test_fg_delete_needs_a_version_when_several_exist(mock_project, monkeypatch)
 
     fs = mock.MagicMock()
     fs.get_feature_groups.return_value = _versioned(1, 2)
+    monkeypatch.setattr(session, "get_feature_store", lambda ctx: fs)
     monkeypatch.setattr(session, "get_accessible_feature_stores", lambda ctx: [fs])
     result = CliRunner().invoke(cli, ["fg", "delete", "orders", "--yes"])
     assert result.exit_code != 0

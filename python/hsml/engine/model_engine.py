@@ -120,7 +120,9 @@ class ModelEngine:
                         json.dump(input_example, out, cls=util.NumpyEncoder)
 
                     self._engine._upload(
-                        input_example_path, model_instance.version_path
+                        input_example_path,
+                        model_instance.version_path,
+                        into_new_folder=True,
                     )
                     model_instance.input_example = None
                 if model_instance._model_schema is not None:
@@ -130,7 +132,11 @@ class ModelEngine:
                     with open(model_schema_path, "w+") as out:
                         out.write(model_schema.json())
 
-                    self._engine._upload(model_schema_path, model_instance.version_path)
+                    self._engine._upload(
+                        model_schema_path,
+                        model_instance.version_path,
+                        into_new_folder=True,
+                    )
                     model_instance.model_schema = None
         return model_instance
 
@@ -273,6 +279,7 @@ class ModelEngine:
                         root + "/" + f_name,
                         remote_base_path,
                         upload_configuration=upload_configuration,
+                        into_new_folder=True,
                     )
                     n_files += 1
                     update_upload_progress(n_dirs, n_files)
@@ -282,6 +289,7 @@ class ModelEngine:
                 from_local_model_path,
                 to_model_files_path,
                 upload_configuration=upload_configuration,
+                into_new_folder=True,
             )
             n_files += 1
             update_upload_progress(n_dirs, n_files)
@@ -427,14 +435,13 @@ class ModelEngine:
         util._validate_metrics(model_instance.training_metrics)
         util._validate_model_name(model_instance._name)
 
-        if not self._dataset_api.path_exists(dataset_models_root_path):
-            raise AssertionError(
-                f"{dataset_models_root_path} dataset does not exist in this project. Please enable the Serving service or create it manually."
-            )
-
-        # Create /Models/{model_instance._name} folder
+        # Create /Models/{model_instance._name} folder; an existing one shows the dataset exists.
         dataset_model_name_path = dataset_models_root_path + "/" + model_instance._name
         if not self._dataset_api.path_exists(dataset_model_name_path):
+            if not self._dataset_api.path_exists(dataset_models_root_path):
+                raise AssertionError(
+                    f"{dataset_models_root_path} dataset does not exist in this project. Please enable the Serving service or create it manually."
+                )
             self._engine._mkdir(dataset_model_name_path)
 
         model_instance = self._set_model_version(
