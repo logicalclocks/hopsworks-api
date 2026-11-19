@@ -94,6 +94,62 @@ def _is_delta_table_at(spark_session, path: str) -> bool:
     return DeltaTable.isDeltaTable(spark_session, path)
 
 
+def _with_table_timestamps(dataset, table_schema=None):
+    """Convert timestamp columns to the timestamp flavour of the Delta table.
+
+    A Spark TimestampType appended to a timestamp_ntz column fails with
+    DELTA_FAILED_TO_MERGE_FIELDS. Delta feature groups keep timestamp_ntz (the
+    backend and the Python client write it), so a new table (*table_schema* None)
+    gets timestamp_ntz too. The conversion is epoch based: it reads the instant
+    as UTC wall clock, whatever spark.sql.session.timeZone the job set.
+    Timestamps nested in struct or array columns are left as they are.
+    """
+    from pyspark.sql.types import TimestampNTZType, TimestampType
+
+    table_types = (
+        {f.name.lower(): f.dataType for f in table_schema.fields}
+        if table_schema is not None
+        else None
+    )
+    conversions = {}
+    for field in dataset.schema.fields:
+        quoted = "`" + field.name.replace("`", "``") + "`"
+        if table_types is None:
+            to_ntz = isinstance(field.dataType, TimestampType)
+            to_ltz = False
+        else:
+            target = table_types.get(field.name.lower())
+            to_ntz = isinstance(field.dataType, TimestampType) and isinstance(
+                target, TimestampNTZType
+            )
+            to_ltz = isinstance(field.dataType, TimestampNTZType) and isinstance(
+                target, TimestampType
+            )
+        if to_ntz:
+            conversions[field.name] = (
+                f"timestampadd(MICROSECOND, unix_micros({quoted}), "
+                "TIMESTAMP_NTZ '1970-01-01 00:00:00')"
+            )
+        elif to_ltz:
+            conversions[field.name] = (
+                "timestamp_micros(timestampdiff(MICROSECOND, "
+                f"TIMESTAMP_NTZ '1970-01-01 00:00:00', {quoted}))"
+            )
+    if not conversions:
+        return dataset
+
+    from pyspark.sql.functions import col, expr
+
+    return dataset.select(
+        *(
+            expr(conversions[f.name]).alias(f.name)
+            if f.name in conversions
+            else col("`" + f.name.replace("`", "``") + "`")
+            for f in dataset.schema.fields
+        )
+    )
+
+
 def _delta_table_for_path(spark_session, path: str):
     """Return a ``DeltaTable`` handle for *path*.
 
@@ -665,6 +721,7 @@ class DeltaEngine:
             write_options = {}
 
         if not _is_delta_table_at(self._spark_session, location):
+            dataset = _with_table_timestamps(dataset)
             cluster_columns = self._cluster_columns()
             if cluster_columns:
                 self._create_clustered_delta_table(dataset, location, write_options)
@@ -683,6 +740,12 @@ class DeltaEngine:
             _logger.debug(
                 f"Insert operation requested for {location}. Using append mode, skipping merge."
             )
+            dataset = _with_table_timestamps(
+                dataset,
+                self._spark_session.read.format(DeltaEngine.DELTA_SPARK_FORMAT)
+                .load(location)
+                .schema,
+            )
             (
                 dataset.write.format(DeltaEngine.DELTA_SPARK_FORMAT)
                 .options(**write_options)
@@ -691,6 +754,7 @@ class DeltaEngine:
             )
         else:
             fg_source_table = _delta_table_for_path(self._spark_session, location)
+            dataset = _with_table_timestamps(dataset, fg_source_table.toDF().schema)
 
             source_alias = (
                 f"{self._feature_group.name}_{self._feature_group.version}_source"
