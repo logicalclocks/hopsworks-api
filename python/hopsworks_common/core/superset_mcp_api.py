@@ -15,7 +15,7 @@
 #
 """Calls tools on Superset's MCP service as the project's Superset user.
 
-The service speaks MCP over streamable HTTP and accepts a bearer token Hopsworks mints per user and project, so the tools run with that user's Superset roles.
+The service speaks MCP over streamable HTTPS and accepts a bearer token Hopsworks mints per user and project, so the tools run with that user's Superset roles.
 A few JSON-RPC requests are all the three tools need, so this does not depend on an MCP client library.
 """
 
@@ -46,13 +46,20 @@ class _SupersetMcpClient:
     def __init__(self, project_id: int, service_discovery_domain: str):
         self._project_id = project_id
         self._url = (
-            f"http://{SUPERSET_MCP_SERVICE_NAME}.{service_discovery_domain}"
+            f"https://{SUPERSET_MCP_SERVICE_NAME}.{service_discovery_domain}"
             f":{SUPERSET_MCP_PORT}{_MCP_PATH}"
         )
         self._token: str | None = None
         self._token_deadline = 0.0
         self._ids = itertools.count(1)
         self._http = requests.Session()
+        instance = client._get_instance()
+        # The cluster's CA issues the service's certificate for this very name, so it is verified
+        # against that CA even where the REST endpoint's hostname verification is off.
+        self._http.verify = (
+            getattr(instance, "_hopsworks_ca_trust_store_path", None)
+            or instance._verify
+        )
 
     def _call(self, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """Run `tool` with `arguments` and return its result.

@@ -52,6 +52,8 @@ class TestSupersetMcpClient:
     def hopsworks_client(self, mocker):
         hw = Mock()
         hw._send_request.return_value = {"token": "jwt-1", "expiresInSeconds": 600}
+        hw._hopsworks_ca_trust_store_path = "/tmp/ca_chain.pem"
+        hw._verify = False
         mocker.patch(
             "hopsworks_common.core.superset_mcp_api.client._get_instance",
             return_value=hw,
@@ -93,7 +95,7 @@ class TestSupersetMcpClient:
             timeout=superset_mcp_api._TIMEOUT_SECONDS,
         )
         url = post.call_args_list[0].args[0]
-        assert url == "http://app.superset-mcp.service.consul:5008/mcp"
+        assert url == "https://app.superset-mcp.service.consul:5008/mcp"
         methods = [c.kwargs["json"]["method"] for c in post.call_args_list]
         assert methods == ["initialize", "notifications/initialized", "tools/call"]
         call = post.call_args_list[2].kwargs
@@ -102,6 +104,21 @@ class TestSupersetMcpClient:
             "name": "generate_chart",
             "arguments": {"request": {"dataset_id": 3}},
         }
+
+    def test_calls_the_service_over_https(self, mcp):
+        assert mcp._url == "https://app.superset-mcp.service.consul:5008/mcp"
+
+    def test_verifies_the_service_against_the_cluster_ca_with_hostname_verification_off(
+        self, mcp
+    ):
+        assert mcp._http.verify == "/tmp/ca_chain.pem"
+
+    def test_without_a_cluster_ca_it_verifies_as_the_rest_client_does(
+        self, hopsworks_client
+    ):
+        hopsworks_client._hopsworks_ca_trust_store_path = None
+        hopsworks_client._verify = True
+        assert _SupersetMcpClient(119, "consul")._http.verify is True
 
     def test_a_stateful_server_gets_its_session_id_back(self, mcp, hopsworks_client):
         post = self._serve(
