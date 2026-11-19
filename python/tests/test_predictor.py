@@ -1841,6 +1841,7 @@ class TestPredictor:
             (PREDICTOR.MODEL_SERVER_TRITON, PREDICTOR.LOADING_STRATEGY_MOUNT),
             (PREDICTOR.MODEL_SERVER_TRITON, PREDICTOR.LOADING_STRATEGY_DOWNLOAD),
             (PREDICTOR.MODEL_SERVER_VLLM, PREDICTOR.LOADING_STRATEGY_RUNAI_STREAMER),
+            (PREDICTOR.MODEL_SERVER_VLLM, PREDICTOR.LOADING_STRATEGY_MOUNT),
             (PREDICTOR.MODEL_SERVER_VLLM, PREDICTOR.LOADING_STRATEGY_DOWNLOAD),
         ],
     )
@@ -1899,21 +1900,6 @@ class TestPredictor:
         assert "is not supported by the" in str(e_info.value)
         assert "'DOWNLOAD, MOUNT'" in str(e_info.value)
 
-    def test_loading_strategy_hopsfs_mount_on_vllm_raises(self, mocker):
-        # Arrange
-        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
-        from hsml.llm.predictor import Predictor as LLMPredictor
-
-        # Act + Assert
-        with pytest.raises(ValueError) as e_info:
-            LLMPredictor(
-                name="my_llm",
-                loading_strategy=PREDICTOR.LOADING_STRATEGY_MOUNT,
-            )
-
-        assert "is not supported by the 'VLLM' model server" in str(e_info.value)
-        assert "'DOWNLOAD, RUNAI_STREAMER'" in str(e_info.value)
-
     def test_loading_strategy_without_model_server_checks_only_the_value(self, mocker):
         # Arrange
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
@@ -1940,11 +1926,11 @@ class TestPredictor:
 
         # Assert
         assert p.loading_strategy == PREDICTOR.LOADING_STRATEGY_RUNAI_STREAMER
-        with pytest.raises(ValueError, match="not supported"):
-            p.loading_strategy = PREDICTOR.LOADING_STRATEGY_MOUNT
+        p.loading_strategy = PREDICTOR.LOADING_STRATEGY_MOUNT
+        assert p.loading_strategy == PREDICTOR.LOADING_STRATEGY_MOUNT
         with pytest.raises(ValueError, match="not valid"):
             p.loading_strategy = "INVALID"
-        assert p.loading_strategy == PREDICTOR.LOADING_STRATEGY_RUNAI_STREAMER
+        assert p.loading_strategy == PREDICTOR.LOADING_STRATEGY_MOUNT
         p.loading_strategy = None
         assert p.loading_strategy is None
 
@@ -1983,16 +1969,16 @@ class TestPredictor:
     ):
         # Arrange
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
-        from hsml.llm.model import Model as LLMModel
+        from hsml.triton.model import Model as TritonModel
 
-        model = LLMModel(id=1, name="my_llm", version=1)
+        model = TritonModel(id=1, name="my_triton", version=1)
 
         # Act + Assert
         with pytest.raises(ValueError, match="not supported"):
             predictor.Predictor.for_model(
                 model,
-                name="my_llm",
-                loading_strategy=PREDICTOR.LOADING_STRATEGY_MOUNT,
+                name="my_triton",
+                loading_strategy=PREDICTOR.LOADING_STRATEGY_RUNAI_STREAMER,
             )
 
     def test_update_from_response_json_preserves_loading_strategy(

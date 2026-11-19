@@ -490,11 +490,11 @@ class Model:
                 A deployment also keeps its tag after an admin stops advertising it.
                 Ignored for non-Triton model servers.
             loading_strategy: How the model server reads the model files.
-                `'MOUNT'` mounts them read-only from HopsFS and the model server reads them in place; every model server except vLLM accepts it.
+                `'MOUNT'` mounts them read-only from HopsFS and the model server reads them in place; every model server accepts it, and vLLM reads a mount this way several times slower than with `'RUNAI_STREAMER'`.
                 `'RUNAI_STREAMER'` mounts them the same way and vLLM loads them with the Run:ai Model Streamer; only vLLM accepts it, for a model with safetensors weights at the top of its files and not with the vLLM-Omni variant.
                 `'DOWNLOAD'` copies them to the local disk of the pod before the model server starts; every model server accepts it.
                 The two mount strategies need the HopsFS CSI driver on the cluster.
-                `None` lets Hopsworks choose on a new deployment: a mount strategy when the cluster has the HopsFS CSI driver and the model server can read the model from it, `'DOWNLOAD'` otherwise.
+                `None` lets Hopsworks choose on a new deployment: with the HopsFS CSI driver, `'RUNAI_STREAMER'` for vLLM and `'MOUNT'` for every other model server and for vLLM-Omni; `'DOWNLOAD'` without the driver, and for a vLLM model the Run:ai Model Streamer cannot load.
                 On an update, `None` keeps the deployment's current strategy.
                 The values are also available as `PREDICTOR.LOADING_STRATEGY_*` constants in `hsml.constants`; see [`Predictor.loading_strategy`][hsml.predictor.Predictor.loading_strategy].
 

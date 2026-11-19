@@ -284,14 +284,12 @@ class Predictor(DeployableComponent):
             )
         if model_server is None:
             return loading_strategy
-        # vLLM reads mounted files through the Run:ai Model Streamer, every other
-        # model server reads them in place.
-        unsupported = (
-            PREDICTOR.LOADING_STRATEGY_MOUNT
-            if model_server == PREDICTOR.MODEL_SERVER_VLLM
-            else PREDICTOR.LOADING_STRATEGY_RUNAI_STREAMER
-        )
-        if loading_strategy == unsupported:
+        # Every model server reads mounted files in place; only vLLM streams them.
+        unsupported = PREDICTOR.LOADING_STRATEGY_RUNAI_STREAMER
+        if (
+            model_server != PREDICTOR.MODEL_SERVER_VLLM
+            and loading_strategy == unsupported
+        ):
             allowed = [s for s in strategies if s != unsupported]
             raise ValueError(
                 "Loading strategy '{}' is not supported by the '{}' model server. Possible values are '{}'".format(
@@ -1196,13 +1194,13 @@ class Predictor(DeployableComponent):
     def loading_strategy(self) -> str | None:
         """How the model server reads the model files: `'MOUNT'`, `'RUNAI_STREAMER'` or `'DOWNLOAD'`.
 
-        `'MOUNT'` mounts the model files read-only from HopsFS and the model server reads them in place; it is accepted by every model server except vLLM.
+        `'MOUNT'` mounts the model files read-only from HopsFS and the model server reads them in place; it is accepted by every model server, and vLLM reads a mount this way several times slower than with `'RUNAI_STREAMER'`.
         `'RUNAI_STREAMER'` mounts the files the same way and vLLM loads them with the Run:ai Model Streamer; it is accepted by vLLM only, for a model with safetensors weights at the top of its files and not with the vLLM-Omni variant.
         `'DOWNLOAD'` copies the files to the local disk of the pod before the model server starts; it is accepted by every model server.
         The two mount strategies need the HopsFS CSI driver on the cluster.
         The values are also available as `PREDICTOR.LOADING_STRATEGY_*` constants in `hsml.constants`.
 
-        `None` lets Hopsworks choose when the deployment is created: a mount strategy when the cluster has the HopsFS CSI driver and the model server can read the model from it, `'DOWNLOAD'` otherwise.
+        `None` lets Hopsworks choose when the deployment is created: with the HopsFS CSI driver, `'RUNAI_STREAMER'` for vLLM and `'MOUNT'` for every other model server and for vLLM-Omni; `'DOWNLOAD'` without the driver, and for a vLLM model the Run:ai Model Streamer cannot load.
         Setting it to `None` before a save call keeps the stored value unchanged.
         A saved deployment of a model reports the strategy in effect; a deployment without a model reports `None`.
         """
