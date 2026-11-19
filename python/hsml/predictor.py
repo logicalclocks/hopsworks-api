@@ -1195,12 +1195,12 @@ class Predictor(DeployableComponent):
         """How the model server reads the model files: `'MOUNT'`, `'RUNAI_STREAMER'` or `'DOWNLOAD'`.
 
         `'MOUNT'` mounts the model files read-only from HopsFS and the model server reads them in place; it is accepted by every model server, and vLLM reads each safetensors file whole into memory before loading it, unless its configuration file sets `safetensors_load_strategy`.
-        `'RUNAI_STREAMER'` mounts the files the same way and vLLM loads them with the Run:ai Model Streamer; it is accepted by vLLM only, for a model with safetensors weights at the top of its files and not with the vLLM-Omni variant.
+        `'RUNAI_STREAMER'` mounts the files the same way and vLLM loads them with the Run:ai Model Streamer, which can load faster when the deployment requests several GPUs; it is accepted by vLLM only, for a model with safetensors weights at the top of its files and not with the vLLM-Omni variant.
         `'DOWNLOAD'` copies the files to the local disk of the pod before the model server starts; it is accepted by every model server.
         The two mount strategies need the HopsFS CSI driver on the cluster.
         The values are also available as `PREDICTOR.LOADING_STRATEGY_*` constants in `hsml.constants`.
 
-        `None` lets Hopsworks choose when the deployment is created: with the HopsFS CSI driver, `'RUNAI_STREAMER'` for vLLM and `'MOUNT'` for every other model server and for vLLM-Omni; `'DOWNLOAD'` without the driver, and for a vLLM model the Run:ai Model Streamer cannot load.
+        `None` lets Hopsworks choose when the deployment is created: `'MOUNT'` with the HopsFS CSI driver, `'DOWNLOAD'` without it.
         Setting it to `None` before a save call keeps the stored value unchanged.
         A saved deployment of a model reports the strategy in effect; a deployment without a model reports `None`.
         """
