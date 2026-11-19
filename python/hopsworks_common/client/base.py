@@ -585,3 +585,14 @@ class Client:
             ).decode()
 
         self._replace_file(client_key_path, client_key)
+
+
+def _never_sent(error: requests.exceptions.ConnectionError) -> bool:
+    """Whether the connection failed before the request went out: a DNS failure, a refused connection, a connect timeout."""
+    if isinstance(error, requests.exceptions.ConnectTimeout):
+        return True
+    cause = error.args[0] if error.args else None
+    return isinstance(
+        getattr(cause, "reason", None),
+        (urllib3.exceptions.NewConnectionError, urllib3.exceptions.ConnectTimeoutError),
+    )

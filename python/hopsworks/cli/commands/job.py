@@ -209,7 +209,8 @@ def job_create(
     if description:
         config["description"] = description
     try:
-        job = api.create_job(name=name, config=config)
+        with output.sdk_quiet():
+            job = api.create_job(name=name, config=config)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not create job: {exc}") from exc
     output.success("✓ Created job %s", getattr(job, "name", name))
@@ -316,7 +317,8 @@ def job_deploy(
 
     # 3. Create or update the job.
     try:
-        job = api.create_job(name=name, config=config)
+        with output.sdk_quiet():
+            job = api.create_job(name=name, config=config)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not deploy job: {exc}") from exc
     output.success("✓ Deployed job %s (env=%s)", name, environment or "default")
@@ -333,7 +335,8 @@ def job_deploy(
     # 5. Run.
     if do_run:
         try:
-            execution = job.run(args=app_args, await_termination=wait)
+            with output.sdk_quiet():
+                execution = job.run(args=app_args, await_termination=wait)
         except Exception as exc:  # noqa: BLE001
             raise click.ClickException(f"Run failed: {exc}") from exc
         output.success(
@@ -391,12 +394,13 @@ def job_run(
         raise click.UsageError("--end-time requires --start-time.")
     job = _get_job(ctx, name)
     try:
-        execution = job.run(
-            args=app_args,
-            await_termination=wait,
-            start_time=start_time,
-            end_time=end_time,
-        )
+        with output.sdk_quiet():
+            execution = job.run(
+                args=app_args,
+                await_termination=wait,
+                start_time=start_time,
+                end_time=end_time,
+            )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Run failed: {exc}") from exc
 
@@ -460,12 +464,13 @@ def job_backfill(
         raise click.UsageError("--end-time must be strictly after --start-time.")
     job = _get_job(ctx, name)
     try:
-        execution = job.run(
-            args=app_args,
-            await_termination=wait,
-            start_time=start_time,
-            end_time=end_time,
-        )
+        with output.sdk_quiet():
+            execution = job.run(
+                args=app_args,
+                await_termination=wait,
+                start_time=start_time,
+                end_time=end_time,
+            )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Backfill failed: {exc}") from exc
 
@@ -908,8 +913,9 @@ def job_describe(ctx: click.Context, name: str, description: str) -> None:
     """
     job = _get_job(ctx, name)
     try:
-        job.description = description
-        job.save()
+        with output.sdk_quiet():
+            job.description = description
+            job.save()
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not update description: {exc}") from exc
     output.success("✓ Updated description of %s", name)

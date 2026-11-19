@@ -739,6 +739,36 @@ def test_app_start_no_wait_passes_false(mock_project):
     a.run.assert_called_once_with(await_serving=False)
 
 
+def test_app_start_json_stdout_is_only_the_payload(mock_project):
+    apps = mock_project.get_app_api.return_value
+    a = _fake_app(state="RUNNING", serving=True, app_url="https://h/x")
+    a.run.side_effect = lambda **_: print("https://h/x")
+    apps.get_app.return_value = a
+    result = CliRunner().invoke(cli, ["--json", "app", "start", "dash"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {
+        "name": "my_app",
+        "state": "RUNNING",
+        "serving": True,
+        "url": "https://h/x",
+    }
+
+
+def test_app_redeploy_json_stdout_is_only_the_payload(mock_project):
+    apps = mock_project.get_app_api.return_value
+    a = _fake_app(state="RUNNING", serving=True, app_url="https://h/x")
+    a.redeploy.side_effect = lambda **_: print("https://h/x")
+    apps.get_app.return_value = a
+    result = CliRunner().invoke(cli, ["--json", "app", "redeploy", "dash"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {
+        "name": "my_app",
+        "state": "RUNNING",
+        "serving": True,
+        "url": "https://h/x",
+    }
+
+
 def test_app_redeploy_defaults_await_serving_true(mock_project):
     apps = mock_project.get_app_api.return_value
     a = _fake_app(state="RUNNING", serving=True, app_url="https://h/x")
