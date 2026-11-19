@@ -290,6 +290,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 feature_group, feature_dataframe, dataframe_features
             )
 
+        decimals_cast = self._delta_rs_casts_decimals(feature_group)
         if not feature_group._id:
             # only save metadata if feature group does not exist
             self._save_feature_group_metadata(
@@ -300,7 +301,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         else:
             # else, just verify that feature group schema matches user-provided dataframe
             self._verify_schema_compatibility(
-                self._columns_for_user_schema(feature_group), dataframe_features
+                self._columns_for_user_schema(feature_group),
+                dataframe_features,
+                decimals_cast=decimals_cast,
             )
 
         # ge validation on python and non stream feature groups on spark
@@ -332,6 +335,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             )
 
         if overwrite:
+            if decimals_cast:
+                # The delta-rs cast raises only after the clear, which would lose the old rows.
+                self._check_declared_decimals(feature_group, feature_dataframe)
             self._feature_group_api._delete_content(feature_group)
 
         return (
@@ -373,6 +379,37 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 "rowsDeleted": feature_group_commit.rows_deleted,
             }
         return commit_details
+
+    @staticmethod
+    def _delta_rs_casts_decimals(feature_group) -> bool:
+        """Whether the only write is the Python engine's delta-rs write, which casts decimals to the table's type."""
+        return (
+            engine._get_type() == "python"
+            and not isinstance(feature_group, fg.ExternalFeatureGroup)
+            and feature_group.time_travel_format == "DELTA"
+            and not feature_group.stream
+            and not feature_group.online_enabled
+        )
+
+    @staticmethod
+    def _check_declared_decimals(feature_group, feature_dataframe) -> None:
+        """Raise `ArrowInvalid` if a decimal value does not fit the feature group's declared type."""
+        import pandas as pd
+        import pyarrow as pa
+
+        names = [
+            f.name
+            for f in feature_group.columns
+            if (f.type or "").lower().startswith("decimal")
+            and f.name in feature_dataframe.columns
+        ]
+        if not names:
+            return
+        if isinstance(feature_dataframe, pd.DataFrame):
+            batch = pa.Table.from_pandas(feature_dataframe[names], preserve_index=False)
+        else:
+            batch = feature_dataframe.select(names).to_arrow()
+        delta_engine.DeltaEngine._cast_to_declared_decimals(batch, feature_group)
 
     @staticmethod
     def _get_spark_session_and_context():
@@ -1001,7 +1038,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         elif dataframe_features:
             # User provided a schema; check if it is compatible with dataframe.
             self._verify_schema_compatibility(
-                self._columns_for_user_schema(feature_group), dataframe_features
+                self._columns_for_user_schema(feature_group),
+                dataframe_features,
+                decimals_cast=self._delta_rs_casts_decimals(feature_group),
             )
 
         # set primary, foreign and partition key columns
@@ -1063,6 +1102,24 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             if feature_group.data_source
             else None
         )
+        if (
+            is_new_feature_group
+            and feature_schema_available
+            and (feature_group.time_travel_format or "").upper() == "DELTA"
+            and not feature_group.clustered_by
+            and FeatureGroupEngine._get_spark_session_and_context()[0] is None
+        ):
+            # Ask the backend to write the first Delta commit at create, so
+            # the client skips the empty-table write. Old backends ignore it.
+            feature_group._initialize_offline_table = True
+            feature_group._enable_change_data_feed = (
+                delta_engine.DeltaEngine.change_data_feed_value(
+                    (write_options or {}).get(
+                        delta_engine.DeltaEngine.DELTA_ENABLE_CHANGE_DATA_FEED, "true"
+                    )
+                )
+                == "true"
+            )
         new_fg = self._feature_group_api._save(feature_group)
         if (
             pre_save_rest_endpoint
@@ -1089,7 +1146,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 source_features=pre_save_features,
             )
 
-        if feature_schema_available:
+        if feature_schema_available and not feature_group._offline_table_initialized:
             # create empty table to write feature schema to table path. The
             # engines apply the feature group's partitioned_by at creation
             # (Iceberg partition spec, Delta liquid clustering, Hudi grain
