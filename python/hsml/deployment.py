@@ -1580,7 +1580,11 @@ class Deployment:
     def knative_mode(self):
         """Whether the deployment runs in KServe Knative mode.
 
-        `True` selects Knative mode, `False` selects Standard mode and `None` lets the backend decide on creation or keeps the stored mode on an update.
+        Knative mode is deprecated since 5.3 and removed in 5.4.
+        Convert a deployment with `deployment.stop(); deployment.knative_mode = False; deployment.save(); deployment.start()`.
+        The deployment restarts once, Knative-only scaling settings are dropped and Standard defaults fill the gaps.
+
+        `True` selects Knative mode and warns, `False` selects Standard mode and `None` lets the backend decide on creation or keeps the stored mode on an update.
         See [`Predictor.knative_mode`][hsml.predictor.Predictor.knative_mode] for the full mode semantics.
 
         Info: Adds Knative mode selection, ~=5.1.0
@@ -1590,7 +1594,9 @@ class Deployment:
 
     @knative_mode.setter
     def knative_mode(self, knative_mode: bool | None):
-        self._predictor.knative_mode = knative_mode
+        if knative_mode:
+            util._warn_knative_mode_deprecated()
+        self._predictor._knative_mode = knative_mode
 
     @public
     @property

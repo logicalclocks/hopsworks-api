@@ -284,9 +284,10 @@ DEFAULT_MEMORY_MB = 1024
     "--knative/--standard",
     "knative_mode",
     default=None,
-    help="KServe mode: Knative (scale-to-zero) or Standard (no scale-to-zero, CPU/memory autoscaling or fixed replicas when min equals max). "
-    "Omit to let the backend decide (vLLM deployments default to Standard, others to Knative mode). "
-    "On an update, omitting it keeps the deployment's current mode.",
+    help="KServe mode: Standard (the default; CPU/memory or KEDA autoscaling, or fixed replicas when min equals max) or Knative (deprecated since 5.3, removed in 5.4). "
+    "Omit to let the backend decide, which is Standard for a new deployment. "
+    "On an update, omitting it keeps the deployment's current mode. "
+    "Convert a Knative deployment in the SDK: deployment.stop(); deployment.knative_mode = False; deployment.save(); deployment.start().",
 )
 @click.option("--description", default="", help="Deployment description.")
 @click.option(
@@ -381,6 +382,13 @@ def deployment_create(
             script_file = f"/Projects/{project.name}/{script_file}"
         output.success("✓ Uploaded predictor -> %s", script_file)
 
+    if knative_mode:
+        output.warn(
+            "Knative mode is deprecated since 5.3 and will be removed in 5.4; "
+            "use --standard (or omit the flag) for a Standard-mode deployment. "
+            "Convert a Knative deployment in the SDK: "
+            "deployment.stop(); deployment.knative_mode = False; deployment.save(); deployment.start()."
+        )
     try:
         deployment = model.deploy(
             name=deploy_name,

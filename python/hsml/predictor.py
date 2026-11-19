@@ -1178,11 +1178,17 @@ class Predictor(DeployableComponent):
     def knative_mode(self):
         """Whether this deployment runs in KServe Knative mode.
 
+        Knative mode is deprecated since 5.3 and removed in 5.4.
+        A 5.3 cluster refuses to create a Knative deployment or switch one to Knative mode unless an administrator allows it; existing Knative deployments keep working.
+        Convert one with `deployment.stop(); deployment.knative_mode = False; deployment.save(); deployment.start()`.
+        The deployment restarts once, Knative-only scaling settings are dropped and Standard defaults fill the gaps.
+
         `True` selects Knative mode, which supports scale-to-zero and Knative-only autoscaling.
-        `False` selects Standard mode, which requires at least one instance and autoscales on a CPU/memory metric between the minimum and maximum instances, or runs a fixed replica count when they are equal.
-        `None` leaves the mode for the backend to decide: LLM (vLLM) deployments default to Standard, every other deployment defaults to Knative mode.
+        `False` selects Standard mode, which autoscales on a CPU/memory metric between the minimum and maximum instances, or runs a fixed replica count when they are equal.
+        `None` leaves the mode for the backend to decide, which is Standard for a new deployment and the stored mode on an update.
         Read the current mode from a saved deployment via this property.
         Setting it to `None` before a save call keeps the stored mode unchanged.
+        Setting it to `True` warns.
 
         Info: Adds Knative mode selection, ~=5.1.0
             Deployments can now select between KServe Knative and Standard mode.
@@ -1191,6 +1197,8 @@ class Predictor(DeployableComponent):
 
     @knative_mode.setter
     def knative_mode(self, knative_mode: bool | None):
+        if knative_mode:
+            util._warn_knative_mode_deprecated()
         self._knative_mode = knative_mode
 
     @public

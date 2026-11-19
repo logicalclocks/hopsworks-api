@@ -46,5 +46,6 @@ def ml_formatwarning(message, category, filename, lineno, line=None):
 
 warnings.formatwarning = ml_formatwarning
 warnings.simplefilter("always", util.VersionWarning)
+warnings.simplefilter("always", util.KnativeModeWarning)
 
 __all__ = ["connection"]

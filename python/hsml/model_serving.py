@@ -111,7 +111,10 @@ class ModelServing:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If unable to retrieve deployment from model serving.
         """
-        return self._serving_api._get_by_id(id)
+        deployment_instance = self._serving_api._get_by_id(id)
+        if deployment_instance is not None and deployment_instance.knative_mode:
+            util._warn_knative_deployment_loaded(deployment_instance.name)
+        return deployment_instance
 
     @public
     @usage._method_logger
@@ -145,6 +148,8 @@ class ModelServing:
             util._check_missing_mandatory_tags(
                 deployment_instance.missing_mandatory_tags
             )
+            if deployment_instance.knative_mode:
+                util._warn_knative_deployment_loaded(deployment_instance.name)
         return deployment_instance
 
     @public
@@ -187,7 +192,11 @@ class ModelServing:
         if status is not None:
             self._validate_deployment_status(status)
 
-        return self._serving_api._get_all(model_name, status)
+        deployments = self._serving_api._get_all(model_name, status)
+        for deployment_instance in deployments:
+            if deployment_instance.knative_mode:
+                util._warn_knative_deployment_loaded(deployment_instance.name)
+        return deployments
 
     def _validate_deployment_status(self, status):
         statuses = list(util._get_members(PREDICTOR_STATE, prefix="STATUS"))
@@ -365,7 +374,9 @@ class ModelServing:
             passed_features: Feature view features whose values clients send with each request; see [`Model.deploy`][hsml.model.Model.deploy].
             default_predictor: Whether the library's default predictor serves the model; see [`Model.deploy`][hsml.model.Model.deploy].
             knative_mode: Whether to deploy in KServe Knative mode.
-                `None` (default) lets the backend decide: a new deployment runs in Standard mode, Knative is the opt-in; on an update, `None` keeps the deployment's current mode.
+                Knative mode is deprecated since 5.3 and removed in 5.4; a 5.3 cluster refuses it unless an administrator allows it, and passing `True` warns.
+                `None` (default) lets the backend decide: a new deployment runs in Standard mode; on an update, `None` keeps the deployment's current mode.
+                Convert an existing Knative deployment with `deployment.stop(); deployment.knative_mode = False; deployment.save(); deployment.start()`; the deployment restarts once, Knative-only scaling settings are dropped and Standard defaults fill the gaps.
                 Standard mode autoscales between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum, under KEDA wherever it is installed and KServe's HPA otherwise), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
                 A predictor without a transformer scales to zero when idle with `min_instances=0`; the SDK sends a minimum of 1 unless you set it (the UI defaults a new deployment to 0 where KEDA is installed); see [`PredictorScalingConfig`][hsml.scaling_config.PredictorScalingConfig].
             triton_image_tag: Triton Inference Server image tag for Triton deployments.
@@ -380,6 +391,9 @@ class ModelServing:
         """
         if name is None:
             name = model._get_default_serving_name()
+
+        if knative_mode:
+            util._warn_knative_mode_deprecated()
 
         return Predictor.for_model(
             model,
@@ -448,7 +462,7 @@ class ModelServing:
             environment: The inference environment to use.
             env_vars: Environment variables to set on the predictor.
             tags: Tags to attach to the deployment when it is created.
-            knative_mode: Whether to deploy in KServe Knative mode; see [`ModelServing.create_predictor`][hsml.model_serving.ModelServing.create_predictor].
+            knative_mode: Whether to deploy in KServe Knative mode, which is deprecated since 5.3 and removed in 5.4; see [`ModelServing.create_predictor`][hsml.model_serving.ModelServing.create_predictor].
 
         Example:
             ```python
@@ -461,6 +475,9 @@ class ModelServing:
         Returns:
             The predictor metadata object.
         """
+        if knative_mode:
+            util._warn_knative_mode_deprecated()
+
         return Predictor.for_feature_view(
             feature_view,
             name=name,
@@ -616,7 +633,9 @@ class ModelServing:
             git_auto_redeploy: Roll the endpoint to the branch HEAD whenever a new commit is pushed.
                 Only valid together with `git_url`.
             knative_mode: Whether to deploy in KServe Knative mode.
-                `None` (default) lets the backend decide: a new deployment runs in Standard mode, Knative is the opt-in; on an update, `None` keeps the deployment's current mode.
+                Knative mode is deprecated since 5.3 and removed in 5.4; a 5.3 cluster refuses it unless an administrator allows it, and passing `True` warns.
+                `None` (default) lets the backend decide: a new deployment runs in Standard mode; on an update, `None` keeps the deployment's current mode.
+                Convert an existing Knative deployment with `deployment.stop(); deployment.knative_mode = False; deployment.save(); deployment.start()`; the deployment restarts once, Knative-only scaling settings are dropped and Standard defaults fill the gaps.
                 Standard mode autoscales between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum, under KEDA wherever it is installed and KServe's HPA otherwise), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
                 A predictor without a transformer scales to zero when idle with `min_instances=0`; the SDK sends a minimum of 1 unless you set it (the UI defaults a new deployment to 0 where KEDA is installed); see [`PredictorScalingConfig`][hsml.scaling_config.PredictorScalingConfig].
             memory: Memory given to an agent that configures none itself; see
@@ -625,6 +644,9 @@ class ModelServing:
         Returns:
             The predictor metadata object.
         """
+        if knative_mode:
+            util._warn_knative_mode_deprecated()
+
         git_url = _trim_to_none(git_url)
         git_provider = _normalize_git_provider(git_provider)
         git_branch = _trim_to_none(git_branch)
@@ -731,7 +753,9 @@ class ModelServing:
                 Only valid together with `git_url`.
                 The running agent keeps serving until the new version is ready.
             knative_mode: Whether to deploy in KServe Knative mode.
-                `None` (default) lets the backend decide: a new deployment runs in Standard mode, Knative is the opt-in; on an update, `None` keeps the deployment's current mode.
+                Knative mode is deprecated since 5.3 and removed in 5.4; a 5.3 cluster refuses it unless an administrator allows it, and passing `True` warns.
+                `None` (default) lets the backend decide: a new deployment runs in Standard mode; on an update, `None` keeps the deployment's current mode.
+                Convert an existing Knative deployment with `deployment.stop(); deployment.knative_mode = False; deployment.save(); deployment.start()`; the deployment restarts once, Knative-only scaling settings are dropped and Standard defaults fill the gaps.
                 Standard mode autoscales between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum, under KEDA wherever it is installed and KServe's HPA otherwise), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
                 A predictor without a transformer scales to zero when idle with `min_instances=0`; the SDK sends a minimum of 1 unless you set it (the UI defaults a new deployment to 0 where KEDA is installed); see [`PredictorScalingConfig`][hsml.scaling_config.PredictorScalingConfig].
             memory:
@@ -755,6 +779,9 @@ class ModelServing:
             ValueError: If `entry` is neither a `.py` file nor a directory with `pyproject.toml`, or if `name`/`environment` contain characters outside `[A-Za-z0-9_-]`.
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
+        if knative_mode:
+            util._warn_knative_mode_deprecated()
+
         entry = _trim_to_none(entry)
         if entry is None:
             raise ValueError("entry must not be empty")
