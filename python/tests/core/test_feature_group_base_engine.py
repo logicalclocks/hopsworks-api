@@ -14,6 +14,8 @@
 #   limitations under the License.
 #
 
+import pytest
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import feature, feature_group
 from hsfs.core import feature_group_base_engine
 
@@ -199,3 +201,55 @@ class TestFeatureGroupBaseEngine:
         assert f in result
         assert f1 in result
         assert f2 in result
+
+    def test_verify_schema_compatibility_numbers_widen(self):
+        fg_base_engine = feature_group_base_engine.FeatureGroupBaseEngine(
+            feature_store_id=99
+        )
+        declared = [
+            feature.Feature(name="id", type="bigint"),
+            feature.Feature(name="n", type="int"),
+            feature.Feature(name="b", type="bigint"),
+            feature.Feature(name="x", type="double"),
+        ]
+        derived = [
+            feature.Feature(name="id", type="int"),
+            feature.Feature(name="n", type="smallint"),
+            feature.Feature(name="b", type="tinyint"),
+            feature.Feature(name="x", type="float"),
+        ]
+
+        fg_base_engine._verify_schema_compatibility(
+            declared, derived, numbers_widen=True
+        )
+        # without the flag the types must match as before
+        with pytest.raises(FeatureStoreException) as exc:
+            fg_base_engine._verify_schema_compatibility(declared, derived)
+        assert "id (expected type: 'bigint', derived from input: 'int')" in str(
+            exc.value
+        )
+
+    @pytest.mark.parametrize(
+        "declared_type,df_type",
+        [
+            ("int", "bigint"),
+            ("float", "double"),
+            ("double", "bigint"),
+            ("bigint", "float"),
+        ],
+    )
+    def test_verify_schema_compatibility_numbers_never_narrow(
+        self, declared_type, df_type
+    ):
+        fg_base_engine = feature_group_base_engine.FeatureGroupBaseEngine(
+            feature_store_id=99
+        )
+
+        with pytest.raises(FeatureStoreException) as exc:
+            fg_base_engine._verify_schema_compatibility(
+                [feature.Feature(name="v", type=declared_type)],
+                [feature.Feature(name="v", type=df_type)],
+                numbers_widen=True,
+            )
+
+        assert f"v (expected type: '{declared_type}'" in str(exc.value)

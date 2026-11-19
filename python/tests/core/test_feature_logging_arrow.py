@@ -338,7 +338,7 @@ def test_columns_match_baseline(parameters, hidden, types):
                 assert value is None, name
                 continue
             assert value == baseline[name], name
-    assert expected[0]["model_version"] == "None"
+    assert expected[0]["model_version"] is None
     if parameters:
         assert (
             batch[0]["request_parameters"]
