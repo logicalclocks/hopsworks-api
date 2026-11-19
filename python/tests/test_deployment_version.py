@@ -74,6 +74,35 @@ class TestDeploymentVersion:
         assert version.predictor_scaling_config.min_instances == 1
         assert version.to_dict()["predictorScalingConfig"]["minInstances"] == 1
 
+    def test_hopsfs_mount_round_trip(self):
+        resources = {
+            "requests": {"cores": 1, "memory": 1024, "gpus": 0},
+            "limits": {"cores": 2, "memory": 2048, "gpus": 0},
+        }
+        json_dict = {
+            "version": 1,
+            "predictorResources": {
+                **resources,
+                "hopsfsMountConfig": {"cores": 0.5, "namenodeConnections": 4},
+            },
+            "transformerResources": {
+                **resources,
+                "hopsfsMountConfig": {"memory": 1024},
+            },
+        }
+        version = DeploymentVersion.from_response_json(json_dict)
+
+        again = DeploymentVersion.from_response_json(json.loads(version.json()))
+
+        assert version.predictor_resources.hopsfs_mount == {
+            "cores": 0.5,
+            "namenode_connections": 4,
+        }
+        assert version.transformer_resources.hopsfs_mount == {"memory": 1024}
+        for sent in (version.to_dict(), again.to_dict()):
+            assert sent["predictorResources"] == json_dict["predictorResources"]
+            assert sent["transformerResources"] == json_dict["transformerResources"]
+
     def test_environment_names_are_exposed(self):
         version = DeploymentVersion.from_response_json(
             {
