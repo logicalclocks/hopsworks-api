@@ -6,6 +6,7 @@ import click
 import pytest
 from click.testing import CliRunner
 from hopsworks.cli.commands import git as git_cmd
+from hopsworks.cli.main import cli
 
 
 class _Provider:
@@ -56,8 +57,8 @@ def test_canonical_provider_and_default_host():
 
 def test_set_registers_with_default_host_and_hidden_token(api):
     result = CliRunner().invoke(
-        git_cmd.git_group,
-        ["provider", "set", "--username", "jim"],
+        cli,
+        ["git", "provider", "set", "--username", "jim"],
         input="tok3n\n",
     )
     assert result.exit_code == 0, result.output
@@ -68,8 +69,8 @@ def test_set_registers_with_default_host_and_hidden_token(api):
 def test_set_is_idempotent_without_force(api):
     api.providers.append(_Provider("GitHub", "jim", "github.com"))
     result = CliRunner().invoke(
-        git_cmd.git_group,
-        ["provider", "set", "--username", "jim", "--token", "new"],
+        cli,
+        ["git", "provider", "set", "--username", "jim", "--token", "new"],
     )
     assert result.exit_code == 0, result.output
     assert api.set_calls == []
@@ -79,24 +80,24 @@ def test_set_is_idempotent_without_force(api):
 def test_set_force_replaces(api):
     api.providers.append(_Provider("GitHub", "jim", "github.com"))
     result = CliRunner().invoke(
-        git_cmd.git_group,
-        ["provider", "set", "--username", "jim", "--token", "new", "--force"],
+        cli,
+        ["git", "provider", "set", "--username", "jim", "--token", "new", "--force"],
     )
     assert result.exit_code == 0, result.output
     assert api.set_calls == [("GitHub", "jim", "new", "github.com")]
 
 
 def test_delete_requires_existing(api):
-    result = CliRunner().invoke(git_cmd.git_group, ["provider", "delete"])
+    result = CliRunner().invoke(cli, ["git", "provider", "delete"])
     assert result.exit_code != 0
     api.providers.append(_Provider("GitHub", "jim", "github.com"))
-    result = CliRunner().invoke(git_cmd.git_group, ["provider", "delete"])
+    result = CliRunner().invoke(cli, ["git", "provider", "delete"])
     assert result.exit_code == 0, result.output
     assert api.deleted == [("GitHub", "github.com")]
 
 
 def test_list_prints_registered_providers(api):
     api.providers.append(_Provider("GitLab", "jim", "gitlab.com"))
-    result = CliRunner().invoke(git_cmd.git_group, ["provider", "list"])
+    result = CliRunner().invoke(cli, ["git", "provider", "list"])
     assert result.exit_code == 0, result.output
     assert "GitLab" in result.output and "gitlab.com" in result.output

@@ -7,6 +7,9 @@ from the part the model was scored on (validation for research runs, test otherw
 Classification: ROC curve, precision-recall curve, confusion matrix at the 0.5
 threshold, calibration, score distribution per class. Regression: predicted against
 actual, residuals. Both: feature importance, when the model exposes it.
+
+The look is hops-design's: the accent for the model's series, greys for references
+and comparison, no top or right spine, a light grid, muted labels.
 """
 
 from __future__ import annotations
@@ -18,6 +21,34 @@ from typing import Any
 import numpy as np
 
 _logger = logging.getLogger(__name__)
+
+ACCENT = "#1eb182"
+CONTEXT = "#a0a0a0"
+LIGHT = "#cbcbcb"
+_STYLE = {
+    "font.family": ["Inter", "DejaVu Sans", "sans-serif"],
+    "font.size": 10,
+    "text.color": "#252525",
+    "axes.titlesize": 11,
+    "axes.titleweight": "bold",
+    "axes.titlelocation": "left",
+    "axes.labelcolor": "#737373",
+    "axes.edgecolor": "#e5e5e5",
+    "axes.spines.top": False,
+    "axes.spines.right": False,
+    "axes.grid": True,
+    "grid.color": "#e5e5e5",
+    "grid.linewidth": 0.8,
+    "axes.axisbelow": True,
+    "xtick.color": "#737373",
+    "ytick.color": "#737373",
+    "xtick.labelsize": 9,
+    "ytick.labelsize": 9,
+    "legend.frameon": False,
+    "figure.facecolor": "white",
+    "axes.facecolor": "white",
+    "savefig.facecolor": "white",
+}
 
 
 def _curves(y: np.ndarray, s: np.ndarray) -> tuple[np.ndarray, ...]:
@@ -45,13 +76,20 @@ def _importance(model: Any, features: list[str]) -> tuple[list[str], np.ndarray]
     return [features[i] for i in top], np.asarray(values)[top]
 
 
+def _accent_map(plt: Any) -> Any:
+    """White to the accent, for a heatmap of counts."""
+    from matplotlib.colors import LinearSegmentedColormap
+
+    return LinearSegmentedColormap.from_list("accent", ["#ffffff", ACCENT])
+
+
 def _classification(plt: Any, y: np.ndarray, s: np.ndarray, out: Path) -> None:
     fpr, tpr, precision, recall = _curves(y, s)
 
     fig, ax = plt.subplots(figsize=(5, 5))
     auc = float(np.sum(np.diff(fpr) * (tpr[1:] + tpr[:-1]) / 2))
     ax.plot(fpr, tpr, label=f"AUC {auc:.3f}")
-    ax.plot([0, 1], [0, 1], linestyle="--", color="grey")
+    ax.plot([0, 1], [0, 1], linestyle="--", color=CONTEXT)
     ax.set(xlabel="False positive rate", ylabel="True positive rate", title="ROC curve")
     ax.legend(loc="lower right")
     fig.savefig(out / "roc_curve.png", dpi=120, bbox_inches="tight")
@@ -59,7 +97,7 @@ def _classification(plt: Any, y: np.ndarray, s: np.ndarray, out: Path) -> None:
 
     fig, ax = plt.subplots(figsize=(5, 5))
     ax.plot(recall, precision)
-    ax.axhline(y.mean(), linestyle="--", color="grey", label=f"base rate {y.mean():.3f}")
+    ax.axhline(y.mean(), linestyle="--", color=CONTEXT, label=f"base rate {y.mean():.3f}")
     ax.set(xlabel="Recall", ylabel="Precision", title="Precision-recall curve")
     ax.legend(loc="upper right")
     fig.savefig(out / "precision_recall_curve.png", dpi=120, bbox_inches="tight")
@@ -73,7 +111,8 @@ def _classification(plt: Any, y: np.ndarray, s: np.ndarray, out: Path) -> None:
         ]
     )
     fig, ax = plt.subplots(figsize=(4, 4))
-    ax.imshow(matrix, cmap="Blues")
+    ax.imshow(matrix, cmap=_accent_map(plt))
+    ax.grid(False)
     for (i, j), count in np.ndenumerate(matrix):
         dark = count > matrix.max() / 2
         ax.text(
@@ -82,7 +121,7 @@ def _classification(plt: Any, y: np.ndarray, s: np.ndarray, out: Path) -> None:
             f"{count:,}",
             ha="center",
             va="center",
-            color="white" if dark else "black",
+            color="white" if dark else "#252525",
         )
     ax.set(
         xticks=[0, 1],
@@ -104,14 +143,14 @@ def _classification(plt: Any, y: np.ndarray, s: np.ndarray, out: Path) -> None:
         [y[bins == b].mean() for b in filled],
         marker="o",
     )
-    ax.plot([0, 1], [0, 1], linestyle="--", color="grey")
+    ax.plot([0, 1], [0, 1], linestyle="--", color=CONTEXT)
     ax.set(xlabel="Mean predicted probability", ylabel="Observed rate", title="Calibration")
     fig.savefig(out / "calibration.png", dpi=120, bbox_inches="tight")
     plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(6, 4))
-    ax.hist(s[y == 0], bins=40, alpha=0.6, label="0", density=True)
-    ax.hist(s[y == 1], bins=40, alpha=0.6, label="1", density=True)
+    ax.hist(s[y == 0], bins=40, alpha=0.6, label="0", density=True, color=CONTEXT)
+    ax.hist(s[y == 1], bins=40, alpha=0.6, label="1", density=True, color=ACCENT)
     ax.set(xlabel="Predicted probability", ylabel="Density", title="Scores by actual class")
     ax.legend()
     fig.savefig(out / "score_distribution.png", dpi=120, bbox_inches="tight")
@@ -120,16 +159,16 @@ def _classification(plt: Any, y: np.ndarray, s: np.ndarray, out: Path) -> None:
 
 def _regression(plt: Any, y: np.ndarray, p: np.ndarray, out: Path) -> None:
     fig, ax = plt.subplots(figsize=(5, 5))
-    ax.scatter(y, p, s=4, alpha=0.4)
+    ax.scatter(y, p, s=4, alpha=0.4, color=ACCENT)
     low, high = float(min(y.min(), p.min())), float(max(y.max(), p.max()))
-    ax.plot([low, high], [low, high], linestyle="--", color="grey")
+    ax.plot([low, high], [low, high], linestyle="--", color=CONTEXT)
     ax.set(xlabel="Actual", ylabel="Predicted", title="Predicted against actual")
     fig.savefig(out / "predicted_vs_actual.png", dpi=120, bbox_inches="tight")
     plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(6, 4))
-    ax.hist(p - y, bins=50)
-    ax.axvline(0, linestyle="--", color="grey")
+    ax.hist(p - y, bins=50, color=ACCENT)
+    ax.axvline(0, linestyle="--", color=CONTEXT)
     ax.set(xlabel="Predicted minus actual", ylabel="Rows", title="Residuals")
     fig.savefig(out / "residuals.png", dpi=120, bbox_inches="tight")
     plt.close(fig)
@@ -162,18 +201,21 @@ def save_charts(
     y = np.asarray(y_true, dtype=float).ravel()
     p = np.asarray(y_pred, dtype=float).ravel()
     try:
-        if task == "classification":
-            _classification(plt, y, p, out)
-        else:
-            _regression(plt, y, p, out)
-        importance = _importance(model, features)
-        if importance is not None:
-            names, values = importance
-            fig, ax = plt.subplots(figsize=(6, max(3, 0.3 * len(names))))
-            ax.barh(names, values)
-            ax.set(xlabel="Importance", title="Feature importance")
-            fig.savefig(out / "feature_importance.png", dpi=120, bbox_inches="tight")
-            plt.close(fig)
+        cycle = matplotlib.cycler(color=[ACCENT, CONTEXT, LIGHT])
+        with plt.rc_context({**_STYLE, "axes.prop_cycle": cycle}):
+            if task == "classification":
+                _classification(plt, y, p, out)
+            else:
+                _regression(plt, y, p, out)
+            importance = _importance(model, features)
+            if importance is not None:
+                names, values = importance
+                fig, ax = plt.subplots(figsize=(6, max(3, 0.3 * len(names))))
+                ax.barh(names, values, color=ACCENT)
+                ax.grid(axis="y", visible=False)
+                ax.set(xlabel="Importance", title="Feature importance")
+                fig.savefig(out / "feature_importance.png", dpi=120, bbox_inches="tight")
+                plt.close(fig)
     except Exception as e:  # noqa: BLE001 - charts are a courtesy, never a failure
         _logger.warning("could not draw the model charts: %s", e)
     return sorted(f.name for f in out.glob("*.png"))

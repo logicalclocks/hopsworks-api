@@ -328,7 +328,7 @@ def test_upload_manifest_raises_on_failure():
         def upload(self, **kwargs):
             raise RuntimeError("nope")
 
-    with pytest.raises(Exception, match="Failed to upload teleport manifest"):
+    with pytest.raises(Exception, match="Could not upload the session manifest"):
         session._upload_manifest(_DS(), "dest", "sid", {"a": 1})
 
 
@@ -476,6 +476,9 @@ class _PushDataset:
         self._ack_on_manifest = ack_on_manifest
         self.uploads: list[str] = []
         self.removed: list[str] = []
+
+    def exists(self, path: str) -> bool:
+        return True
 
     def mkdir(self, path: str) -> None:
         pass

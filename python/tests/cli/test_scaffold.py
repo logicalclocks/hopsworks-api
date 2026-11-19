@@ -244,3 +244,21 @@ def test_setup_stops_pointing_once_the_skills_are_there(tmp_path, capsys):
 
     setup_mod._suggest_skills_install(tmp_path)
     assert "hops skills install" not in capsys.readouterr().err
+
+
+def test_ensure_docs_mcp_keeps_other_servers(tmp_path):
+    mcp = tmp_path / ".mcp.json"
+    mcp.write_text(json.dumps({"mcpServers": {"other": {"type": "stdio"}}}))
+    assert scaffold.ensure_docs_mcp(mcp) is True
+    servers = json.loads(mcp.read_text())["mcpServers"]
+    assert servers["other"] == {"type": "stdio"}
+    assert servers[scaffold.DOCS_MCP_NAME]["url"] == scaffold.DOCS_MCP_URL
+    assert scaffold.ensure_docs_mcp(mcp) is False
+
+
+def test_ensure_docs_mcp_leaves_a_user_entry_alone(tmp_path):
+    mcp = tmp_path / ".mcp.json"
+    mine = {"mcpServers": {scaffold.DOCS_MCP_NAME: {"type": "http", "url": "x"}}}
+    mcp.write_text(json.dumps(mine))
+    assert scaffold.ensure_docs_mcp(mcp) is False
+    assert json.loads(mcp.read_text()) == mine

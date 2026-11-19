@@ -42,6 +42,7 @@ from pathlib import Path
 import click
 from hopsworks.cli import config, output
 from hopsworks.cli.commands import git as git_cmd
+from hopsworks.cli.commands.files import makedirs
 
 
 _NOT_REPO_ROOT = (
@@ -508,9 +509,8 @@ def _stage_key(dataset_api, teleport_user_root: str, key: Path) -> str | None:
                         key_name,
                     )
         return key_name
-    with contextlib.suppress(Exception):
-        dataset_api.mkdir(ssh_dir)
     try:
+        makedirs(dataset_api, ssh_dir)
         dataset_api.upload(local_path=str(key), upload_path=ssh_dir, overwrite=False)
         if pub_line:
             with tempfile.TemporaryDirectory() as tmp:

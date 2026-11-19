@@ -12,5 +12,6 @@ train, serve, and monitor. The live, canonical list is `hops skills list --bucke
 - [hops-transformations](hops-transformations/SKILL.md) — Built-in / custom `@udf` / model-dependent / on-demand transforms and the transformation store.
 - [hops-train](hops-train/SKILL.md) — Train a model from a feature view and register it.
 - [hops-batch-inference](hops-batch-inference/SKILL.md) — Batch scoring; persist/log predictions.
+- [hops-score](hops-score/SKILL.md) — Score or rank rows over connected data with `hops score` (Kumo-Relational, no training).
 - [hops-online-inference](hops-online-inference/SKILL.md) — Deploy a model (KServe) and serve online predictions.
 - [hops-monitoring](hops-monitoring/SKILL.md) — Statistics, feature/drift monitoring, Great Expectations validation, alerts, feature logging.

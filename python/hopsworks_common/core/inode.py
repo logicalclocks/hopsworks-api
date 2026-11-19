@@ -33,6 +33,7 @@ class Inode:
     ) -> None:
         self._name = attributes.get("name")
         self._dir = attributes.get("dir", False)
+        self._size = attributes.get("size")
         self._owner = attributes.get("owner")
         self._path = attributes.get("path")
         self._permission = attributes.get("permission")
@@ -53,6 +54,11 @@ class Inode:
     @property
     def dir(self) -> str:
         return self._dir
+
+    @property
+    def size(self) -> int | None:
+        """Size in bytes."""
+        return self._size
 
     @property
     def owner(self) -> str:

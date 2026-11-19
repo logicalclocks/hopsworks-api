@@ -124,7 +124,7 @@ Streaming, multimodal content, memory tiers, progress events and the structure g
 
 ```bash
 hops agent create my_agent.py --name my_agent \
-  --requirements requirements.txt --environment my_agent \
+  --requirements requirements.txt --env my_agent \
   --framework langgraph --chat-contract hopsworks [--memory 3072]
 hops agent start my_agent                       # waits for RUNNING
 hops agent info my_agent                        # status + URL

@@ -65,7 +65,7 @@ def test_remove_finds_a_system_by_name_or_id(monkeypatch, logged_in):
     assert CliRunner().invoke(cli, ["factory", "system", "remove", "7"]).exit_code == 0
     assert removed == [8, 7]
     missing = CliRunner().invoke(cli, ["factory", "system", "remove", "nope"])
-    assert missing.exit_code != 0 and "no system" in missing.output
+    assert missing.exit_code != 0 and "No system" in missing.output
 
 
 def test_register_sends_the_path_and_the_name(monkeypatch):
@@ -542,3 +542,28 @@ def test_a_path_that_is_not_the_systems_directory_is_refused(
     )
     assert done.exit_code != 0 and "not the directory of" in done.output
     assert removed == [] and other.exists()
+
+
+def test_register_takes_a_hopsfs_copy_for_code_outside_the_mount_and_git(
+    monkeypatch, logged_in, tmp_path
+):
+    from hopsworks.cli import session
+    from hopsworks.cli.commands import mlsystem
+
+    (tmp_path / "system.yaml").write_text("system: {slug: churn}\n")
+    project = mock.Mock()
+    project.name = "churndemo"
+    monkeypatch.setattr(session, "get_project", lambda ctx: project)
+    sent = mock.Mock(return_value={})
+    monkeypatch.setattr(ml_system_api, "_register", sent)
+    # A directory with no mount and no origin registers by the copy it names.
+    mlsystem.register(
+        mock.Mock(),
+        tmp_path,
+        "Churn",
+        None,
+        "/Projects/churndemo/Users/u/systems/churn",
+    )
+    assert sent.call_args.args[0] == "/Projects/churndemo/Users/u/systems/churn"
+    with pytest.raises(click.UsageError, match="folder of this project"):
+        mlsystem.register(mock.Mock(), tmp_path, "Churn", None, "/Projects/other/x")

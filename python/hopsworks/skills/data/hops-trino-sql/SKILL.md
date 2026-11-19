@@ -57,7 +57,7 @@ hops trino query "SELECT * FROM delta.<project>_featurestore.<fg>_1 LIMIT 5"
 hops trino catalogs                       # delta, hive, hudi, iceberg, ...
 hops trino schemas delta                  # schemas in a catalog
 hops trino tables delta.<project>_featurestore
-hops trino describe delta.<project>_featurestore.<fg>_1
+hops trino columns delta.<project>_featurestore.<fg>_1
 ```
 
 ## Related skills

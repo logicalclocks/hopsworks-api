@@ -15,7 +15,7 @@ key, event time) and let the user pick.
 - {name: telco_customers, kind: feature_group, version: 1, grain: one row per customer, event_time: snapshot_date, status: present}
 ```
 
-The data phase checks it exists, has rows (`hops fg preview <name> --n 5`, a
+The data phase checks it exists, has rows (`hops fg preview <name> --limit 5`, a
 bounded read) and that its key and event time match the declared grain.
 
 ## Route 2: a new data source

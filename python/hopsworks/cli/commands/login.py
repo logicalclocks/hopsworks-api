@@ -43,12 +43,13 @@ def login_cmd(
     The key is validated against the host before it is saved. If validation
     fails, the config file is left untouched so the user can retry.
 
+    \f
     Args:
-        host_flag: Value of ``--host``; prompted if neither flag, env, nor config has it.
-        api_key_flag: Value of ``--api-key``; prompted with hidden input if absent.
-        project_flag: Value of ``--project``; may be None.
-        verify_flag: True for ``--verify``, False for ``--no-verify``, None if neither was passed.
-        save_key: When True, persist the validated key to ``~/.hops.toml``.
+        host_flag: Value of `--host`; prompted if neither flag, env, nor config has it.
+        api_key_flag: Value of `--api-key`; prompted with hidden input if absent.
+        project_flag: Value of `--project`; may be None.
+        verify_flag: True for `--verify`, False for `--no-verify`, None if neither was passed.
+        save_key: When True, persist the validated key to `~/.hops.toml`.
     """
     cfg = config.load(
         flag_host=host_flag,
@@ -70,7 +71,7 @@ def login_cmd(
             hostname_verification=cfg.hostname_verification,
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Login failed: {exc}") from exc
+        raise click.ClickException(f"Could not log in: {exc}") from exc
 
     project_name = getattr(project_obj, "name", project or None)
 

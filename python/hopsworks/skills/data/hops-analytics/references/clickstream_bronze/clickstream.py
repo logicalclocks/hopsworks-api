@@ -17,7 +17,8 @@ is derived from the window, so a replayed window rewrites the same rows.
 Bronze holds the data as it arrived: about 0.001% of clicks arrive twice (the same click_id
 under a new ingest_id, as an at-least-once collector delivers them), and an order's lines are
 a JSON array in its items column.
-Every table is an offline Delta feature group tagged analytics_table {"layer": "bronze"}.
+Every table is an offline Delta feature group tagged analytics_table {"layer": "bronze"},
+or left untagged when the cluster has no analytics_table tag schema.
 """
 
 from __future__ import annotations
@@ -591,7 +592,13 @@ def _insert(fg, df: pd.DataFrame, lifecycle: str) -> None:
         table = fg.name[len(PREFIX) :]
         for feature, description in TABLES[table]["features"].items():
             fg.update_feature_description(feature, description)
-        fg.add_tag(TAG, {"layer": "bronze", "lifecycle": lifecycle})
+        try:
+            fg.add_tag(TAG, {"layer": "bronze", "lifecycle": lifecycle})
+        except Exception as exc:
+            # 370000: the cluster has no analytics_table schema; the table stays untagged.
+            if getattr(exc, "error_code", None) != 370000:
+                raise
+            print(f"{fg.name}: not tagged, the cluster has no {TAG} tag schema", flush=True)
 
 
 def _read(fg, columns: list[str]) -> pd.DataFrame:

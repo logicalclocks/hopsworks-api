@@ -18,8 +18,9 @@ def project_group() -> None:
 def project_list(ctx: click.Context) -> None:
     """Show every project the current user is a member of.
 
+    \f
     Args:
-        ctx: Click context carrying the resolved ``HopsConfig``.
+        ctx: Click context carrying the resolved `HopsConfig`.
     """
     cfg = _require_auth(ctx)
     auth.login(host=cfg.host or "", api_key_value=cfg.api_key, project=cfg.project)
@@ -49,10 +50,13 @@ def project_list(ctx: click.Context) -> None:
 @click.argument("name")
 @click.pass_context
 def project_use(ctx: click.Context, name: str) -> None:
-    """Switch the default project to ``name`` and cache its identifiers.
+    """Switch the default project.
 
+    Switch the default project to `name` and cache its identifiers.
+
+    \f
     Args:
-        ctx: Click context carrying the resolved ``HopsConfig``.
+        ctx: Click context carrying the resolved `HopsConfig`.
         name: Project name to activate.
     """
     cfg = _require_auth(ctx)
@@ -101,8 +105,9 @@ def _feature_store_id(project: Any) -> int | None:
 def project_info(ctx: click.Context) -> None:
     """Print details about the currently active project.
 
+    \f
     Args:
-        ctx: Click context carrying the resolved ``HopsConfig``.
+        ctx: Click context carrying the resolved `HopsConfig`.
     """
     cfg = _require_auth(ctx)
     project = auth.login(
@@ -141,6 +146,7 @@ def project_costs(ctx: click.Context, window: str, project_name: str | None) -> 
     When some buckets of the window have no data, a coverage line says how
     many do; missing buckets are unknown cost, not zero.
 
+    \f
     Args:
         ctx: Click context.
         window: One of hour, day, week, month, year.

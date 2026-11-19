@@ -12,11 +12,15 @@ real ambiguity ends the run with one line saying what is missing.
 Load **hops-superset** (`.claude/skills/hops-superset/` in the repository, else
 `~/.claude/skills/hops-superset/`): its "Dashboard programs" section and
 `references/dashboard_program.py`, the skeleton every program is filled from, with the chart
-params in `references/chart_params.md`.
+params in `references/chart_params.md`. Load **hops-design** the same way and follow its
+look (the "Look" section of hops-superset applies it to Superset).
+
+**Already made?** For a create, run `hops superset dashboard list` first: when it lists the title, the piece exists; return that in one line and stop. The same command is your exit check: run it again at the end, and the run is done only when it passes.
 
 ## Where the program runs
 
-Superset is reachable only inside the cluster.
+The SDK reaches Superset only inside the cluster (`hops superset dashboard list` alone works from
+anywhere, through the REST API).
 
 - **Hopsworks terminal:** the program lives at `~/dashboards/<slug>.py` (or the `program` path the
   prompt gives) and runs directly: `python <program>`.

@@ -29,5 +29,132 @@
       "count": 0,
       "items": []
     }
+  },
+  "get_python_failed": {
+    "response": {
+      "href": "http://10.113.154.130/hopsworks-api/api/project/2167/jobs/umami-sync/executions/20074",
+      "id": 20074,
+      "submissionTime": "2026-10-19T02:00:01.000Z",
+      "state": "FAILED",
+      "stdoutPath": "/Projects/blah/Logs/Python/umami-sync/20074/stdout.log",
+      "stderrPath": "/Projects/blah/Logs/Python/umami-sync/20074/stderr.log",
+      "hdfsUser": "blah__meb10000",
+      "args": "-start_time 2026-10-19T02:00:00Z",
+      "finalStatus": "FAILED",
+      "progress": 1.0,
+      "user": {
+        "href": "http://10.113.154.130/hopsworks-api/api/users/10000"
+      },
+      "filesToRemove": [],
+      "duration": 44006376,
+      "resourceManager": "KUBERNETES",
+      "monitoring": {},
+      "queued": 0,
+      "kubeMonitor": {
+        "job": {}
+      },
+      "rerunCount": 0,
+      "logicalDate": "2026-10-18T02:00:00.000Z",
+      "dataIntervalEnd": "2026-10-19T02:00:00.000Z"
+    }
+  },
+  "get_app_running": {
+    "response": {
+      "href": "http://10.113.154.130/hopsworks-api/api/project/2167/jobs/hopsable-test-echo/executions/26723",
+      "id": 26723,
+      "submissionTime": "2026-10-20T12:20:31.000Z",
+      "state": "RUNNING",
+      "stdoutPath": "/Projects/blah/Logs/PythonApp/hopsable-test-echo/26723/stdout.log",
+      "stderrPath": "/Projects/blah/Logs/PythonApp/hopsable-test-echo/26723/stderr.log",
+      "hdfsUser": "blah__hopsabl2",
+      "args": "",
+      "finalStatus": "UNDEFINED",
+      "progress": 0.0,
+      "user": {
+        "href": "http://10.113.154.130/hopsworks-api/api/users/15300"
+      },
+      "filesToRemove": [],
+      "duration": 1465883,
+      "resourceManager": "KUBERNETES",
+      "monitoring": {
+        "appUrl": "/hopsworks-api/pythonapp/blah/hopsable-test-echo/"
+      },
+      "queued": 0,
+      "kubeMonitor": {},
+      "rerunCount": 0
+    }
+  },
+  "get_python_queued": {
+    "response": {
+      "href": "http://10.113.154.130/hopsworks-api/api/project/2167/jobs/umami-sync/executions/20074",
+      "id": 20074,
+      "submissionTime": "2026-10-19T02:00:01.000Z",
+      "state": "QUEUED",
+      "stdoutPath": "/Projects/blah/Logs/Python/umami-sync/20074/stdout.log",
+      "stderrPath": "/Projects/blah/Logs/Python/umami-sync/20074/stderr.log",
+      "hdfsUser": "blah__meb10000",
+      "args": "-start_time 2026-10-19T02:00:00Z",
+      "finalStatus": "UNDEFINED",
+      "progress": 0.0,
+      "user": {
+        "href": "http://10.113.154.130/hopsworks-api/api/users/10000"
+      },
+      "filesToRemove": [],
+      "duration": 44006376,
+      "resourceManager": "KUBERNETES",
+      "monitoring": {},
+      "queued": 0,
+      "kubeMonitor": {
+        "job": {
+          "name": "umami-sync-20074",
+          "namespace": "blah",
+          "activePods": 1,
+          "succeededPods": 0,
+          "failedPods": 0,
+          "events": {
+            "items": [
+              {
+                "type": "Normal",
+                "reason": "SuccessfulCreate",
+                "age": "40s",
+                "from": "job-controller",
+                "message": "Created pod: umami-sync-20074-x7k2p"
+              }
+            ]
+          },
+          "pods": {
+            "items": [
+              {
+                "name": "umami-sync-20074-x7k2p",
+                "status": "Pending",
+                "ready": false,
+                "lastCondition": {
+                  "type": "PodScheduled",
+                  "reason": "Unschedulable",
+                  "lastTransitionTime": "2026-10-20T12:39:09Z",
+                  "message": "0/6 nodes are available: 1 node(s) didn't match Pod's node affinity/selector, 5 Insufficient memory. preemption: 0/6 nodes are available: 1 Preemption is not helpful for scheduling, 5 No preemption victims found for incoming pod.",
+                  "age": "40s"
+                },
+                "events": {
+                  "items": [
+                    {
+                      "type": "Warning",
+                      "reason": "FailedScheduling",
+                      "age": "38s",
+                      "from": "default-scheduler",
+                      "message": "0/6 nodes are available: 1 node(s) didn't match Pod's node affinity/selector, 5 Insufficient memory. preemption: 0/6 nodes are available: 1 Preemption is not helpful for scheduling, 5 No preemption victims found for incoming pod."
+                    }
+                  ]
+                }
+              }
+            ],
+            "count": 1
+          }
+        }
+      },
+      "rerunCount": 0,
+      "logicalDate": "2026-10-18T02:00:00.000Z",
+      "dataIntervalEnd": "2026-10-19T02:00:00.000Z"
+    }
   }
 }

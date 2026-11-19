@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, Literal
 
-from hopsworks_common import client
+from hopsworks_common import client, util
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.constants import (
     HAS_AVRO,
@@ -536,6 +536,7 @@ def _build_ack_callback_and_optional_progress_bar(
             total=n_rows,
             bar_format=bar_format,
             desc="Uploading Dataframe",
+            disable=util._progress_disabled(),
             mininterval=1,
         )
     else:

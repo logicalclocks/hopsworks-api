@@ -129,8 +129,8 @@ the read window in the program from `HOPS_END_TIME`, for example "the newest
 snapshot in the 8 days before the window's end", recorded in `system.yaml`:
 
 ```bash
-hops job schedule telco-churn-inference "0 0 4 1 * ?"         # server default window
-hops job schedule-info telco-churn-inference                  # verify cron, enabled, next fire
+hops job schedule set telco-churn-inference "0 0 4 1 * ?"         # server default window
+hops job schedule info telco-churn-inference                  # verify cron, enabled, next fire
 ```
 
 The **same program** serves history: `hops job backfill` runs it once over a past
@@ -184,9 +184,9 @@ without anyone watching a terminal:
 ```bash
 hops alert receiver list
 hops alert receiver create ml-oncall --email oncall@acme.example --slack "#ml-alerts"
-hops alert job create telco-churn-features --receiver ml-oncall --status failed --severity critical
-hops alert job create telco-churn-train --receiver ml-oncall --status long_running --severity warning
-hops alert job list telco-churn-features
+hops job alert create telco-churn-features --receiver ml-oncall --status failed --severity critical
+hops job alert create telco-churn-train --receiver ml-oncall --status long_running --severity warning
+hops job alert list telco-churn-features
 ```
 
 ## Orchestrating Hopsworks Jobs with Airflow

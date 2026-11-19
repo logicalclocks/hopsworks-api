@@ -524,7 +524,7 @@ def test_run_asks_each_question_then_resumes_from_system_yaml(
     assert refused.exit_code != 0
     assert "hops factory run churn-review q3-review" in refused.output
     unknown = CliRunner().invoke(cli, ["factory", "run", "churn-review", "nope"])
-    assert unknown.exit_code != 0 and "no system 'nope'" in unknown.output
+    assert unknown.exit_code != 0 and "No system 'nope'" in unknown.output
     preset = CliRunner().invoke(
         cli, ["factory", "run", "churn-review", "--preset", "q4"]
     )

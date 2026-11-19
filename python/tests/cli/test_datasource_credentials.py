@@ -96,7 +96,8 @@ _BOUND_WALLET = "Users/scott/.datasources/oracle_sales/wallet-bound.zip"
 @pytest.fixture
 def dataset_api(mock_project):
     dataset_api = mock_project.get_dataset_api.return_value
-    dataset_api.exists.return_value = False
+    # Only the caller's home exists.
+    dataset_api.exists.side_effect = lambda path: path in ("Users", "Users/scott")
     user = mock.MagicMock()
     user.username = "scott"
     users_api = mock.MagicMock()

@@ -24,10 +24,10 @@ Before writing Python, and to confirm results after, use the CLI. No Spark sessi
 ```bash
 hops fg list                              # is the name/version free? did it register? (note the STORE column)
 hops fg info <name> --version 1           # metadata: id, online flag, primary key, event_time
-hops fg features <name> --version 1       # schema with primary-key / partition flags
-hops fg preview <name> --version 1 --n 10 # first rows (flag is --n, not -n)
+hops fg feature list <name> --version 1       # schema with primary-key / partition flags
+hops fg preview <name> --version 1 --limit 10 # first rows
 hops fg preview <name> --columns a,b,c    # project away wide embedding/array columns
-hops fg stats <name> --version 1          # null counts / ranges — spot bad data early
+hops fg stats info <name> --version 1          # null counts / ranges — spot bad data early
 ```
 
 To preview an FG in a shared store from the CLI, pass `--featurestore <store>`
@@ -71,7 +71,7 @@ Pick a supported type up front: a write with an unsupported type fails, and retr
 - For **similarity search**, declare the vector as `array<float>` **and** attach an `EmbeddingIndex` (see Vector Embeddings): the FG is then backed by the vector DB (OpenSearch) instead of RonDB. Without an embedding index an `array<float>` is stored data, not a searchable index.
 - Online is an upsert: one row per primary key, a new write for an existing key overwrites it.
 
-Let the schema be inferred from the DataFrame when you can; pass an explicit `features=[Feature(name, type, ...)]` list only to pin a type (e.g. `bigint` over an inferred `int`, or an `array<float>` embedding column).
+Let the schema be inferred from the DataFrame when you can; pass an explicit `features=[Feature(name, type, ...)]` list (`from hsfs.feature import Feature`; there is no `hopsworks.feature`) only to pin a type (e.g. `bigint` over an inferred `int`, or an `array<float>` embedding column).
 
 ---
 
@@ -179,7 +179,7 @@ combination:
 
 Rules that bite:
 
-- **Iceberg hidden partitioning is invisible in the schema.** `hops fg features` shows a blank PARTITION column and the UI no partition key even though the table *is* partitioned. Check `fg.get_partition_spec()`, not the column list.
+- **Iceberg hidden partitioning is invisible in the schema.** `hops fg feature list` shows a blank PARTITION column and the UI no partition key even though the table *is* partitioned. Check `fg.get_partition_spec()`, not the column list.
 - **Iceberg writes to HopsFS from the Python engine go through PyArrow, which loads libjvm and libhdfs.**
   That fails in agent task pods, which are not set up for libhdfs, and in environments built on `minimal-inference-pipeline` or `python-agent-pipeline`, which have no JVM.
   From those, run the write as a separate `PYTHON` job on `python-feature-pipeline` or a clone of it, or as a `PYSPARK` job.
@@ -354,6 +354,7 @@ the feature view.
 
 ```python
 from hsfs.embedding import EmbeddingIndex, EmbeddingFeature, SimilarityFunctionType
+from hsfs.feature import Feature
 
 embedding_index = EmbeddingIndex()
 embedding_index.add_embedding(
@@ -510,7 +511,7 @@ from hsfs.feature import Feature
 fg.append_features([Feature("score", "double"), Feature("tier", "string")])
 ```
 
-CLI: `hops fg append-features <name> --features "score:double:Risk score,tier:string"` — the spec is `name:type[:description]`, so set a description per column.
+CLI: `hops fg feature add <name> --features "score:double:Risk score,tier:string"` — the spec is `name:type[:description]`, so set a description per column.
 
 Rules and consequences:
 - Append-only. New columns cannot be primary or partition keys.

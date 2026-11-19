@@ -55,6 +55,7 @@ except ImportError:  # non-POSIX (Windows): raw stdin / --write is unavailable
 import click
 from hopsworks.cli import git_sync, output, terminal_api
 from hopsworks.cli import session as conn
+from hopsworks.cli.commands.files import makedirs
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import RestAPIError
 
@@ -530,7 +531,7 @@ def _upload_manifest(
             )
         except Exception as exc:  # noqa: BLE001
             raise click.ClickException(
-                f"Failed to upload teleport manifest: {exc}"
+                f"Could not upload the session manifest: {exc}"
             ) from exc
 
 
@@ -671,7 +672,7 @@ def _locate_session(dataset_api, session_id: str) -> tuple[str, str | None] | No
     "hops session pull",
 )
 def session_group() -> None:
-    """Move a coding agent session between this machine and a terminal pod."""
+    """Move a coding agent session to and from a terminal pod."""
 
 
 @session_group.command("push")
@@ -716,9 +717,9 @@ def push(
     open_ui: bool,
     force: bool,
 ) -> None:
-    """Push the current coding agent session onto a Hopsworks terminal pod.
+    """Push this coding agent session onto a terminal pod.
 
-    Resolves the active session for this directory (or the ``SESSION_ID`` given
+    Resolves the active session for this directory (or the `SESSION_ID` given
     as an argument), uploads its transcript into the project's HopsFS, starts
     the terminal pod (when the feature is enabled on the cluster), and opens the
     terminal in the browser. By default this is a baton hand-off: the pod
@@ -730,6 +731,7 @@ def push(
     staged copy holds lines this machine does not have, until `hops session
     pull` brings them back or `--force` discards them.
 
+    \f
     Args:
         ctx: Click context.
         session_id: Explicit session id, or None for the active one.
@@ -771,10 +773,10 @@ def push(
     # simply means no git context travels with this push.
     git_ctx = git_sync.maybe_collect(dataset_api, _teleport_root().rsplit("/", 1)[0])
 
-    # mkdir is best-effort: an existing dir is fine, and a real problem will
-    # surface loudly on the upload below.
-    with contextlib.suppress(Exception):
-        dataset_api.mkdir(dest_dir)
+    try:
+        makedirs(dataset_api, dest_dir)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not create {dest_dir}: {exc}") from exc
     # Upload a snapshot copy, not the live file: the session may be the one the
     # user is in, still being appended to. The baton's transferred_lines must
     # count exactly the bytes that were shipped — counting the live file after
@@ -802,7 +804,9 @@ def push(
                 local_path=str(snapshot), upload_path=dest_dir, overwrite=True
             )
         except Exception as exc:  # noqa: BLE001
-            raise click.ClickException(f"Failed to ship session: {exc}") from exc
+            raise click.ClickException(
+                f"Could not push session '{session_id}': {exc}"
+            ) from exc
     output.success("✓ Pushed session %s to %s", resolved_id, project.name)
 
     ws_url = (_launch_pod(project) or {}).get("wsUrl")
@@ -912,7 +916,7 @@ def push(
         output.info("  %s", step)
 
 
-@session_group.command("new")
+@session_group.command("start")
 @click.option(
     "--model",
     help="Model the pod should start Claude with (passed to `claude --model`).",
@@ -933,15 +937,16 @@ def push(
 def new(
     ctx: click.Context, model: str | None, prompt: str | None, open_ui: bool
 ) -> None:
-    """Start a fresh coding agent session directly on a terminal pod.
+    """Start a coding agent session on a terminal pod.
 
-    Unlike ``push`` there is nothing to ship: this stages a ``mode=new`` manifest
-    (no transcript) so the pod's landing hook opens a brand-new ``claude`` in a
+    Unlike `push` there is nothing to ship: this stages a `mode=new` manifest
+    (no transcript) so the pod's landing hook opens a brand-new `claude` in a
     directory that hashes to this one's slug, then opens the terminal in the
-    browser. Use it to begin work on the pod straight from the laptop. ``--prompt``
+    browser. Use it to begin work on the pod straight from the laptop. `--prompt`
     seeds the session with a first instruction, so several `new --prompt` calls
     launch parallel sessions each already working on its own task.
 
+    \f
     Args:
         ctx: Click context.
         model: Model the pod starts Claude with.
@@ -955,8 +960,10 @@ def new(
     dataset_api = project.get_dataset_api()
 
     dest_dir = f"{_teleport_root()}/{slug}"
-    with contextlib.suppress(Exception):
-        dataset_api.mkdir(dest_dir)
+    try:
+        makedirs(dataset_api, dest_dir)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not create {dest_dir}: {exc}") from exc
 
     ws_url = (_launch_pod(project) or {}).get("wsUrl")
 
@@ -1023,23 +1030,24 @@ def new(
 def pull(
     ctx: click.Context, session_id: str | None, ours: bool, theirs: bool, force: bool
 ) -> None:
-    """Pull a terminal session back onto this machine and take the baton.
+    """Pull a terminal session back onto this machine.
 
-    Downloads the transcript from ``Users/<username>/teleport/<slug>/`` into
-    ``~/.claude/projects/<slug>/`` and prints the resume command. Given a
-    ``SESSION_ID`` the source slug is found across your staged sessions, so you
+    Downloads the transcript from `Users/<username>/teleport/<slug>/` into
+    `~/.claude/projects/<slug>/` and prints the resume command. Given a
+    `SESSION_ID` the source slug is found across your staged sessions, so you
     can pull a session staged from another directory from anywhere; resume still
     needs a path that hashes to that slug, so the original cwd is printed to
-    ``cd`` into. Without an id, pulls this directory's single staged session.
+    `cd` into. Without an id, pulls this directory's single staged session.
 
     Reclaiming is baton-aware. If the pod still holds a live terminal session,
-    pull refuses unless ``--force`` (you would be stealing from a process that
+    pull refuses unless `--force` (you would be stealing from a process that
     is still writing). If both sides advanced the transcript since the hand-off,
-    pull refuses until you pick ``--ours`` or ``--theirs``; the losing side is
+    pull refuses until you pick `--ours` or `--theirs`; the losing side is
     parked to a sidecar, never destroyed. A successful pull flips the baton to
     this machine as the very last step, so an interrupted pull leaves the pod
     canonical rather than orphaning the claim here.
 
+    \f
     Args:
         ctx: Click context.
         session_id: Explicit session id (located project-wide), or None to pick
@@ -1049,7 +1057,7 @@ def pull(
         force: Steal the baton from a live pod or another machine.
     """
     if ours and theirs:
-        raise click.ClickException("--ours and --theirs are mutually exclusive.")
+        raise click.UsageError("--ours and --theirs are mutually exclusive.")
 
     slug = _cwd_slug()
     project = conn.get_project(ctx)
@@ -1125,7 +1133,9 @@ def pull(
         try:
             dataset_api.download(remote_jsonl, local_path=str(scratch), overwrite=True)
         except Exception as exc:  # noqa: BLE001
-            raise click.ClickException(f"Failed to pull session: {exc}") from exc
+            raise click.ClickException(
+                f"Could not pull session '{session_id}': {exc}"
+            ) from exc
         remote_text = scratch.read_text(errors="ignore")
     remote_lines = remote_text.splitlines()
 
@@ -1342,11 +1352,12 @@ def _list_all(dataset_api, project) -> None:
 def list_sessions(ctx: click.Context, all_slugs: bool) -> None:
     """List sessions for this directory and where each one lives.
 
-    Shows the session ids present locally under ``~/.claude/projects/<slug>/``
+    Shows the session ids present locally under `~/.claude/projects/<slug>/`
     and those staged in your private teleport home, so you can tell what is
-    here, what is on the pod side, and what exists in both places. ``--all``
+    here, what is on the pod side, and what exists in both places. `--all`
     widens the view to every session you have teleported, across all directories.
 
+    \f
     Args:
         ctx: Click context.
         all_slugs: List across all your directories instead of just this one.
@@ -1400,11 +1411,12 @@ def list_sessions(ctx: click.Context, all_slugs: bool) -> None:
 @session_group.command("stop")
 @click.pass_context
 def stop(ctx: click.Context) -> None:
-    """Stop this project's terminal pod (and every session tab in it).
+    """Stop the project's terminal pod and its sessions.
 
     Closes the running terminal from the laptop, so you never need Kubernetes
     access to shut it down. A no-op when nothing is running.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -1429,7 +1441,7 @@ def stop(ctx: click.Context) -> None:
     try:
         terminal_api.stop_session(project.id)
     except Exception as exc:  # noqa: BLE001 - feature may be disabled on cluster
-        raise click.ClickException(f"Failed to stop the terminal: {exc}") from exc
+        raise click.ClickException(f"Could not stop the terminal: {exc}") from exc
 
     if output.JSON_MODE:
         output.print_json({"project": project.name, "stopped": True})
@@ -1445,12 +1457,13 @@ def stop(ctx: click.Context) -> None:
 )
 @click.pass_context
 def extend(ctx: click.Context, hours: int | None) -> None:
-    """Give this project's terminal session more time before it is stopped.
+    """Give the terminal session more time.
 
     A terminal started from the CLI lasts 12 hours; the web terminal's default
     is shorter. Either kind can be extended here as often as needed, within the
     per-request limit the cluster sets.
 
+    \f
     Args:
         ctx: Click context.
         hours: Hours to add, or None for the cluster's default extension.
@@ -1480,13 +1493,16 @@ def extend(ctx: click.Context, hours: int | None) -> None:
 @click.option("--yes", is_flag=True, help="Skip confirmation.")
 @click.pass_context
 def reset(ctx: click.Context, yes: bool) -> None:
-    """Forget how git sync authenticates the pod, so the next push asks again.
+    """Forget how git sync authenticates the pod.
+
+    Forget how git sync authenticates the pod, so the next push asks again.
 
     Clears the remembered consent, method and key path, and removes the SSH
-    keys staged in your private ``Users/<username>/.ssh/`` area, so a changed
+    keys staged in your private `Users/<username>/.ssh/` area, so a changed
     or replaced key is uploaded afresh by the next push. Staged sessions are
-    untouched, and so are provider tokens (``hops git provider delete``).
+    untouched, and so are provider tokens (`hops git provider delete`).
 
+    \f
     Args:
         ctx: Click context.
         yes: Skip confirmation when True.
@@ -1738,7 +1754,7 @@ async def _mirror_session(project_id: int, write: bool) -> None:
         from websockets.exceptions import ConnectionClosed
     except ImportError as exc:
         raise click.ClickException(
-            "hops session mirror requires websockets: pip install 'hopsworks[terminal]'"
+            "`hops session mirror` requires websockets: pip install 'hopsworks[terminal]'"
         ) from exc
 
     mode = "rw" if write else "ro"
@@ -1748,7 +1764,7 @@ async def _mirror_session(project_id: int, write: bool) -> None:
         if not sess or not sess.get("running"):
             raise click.ClickException(
                 "No running terminal session for this project. Start one with "
-                "`hops session new`, or open the Terminal tab in the Hopsworks UI."
+                "`hops session start`, or open the Terminal tab in the Hopsworks UI."
             )
         url = _ws_url(sess["wsUrl"])
         ssl_ctx = _ws_ssl_context(url)
@@ -1790,21 +1806,22 @@ async def _mirror_session(project_id: int, write: bool) -> None:
 )
 @click.pass_context
 def mirror(ctx: click.Context, write: bool) -> None:
-    """Mirror the terminal session (active) to your laptop (mirror).
+    """Mirror the terminal session to this machine.
 
     Attaches to the running pod terminal over its WebSocket and streams it here
-    in real time: read-only by default (observe the driver), or ``--write`` to
+    in real time: read-only by default (observe the driver), or `--write` to
     also type. Several clients can attach at once — the terminal header shows a
     presence badge. Detach with Ctrl-] (Ctrl-C without a tty); the session keeps
     running on the pod.
 
+    \f
     Args:
         ctx: Click context.
         write: Attach read-write instead of read-only.
     """
     # Fail before logging in: there is nothing machine-readable to produce.
     if output.JSON_MODE:
-        raise click.ClickException(
+        raise click.UsageError(
             "`session mirror` is interactive; --json is not supported."
         )
     project = conn.get_project(ctx)

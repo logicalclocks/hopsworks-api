@@ -9,8 +9,11 @@ so that stdout contains only the machine-readable payload.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from typing import TYPE_CHECKING, Any
+
+import click
 
 
 if TYPE_CHECKING:
@@ -24,7 +27,6 @@ _BOLD = "\033[1m"
 _DIM = "\033[2m"
 _GREEN = "\033[32m"
 _YELLOW = "\033[33m"
-_RED = "\033[31m"
 
 
 def _tty() -> bool:
@@ -212,6 +214,13 @@ def print_table(headers: Sequence[str], rows: Iterable[Sequence[Any]]) -> None:
         sys.stdout.write(line + "\n")
 
 
+def _status(line: str) -> None:
+    # The SDK prints progress to stdout, which a pipe buffers until exit; flushing it
+    # first keeps a status line after the progress it reports on, in merged output.
+    sys.stdout.flush()
+    sys.stderr.write(line + "\n")
+
+
 def success(msg: str, *args: Any) -> None:
     """Print a success message; silent in JSON mode.
 
@@ -221,7 +230,7 @@ def success(msg: str, *args: Any) -> None:
     """
     if JSON_MODE:
         return
-    sys.stderr.write(_wrap(_GREEN, msg % args if args else msg) + "\n")
+    _status(_wrap(_GREEN, msg % args if args else msg))
 
 
 def info(msg: str, *args: Any) -> None:
@@ -233,7 +242,7 @@ def info(msg: str, *args: Any) -> None:
     """
     if JSON_MODE:
         return
-    sys.stderr.write((msg % args if args else msg) + "\n")
+    _status(msg % args if args else msg)
 
 
 def warn(msg: str, *args: Any) -> None:
@@ -245,14 +254,37 @@ def warn(msg: str, *args: Any) -> None:
     """
     if JSON_MODE:
         return
-    sys.stderr.write(_wrap(_YELLOW, msg % args if args else msg) + "\n")
+    _status(_wrap(_YELLOW, msg % args if args else msg))
 
 
-def error(msg: str, *args: Any) -> None:
-    """Print an error; always visible, even in JSON mode.
+def _stdin_tty() -> bool:
+    return sys.stdin.isatty()
+
+
+def no_input() -> bool:
+    """Whether no one can answer a prompt: HOPS_NO_INPUT=1, or stdin is not a terminal.
+
+    Returns:
+        True when no one can answer.
+    """
+    return os.environ.get("HOPS_NO_INPUT") == "1" or not _stdin_tty()
+
+
+def confirm(question: str, action: str | None = None) -> None:
+    """Ask `question` before something that cannot be undone; exit 1 unless the answer is yes.
+
+    With no one to answer, fails naming --yes instead of asking. `action` names what needs the
+    answer; the question without its `?` by default. Ctrl-C or a no aborts.
 
     Args:
-        msg: Printf-style format string.
-        *args: Values substituted into ``msg``.
+        question: The question to ask.
+        action: What needs the answer; the question without its `?` when unset.
+
+    Raises:
+        click.ClickException: If no one can answer.
     """
-    sys.stderr.write(_wrap(_RED, msg % args if args else msg) + "\n")
+    if no_input():
+        raise click.ClickException(
+            f"{action or question.rstrip('?')} needs confirmation: pass --yes."
+        )
+    click.confirm(question, abort=True, err=True)

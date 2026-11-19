@@ -477,3 +477,15 @@ def test_parity_checks_the_prediction_count_shape_and_values(parity):
 
 
 # endregion
+
+
+def test_a_held_lease_without_a_token_says_to_export_it(tmp_path, monkeypatch):
+    monkeypatch.delenv(system_doc.TOKEN_ENV, raising=False)
+    (tmp_path / "system.yaml").write_text("system: {slug: s}\n")
+    system_doc.acquire(tmp_path)
+    message = system_doc._held_message(tmp_path, system_doc.lease(tmp_path))
+    assert f"export {system_doc.TOKEN_ENV}" in message
+    monkeypatch.setenv(system_doc.TOKEN_ENV, "other")
+    assert "export" not in system_doc._held_message(
+        tmp_path, system_doc.lease(tmp_path)
+    )

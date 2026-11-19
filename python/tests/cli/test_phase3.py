@@ -8,33 +8,15 @@ it for raw REST calls (connector create/delete).
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from unittest import mock
 
+import pytest
 from click.testing import CliRunner
 from hopsworks.cli.main import cli
 
 
 # --- deployment ------------------------------------------------------------
-
-
-def test_deployment_start_calls_sdk(mock_project):
-    ms = mock.MagicMock()
-    deployment = mock.MagicMock()
-    ms.get_deployment.return_value = deployment
-    mock_project.get_model_serving.return_value = ms
-    result = CliRunner().invoke(cli, ["deployment", "start", "fraud"])
-    assert result.exit_code == 0, result.output
-    deployment.start.assert_called_with(await_running=600)
-
-
-def test_deployment_stop_calls_sdk(mock_project):
-    ms = mock.MagicMock()
-    deployment = mock.MagicMock()
-    ms.get_deployment.return_value = deployment
-    mock_project.get_model_serving.return_value = ms
-    result = CliRunner().invoke(cli, ["deployment", "stop", "fraud", "--wait", "30"])
-    assert result.exit_code == 0, result.output
-    deployment.stop.assert_called_with(await_stopped=30)
 
 
 def test_deployment_predict_parses_json_data(mock_project):
@@ -183,11 +165,89 @@ def test_job_run_with_wait(mock_project):
     job.run.return_value = execution
     api.get_job.return_value = job
     mock_project.get_job_api.return_value = api
-    result = CliRunner().invoke(cli, ["job", "run", "etl", "--wait"])
+    with _polled("FINISHED"):
+        result = CliRunner().invoke(cli, ["job", "run", "etl", "--wait"])
     assert result.exit_code == 0, result.output
+    # The CLI holds the execution it started and waits on that one, not the job's latest.
     job.run.assert_called_with(
-        args=None, await_termination=True, start_time=None, end_time=None
+        args=None, await_termination=False, start_time=None, end_time=None
     )
+    execution.await_termination.assert_called_once_with(None)
+
+
+def _polled(state):
+    """The CLI's wait sees the execution in `state` straight away."""
+    return mock.patch(
+        "hopsworks.cli.commands.job._execution_json", return_value={"state": state}
+    )
+
+
+def _failing(tmp_path, execution):
+    def download_logs(path):
+        out, err = Path(path) / "stdout.log", Path(path) / "stderr.log"
+        out.write_text("".join(f"line {i}\n" for i in range(80)))
+        err.write_text("ValueError: bad column\n")
+        return str(out), str(err)
+
+    execution.download_logs.side_effect = download_logs
+    return execution
+
+
+@pytest.mark.parametrize("command", [["run", "etl", "--wait"], ["wait", "etl"]])
+def test_a_failed_wait_prints_the_log_tails_and_exits_1(
+    mock_project, tmp_path, command
+):
+    execution = _failing(
+        tmp_path,
+        mock.MagicMock(id=7, state="FAILED", final_status="FAILED", success=False),
+    )
+    job = _job_api(mock_project, execution)
+    job.get_executions.return_value = [execution]
+    with _polled("FAILED"):
+        result = CliRunner().invoke(cli, ["job", *command])
+    assert result.exit_code == 1
+    assert "ValueError: bad column" in result.output
+    assert "line 79" in result.output and "line 29" not in result.output
+    assert "etl: execution #7 FAILED" in result.output
+    assert "hops job logs etl --execution 7 --stdout" in result.output
+
+
+def _job_api(mock_project, execution):
+    api = mock.MagicMock()
+    api.get_job.return_value.run.return_value = execution
+    mock_project.get_job_api.return_value = api
+    return api.get_job.return_value
+
+
+def test_a_waited_run_says_it_finished_and_how(mock_project):
+    execution = mock.MagicMock(id=5, state="FINISHED", final_status="SUCCEEDED")
+    _job_api(mock_project, execution)
+    with _polled("FINISHED"):
+        result = CliRunner().invoke(
+            cli,
+            [
+                "job",
+                "backfill",
+                "etl",
+                "--start-time",
+                "2026-10-01",
+                "--end-time",
+                "2026-10-02",
+            ],
+        )
+    assert result.exit_code == 0, result.output
+    assert (
+        "etl finished for 2026-10-01T00:00:00 to 2026-10-02T00:00:00: "
+        "execution #5 SUCCEEDED" in result.output
+    )
+
+
+def test_an_unwaited_run_says_it_only_started(mock_project):
+    execution = mock.MagicMock(id=6, state="INITIALIZING", final_status=None)
+    _job_api(mock_project, execution)
+    result = CliRunner().invoke(cli, ["job", "run", "etl", "--no-wait"])
+    assert result.exit_code == 0, result.output
+    assert "etl started: execution #6, INITIALIZING" in result.output
 
 
 def test_job_schedule(mock_project):
@@ -196,7 +256,7 @@ def test_job_schedule(mock_project):
     job.schedule.return_value = mock.MagicMock()
     api.get_job.return_value = job
     mock_project.get_job_api.return_value = api
-    result = CliRunner().invoke(cli, ["job", "schedule", "etl", "0 0 * * * ?"])
+    result = CliRunner().invoke(cli, ["job", "schedule", "set", "etl", "0 0 * * * ?"])
     assert result.exit_code == 0, result.output
     # Use call_args + kwargs check rather than a full assert_called_with so the
     # test isn't tied to every backfill/catchup option the schedule API grows.
@@ -211,7 +271,7 @@ def test_job_unschedule(mock_project):
     job = mock.MagicMock()
     api.get_job.return_value = job
     mock_project.get_job_api.return_value = api
-    result = CliRunner().invoke(cli, ["job", "unschedule", "etl"])
+    result = CliRunner().invoke(cli, ["job", "schedule", "delete", "etl"])
     assert result.exit_code == 0, result.output
     job.unschedule.assert_called_once()
 
@@ -283,11 +343,49 @@ def test_job_logs_stdout(mock_project):
 
 def test_files_mkdir(mock_project):
     api = mock.MagicMock()
-    api.mkdir.return_value = "/Projects/demo/newdir"
+    api.exists.side_effect = lambda path: path == "/Projects/demo"
     mock_project.get_dataset_api.return_value = api
     result = CliRunner().invoke(cli, ["files", "mkdir", "/Projects/demo/newdir"])
     assert result.exit_code == 0, result.output
-    api.mkdir.assert_called_with("/Projects/demo/newdir")
+    api.mkdir.assert_called_once_with("/Projects/demo/newdir")
+
+
+def test_files_mkdir_creates_missing_parents_top_down(mock_project):
+    api = mock.MagicMock()
+    api.exists.side_effect = lambda path: path == "Resources"
+    mock_project.get_dataset_api.return_value = api
+    result = CliRunner().invoke(cli, ["files", "mkdir", "Resources/app/static"])
+    assert result.exit_code == 0, result.output
+    assert api.mkdir.call_args_list == [
+        mock.call("Resources/app"),
+        mock.call("Resources/app/static"),
+    ]
+
+
+def test_files_mkdir_on_an_existing_directory_succeeds(mock_project):
+    api = mock.MagicMock()
+    api.exists.return_value = True
+    mock_project.get_dataset_api.return_value = api
+    result = CliRunner().invoke(cli, ["files", "mkdir", "Resources/app"])
+    assert result.exit_code == 0, result.output
+    assert "already exists" in result.output
+    api.mkdir.assert_not_called()
+
+
+def test_files_upload_creates_the_remote_parents(mock_project, tmp_path):
+    site = tmp_path / "site"
+    site.mkdir()
+    (site / "index.html").write_text("<p>hi</p>")
+    api = mock.MagicMock()
+    api.exists.side_effect = lambda path: path == "Resources"
+    api.upload.return_value = "Resources/apps/site"
+    mock_project.get_dataset_api.return_value = api
+    result = CliRunner().invoke(
+        cli, ["files", "upload", str(site), "Resources/apps/site"]
+    )
+    assert result.exit_code == 0, result.output
+    api.mkdir.assert_called_once_with("Resources/apps")
+    assert api.upload.call_args.kwargs["upload_path"] == "Resources/apps"
 
 
 def test_files_upload_strips_matching_basename(mock_project, tmp_path):
@@ -326,7 +424,7 @@ def test_files_remove(mock_project):
     api = mock.MagicMock()
     mock_project.get_dataset_api.return_value = api
     result = CliRunner().invoke(
-        cli, ["files", "remove", "/Projects/demo/stale", "--yes"]
+        cli, ["files", "delete", "/Projects/demo/stale", "--yes"]
     )
     assert result.exit_code == 0, result.output
     api.remove.assert_called_with("/Projects/demo/stale")
@@ -467,9 +565,29 @@ def test_superset_dashboard_list(mock_project):
 
 def test_superset_outside_the_cluster_fails_with_a_reason(mock_project):
     with mock.patch("hopsworks_common.client._is_external", return_value=True):
-        result = CliRunner().invoke(cli, ["superset", "dashboard", "list"])
+        result = CliRunner().invoke(cli, ["superset", "dataset", "list"])
     assert result.exit_code != 0
     assert "only inside the cluster" in result.output
+    mock_project.get_superset_api.assert_not_called()
+
+
+def test_superset_dashboards_list_from_outside_the_cluster(mock_project):
+    mock_project.id = 119
+    rest = mock.MagicMock()
+    rest._send_request.return_value = {
+        "result": [{"id": 4, "dashboard_title": "Deals", "published": True}]
+    }
+    with (
+        mock.patch("hopsworks_common.client._is_external", return_value=True),
+        mock.patch("hopsworks_common.client._get_instance", return_value=rest),
+    ):
+        result = CliRunner().invoke(cli, ["superset", "dashboard", "list"])
+    assert result.exit_code == 0, result.output
+    assert "Deals" in result.output
+    assert rest._send_request.call_args.args == (
+        "GET",
+        ["project", 119, "superset", "dashboards"],
+    )
     mock_project.get_superset_api.assert_not_called()
 
 

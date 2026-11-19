@@ -59,7 +59,7 @@ clustering or partition key; without access patterns you will produce
 plausible but harmful recommendations (partitioning by a high-cardinality id
 is the classic one). Gather it from:
 - The project's feature views: their join keys and filters are declared
-  workload. `hops fv list` and `hops fv get <name>` show them.
+  workload. `hops fv list` and `hops fv lookup <name>` show them.
 - The feature group's `event_time` column: time filters dominate training
   data reads, so it is the default sort/cluster candidate.
 - The user: AskUserQuestion for the columns their queries filter and join on,

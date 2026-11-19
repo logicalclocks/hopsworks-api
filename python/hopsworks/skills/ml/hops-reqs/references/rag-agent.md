@@ -113,7 +113,7 @@ before listening, so the deployment is ready only when it can answer. torch and
 the embedder need 3 GB; the 1 GB default is OOM-killed. Deploy it as an agent:
 
 ```bash
-hops agent create src/<slug_pkg>/agent.py --name <inference.agent.deployment> --environment <slug>-agent-env --memory 3072
+hops agent create src/<slug_pkg>/agent.py --name <inference.agent.deployment> --env <slug>-agent-env --memory 3072
 hops agent start <inference.agent.deployment>
 hops agent query <inference.agent.deployment> --data '{"user_id": 17, "query": "Where is my refund?"}'
 ```

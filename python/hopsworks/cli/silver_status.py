@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from hopsworks.cli import health
+from hopsworks.cli import health, session
 
 
 SCANNER = (
@@ -182,6 +182,7 @@ def collect(project: Any, doc: dict, slug: str, hours: int = 24) -> dict:
         conn = project.get_trino_api().connect(
             catalog="delta",
             schema=f"{getattr(project, 'name', '').lower()}_featurestore",
+            verify=session.trino_verify(),
         )
     except Exception:  # noqa: BLE001 - row counts are left out without Trino
         conn = None
