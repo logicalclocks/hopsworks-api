@@ -311,7 +311,7 @@ The model files are downloaded to the predictor's local disk, so the predictor's
 
 The scaling configuration (`min_instances`, `max_instances`, `scale_metric`, `target`, and the KEDA or Knative settings) is the same object for model and agent deployments; the modes, every metric with its unit and default, scale to zero when idle and how to verify that a deployment scales are in [hops-autoscaling](../../scaling/hops-autoscaling/SKILL.md). The short version:
 
-- A new deployment runs in **Standard mode** (a plain Deployment, scaled by KEDA where the cluster has it, else by KServe's own cpu/memory HPA); `knative_mode=True` opts into Knative's autoscaler but is deprecated since 5.3 and removed in 5.4 (a 5.3 cluster refuses it unless an administrator allows it). Convert a Knative deployment with `deployment.stop(); deployment.knative_mode = False; deployment.save(); deployment.start()`; it restarts once, Knative-only scaling settings are dropped and Standard defaults fill the gaps. The mode changes only while the deployment is stopped.
+- A new deployment runs in **Standard mode** (a plain Deployment, scaled by KEDA where the cluster has it, else by KServe's own cpu/memory HPA); `knative_mode=True` (Knative's autoscaler) is deprecated, refused by 5.3 clusters and removed in 5.4; converting is in hops-autoscaling. The mode changes only while the deployment is stopped.
 - `min_instances=0` means scale to zero when idle in both modes; in Standard mode it needs KEDA and a predictor without a transformer, and the first request after an idle period pays the cold start.
 - Equal `min_instances` and `max_instances` run a fixed replica count with no autoscaler, the default for LLM deployments.
 
