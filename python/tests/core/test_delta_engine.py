@@ -3227,10 +3227,10 @@ class TestDeltaRsLog:
         return engine
 
     @pytest.fixture
-    def log(self, mocker):
+    def log(self, mocker, monkeypatch):
         def install(*args, **kwargs):
             delta_log = _DeltaLog(*args, **kwargs)
-            mocker.patch("deltalake.DeltaTable", delta_log)
+            _patch_deltalake_modules(mocker, monkeypatch, delta_log)
             return delta_log
 
         return install
@@ -3262,11 +3262,11 @@ class TestDeltaRsLog:
         assert engine._transaction_commit("export", 77, 3) is None
 
     def test_a_table_no_commit_created_has_no_data_and_no_transaction(
-        self, engine, mocker
+        self, engine, mocker, monkeypatch
     ):
-        from deltalake.exceptions import TableNotFoundError
-
-        mocker.patch("deltalake.DeltaTable", side_effect=TableNotFoundError("none"))
+        table = mocker.Mock()
+        _, table_not_found_error = _patch_deltalake_modules(mocker, monkeypatch, table)
+        table.side_effect = table_not_found_error("none")
 
         assert engine._has_data() is False
         assert engine._transaction_commit("export", 77, 100) is None
