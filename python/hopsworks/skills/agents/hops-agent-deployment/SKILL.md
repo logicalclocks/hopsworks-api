@@ -41,7 +41,7 @@ agent_app = AgentApp(
     name="Support agent",
     description="Answers catalogue questions and handles refunds.",
     framework="langgraph",                 # picks the tracing instrumentation
-    welcome_message="How can I help?",
+    welcome_message="Ask about the music catalogue.",
     suggested_prompts=["What albums do you have by Prince?"],
     tool_events=True,                      # tool calls show as progress chips in the chat
 )
