@@ -22,7 +22,7 @@ def project_list(ctx: click.Context) -> None:
         ctx: Click context carrying the resolved ``HopsConfig``.
     """
     cfg = _require_auth(ctx)
-    auth.login(host=cfg.host or "", api_key_value=cfg.api_key, project=cfg.project)
+    session.get_project(ctx)
     from hopsworks_common.core import project_api  # noqa: PLC0415
 
     # One request: the team list already carries each project's id and name,
@@ -58,7 +58,11 @@ def project_use(ctx: click.Context, name: str) -> None:
     cfg = _require_auth(ctx)
     try:
         project = auth.login(
-            host=cfg.host or "", api_key_value=cfg.api_key, project=name
+            host=cfg.host or "",
+            api_key_value=cfg.api_key,
+            project=name,
+            internal=cfg.internal,
+            hostname_verification=cfg.hostname_verification,
         )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(
@@ -105,7 +109,7 @@ def project_info(ctx: click.Context) -> None:
         ctx: Click context carrying the resolved ``HopsConfig``.
     """
     cfg = _require_auth(ctx)
-    project = _login_active(cfg)
+    project = session.get_project(ctx)
     team = _team(getattr(project, "id", cfg.project_id))
     rows = [
         ["Host", cfg.host or "?"],
@@ -133,7 +137,7 @@ def project_leave(ctx: click.Context, yes: bool) -> None:
         yes: Skip the confirmation prompt.
     """
     cfg = _require_auth(ctx)
-    project = _login_active(cfg)
+    project = session.get_project(ctx)
     name = getattr(project, "name", cfg.project or "?")
     from hopsworks_common import client  # noqa: PLC0415
 
@@ -148,24 +152,8 @@ def project_leave(ctx: click.Context, yes: bool) -> None:
         project.remove_member(email)
     except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
         raise click.ClickException(f"Could not leave {name}: {exc}") from exc
-    if cfg.project == name:
-        cfg.project = None
-        cfg.project_id = None
-        cfg.feature_store_id = None
-        config.save(cfg)
+    config.forget_project(cfg.host, name)
     output.success("Left %s", name)
-
-
-def _login_active(cfg: config.HopsConfig) -> Any:
-    """The active project, or a clean error when the user cannot reach it (not a member, left it, gone)."""
-    try:
-        return auth.login(
-            host=cfg.host or "", api_key_value=cfg.api_key, project=cfg.project
-        )
-    except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
-        raise click.ClickException(
-            f"Could not open project '{cfg.project}': {exc}. Run `hops project list`."
-        ) from exc
 
 
 def _team(project_id: Any) -> dict | None:
