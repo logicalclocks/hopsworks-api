@@ -1592,3 +1592,28 @@ def test_sharepoint_reset_script():
 
 
 # endregion
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["info", "missing"],
+        ["databases", "missing"],
+        ["sync", "missing"],
+        ["labels", "missing"],
+        ["sync-jobs", "missing"],
+        ["tables", "missing"],
+        ["preview", "missing"],
+        ["infer-metadata", "missing", "t"],
+        ["credentials", "show", "missing"],
+        ["sharepoint", "drives", "missing"],
+    ],
+)
+def test_a_missing_data_source_is_reported_as_not_found(mock_project, argv):
+    fs = mock_project.get_feature_store.return_value
+    fs.get_data_source.return_value = None
+
+    result = CliRunner().invoke(cli, ["datasource", *argv])
+
+    assert result.exit_code == 1, result.output
+    assert "Data source 'missing' not found." in result.output

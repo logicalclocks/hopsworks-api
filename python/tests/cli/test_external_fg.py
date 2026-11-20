@@ -166,3 +166,15 @@ def test_create_external_fails_when_nothing_was_saved(mock_project):
     )
     assert result.exit_code == 1
     assert "Could not create external FG: bad schema" in result.output
+
+
+def test_create_external_reports_a_missing_data_source(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fs.get_data_source.return_value = None
+    result = CliRunner().invoke(
+        cli,
+        ["fg", "create-external", "sales", "--connector", "src", "--query", "SELECT 1"],
+    )
+    assert result.exit_code == 1, result.output
+    assert "Data source 'src' not found." in result.output
+    fs.create_external_feature_group.assert_not_called()

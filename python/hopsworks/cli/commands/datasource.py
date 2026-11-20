@@ -81,13 +81,7 @@ def connector_info(ctx: click.Context, name: str) -> None:
         ctx: Click context.
         name: Connector name.
     """
-    fs = session.get_feature_store(ctx)
-    try:
-        ds = fs.get_data_source(name)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Connector '{name}' not found: {exc}") from exc
-
-    sc = getattr(ds, "storage_connector", ds)
+    sc = _data_source(ctx, name).storage_connector
     if output.JSON_MODE:
         to_dict = getattr(sc, "to_dict", None)
         payload = to_dict() if callable(to_dict) else _connector_to_dict(sc)
@@ -101,6 +95,19 @@ def connector_info(ctx: click.Context, name: str) -> None:
         ["Description", output.first_line(getattr(sc, "description", ""))],
     ]
     output.print_table(["FIELD", "VALUE"], rows)
+
+
+def _data_source(ctx: click.Context, name: str) -> Any:
+    fs = session.get_feature_store(ctx)
+    try:
+        ds = fs.get_data_source(name)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(
+            f"Could not get data source '{name}': {exc}"
+        ) from exc
+    if ds is None:
+        raise click.ClickException(f"Data source '{name}' not found.")
+    return ds
 
 
 def _list_connectors(fs: Any) -> list[dict[str, Any]]:
@@ -1764,12 +1771,7 @@ def _credential_arguments(
 
 
 def _provided_connector(ctx: click.Context, name: str) -> Any:
-    fs = session.get_feature_store(ctx)
-    try:
-        ds = fs.get_data_source(name)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Data source '{name}' not found: {exc}") from exc
-    sc = getattr(ds, "storage_connector", ds)
+    sc = _data_source(ctx, name).storage_connector
     if not hasattr(sc, "set_credentials"):
         raise click.ClickException(
             f"Data source '{name}' does not take member credentials."
@@ -2005,9 +2007,8 @@ def connector_databases(ctx: click.Context, name: str) -> None:
         ctx: Click context.
         name: Connector name.
     """
-    fs = session.get_feature_store(ctx)
+    ds = _data_source(ctx, name)
     try:
-        ds = fs.get_data_source(name)
         databases = ds.get_databases()
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not list databases: {exc}") from exc
@@ -2093,9 +2094,8 @@ def connector_sync(
     """
     from hsfs.storage_connector import OutlookConnector
 
-    fs = session.get_feature_store(ctx)
+    data_source = _data_source(ctx, name)
     try:
-        data_source = fs.get_data_source(name)
         if isinstance(data_source.storage_connector, OutlookConnector):
             if query:
                 raise click.ClickException(
@@ -2139,9 +2139,8 @@ def connector_labels(ctx: click.Context, name: str) -> None:
         ctx: Click context.
         name: Gmail or Outlook data source name.
     """
-    fs = session.get_feature_store(ctx)
+    sc = _data_source(ctx, name).storage_connector
     try:
-        sc = fs.get_data_source(name).storage_connector
         lister = getattr(sc, "get_labels", None) or sc.get_folders
         labels = lister()
     except AttributeError as exc:
@@ -2166,9 +2165,8 @@ def connector_sync_jobs(ctx: click.Context, name: str) -> None:
         ctx: Click context.
         name: Gmail or Outlook data source name.
     """
-    fs = session.get_feature_store(ctx)
+    sc = _data_source(ctx, name).storage_connector
     try:
-        sc = fs.get_data_source(name).storage_connector
         jobs = sc.list_sync_jobs()
     except AttributeError as exc:
         raise click.ClickException(
@@ -2207,9 +2205,8 @@ def connector_tables(ctx: click.Context, name: str, database: str | None) -> Non
         name: Connector name.
         database: Database name.
     """
-    fs = session.get_feature_store(ctx)
+    ds = _data_source(ctx, name)
     try:
-        ds = fs.get_data_source(name)
         tables = ds.get_tables(database=database)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not list tables: {exc}") from exc
@@ -2234,9 +2231,8 @@ def connector_preview(ctx: click.Context, name: str) -> None:
         ctx: Click context.
         name: Connector name.
     """
-    fs = session.get_feature_store(ctx)
+    ds = _data_source(ctx, name)
     try:
-        ds = fs.get_data_source(name)
         data = ds.get_data()
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Preview failed: {exc}") from exc
@@ -2271,9 +2267,8 @@ def connector_infer_metadata(
     """
     from hopsworks_common.client.exceptions import PlatformIntelligenceException
 
-    fs = session.get_feature_store(ctx)
+    ds = _data_source(ctx, name)
     try:
-        ds = fs.get_data_source(name)
         tables = ds.get_tables(database=database) or []
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not list tables: {exc}") from exc
@@ -2318,13 +2313,7 @@ def connector_infer_metadata(
 
 
 def _sharepoint(ctx: click.Context, name: str) -> Any:
-    fs = session.get_feature_store(ctx)
-    try:
-        sc = fs.get_data_source(name).storage_connector
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Data source '{name}' not found: {exc}") from exc
-    if sc is None:
-        raise click.ClickException(f"Data source '{name}' not found.")
+    sc = _data_source(ctx, name).storage_connector
     if getattr(sc, "type", None) != "SHAREPOINT":
         raise click.ClickException(
             f"Data source '{name}' is {getattr(sc, 'type', None)}, not SHAREPOINT."
