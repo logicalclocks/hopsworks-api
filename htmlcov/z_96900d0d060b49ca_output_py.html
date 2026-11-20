@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for python/hopsworks/cli/output.py: 92%</title>
+    <title>Coverage for python/hopsworks/cli/output.py: 95%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_c827f16f.png">
     <link rel="stylesheet" href="style_cb_4667309f.css" type="text/css">
     <script src="coverage_html_cb_54cfdca1.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>python<span class="sep">/</span>hopsworks<span class="sep">/</span>cli<span class="sep">/</span>output.py</b>:
-            <span class="pc_cov">92%</span>
+            <span class="pc_cov">95%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -55,8 +55,8 @@
         </aside>
         <h2>
             <span class="text">85 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">78<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">7<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">81<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">4<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">4<span class="text"> excluded</span></button>
         </h2>
         <p class="text">
@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_96900d0d060b49ca_pipeline_data_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.17.3">coverage.py v7.17.3</a>,
-            created at 2026-11-19 14:09 +0000
+            created at 2026-11-20 10:14 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -191,8 +191,8 @@
     <p class="pln"><span class="n"><a id="t109" href="#t109">109</a></span><span class="t"><span class="str">    &quot;&quot;&quot;</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t110" href="#t110">110</a></span><span class="t">    <span class="key">try</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t111" href="#t111">111</a></span><span class="t">        <span class="key">return</span> <span class="nam">json</span><span class="op">.</span><span class="nam">loads</span><span class="op">(</span><span class="nam">raw</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t112" href="#t112">112</a></span><span class="t">    <span class="key">except</span> <span class="nam">json</span><span class="op">.</span><span class="nam">JSONDecodeError</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t113" href="#t113">113</a></span><span class="t">        <span class="key">return</span> <span class="nam">raw</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t112" href="#t112">112</a></span><span class="t">    <span class="key">except</span> <span class="nam">json</span><span class="op">.</span><span class="nam">JSONDecodeError</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t113" href="#t113">113</a></span><span class="t">        <span class="key">return</span> <span class="nam">raw</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t114" href="#t114">114</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t115" href="#t115">115</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t116" href="#t116">116</a></span><span class="t"><span class="key">def</span> <span class="nam">render_tags</span><span class="op">(</span><span class="nam">tags</span><span class="op">:</span> <span class="nam">Any</span><span class="op">)</span> <span class="op">-&gt;</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -337,7 +337,7 @@
     <p class="pln"><span class="n"><a id="t255" href="#t255">255</a></span><span class="t"><span class="str">        msg: Printf-style format string.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t256" href="#t256">256</a></span><span class="t"><span class="str">        *args: Values substituted into ``msg``.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t257" href="#t257">257</a></span><span class="t"><span class="str">    &quot;&quot;&quot;</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t258" href="#t258">258</a></span><span class="t">    <span class="nam">sys</span><span class="op">.</span><span class="nam">stderr</span><span class="op">.</span><span class="nam">write</span><span class="op">(</span><span class="nam">_wrap</span><span class="op">(</span><span class="nam">_RED</span><span class="op">,</span> <span class="nam">msg</span> <span class="op">%</span> <span class="nam">args</span> <span class="key">if</span> <span class="nam">args</span> <span class="key">else</span> <span class="nam">msg</span><span class="op">)</span> <span class="op">+</span> <span class="str">&quot;\n&quot;</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t258" href="#t258">258</a></span><span class="t">    <span class="nam">sys</span><span class="op">.</span><span class="nam">stderr</span><span class="op">.</span><span class="nam">write</span><span class="op">(</span><span class="nam">_wrap</span><span class="op">(</span><span class="nam">_RED</span><span class="op">,</span> <span class="nam">msg</span> <span class="op">%</span> <span class="nam">args</span> <span class="key">if</span> <span class="nam">args</span> <span class="key">else</span> <span class="nam">msg</span><span class="op">)</span> <span class="op">+</span> <span class="str">&quot;\n&quot;</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
 </main>
 <footer>
     <div class="content">
@@ -347,7 +347,7 @@
             <a class="nav" href="z_96900d0d060b49ca_pipeline_data_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.17.3">coverage.py v7.17.3</a>,
-            created at 2026-11-19 14:09 +0000
+            created at 2026-11-20 10:14 +0000
         </p>
     </div>
 </footer>
