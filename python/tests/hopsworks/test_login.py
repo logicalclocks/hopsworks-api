@@ -23,6 +23,7 @@ from contextlib import contextmanager
 from unittest import TestCase, mock, skip
 
 import hopsworks
+import pytest
 from hopsworks.client import exceptions
 from hopsworks.project import Project
 from hopsworks_common.client.exceptions import RestAPIError
@@ -274,6 +275,11 @@ class TestLoginUnit:
         hopsworks._connected_project = None
         hopsworks._hw_connection = hopsworks.Connection._connection
 
+    @pytest.fixture(autouse=True)
+    def _isolate_hops_toml(self, mocker, tmp_path):
+        """Keep the developer's real ~/.hops.toml out of the no-argument login paths."""
+        mocker.patch("hopsworks.cli.config.CONFIG_PATH", tmp_path / ".hops.toml")
+
     def _mock_conn_factory(self, mocker, mock_project):
         """Patch Connection.connection to return a mock connection instance."""
         mock_conn_instance = mocker.MagicMock()
@@ -453,6 +459,81 @@ class TestLoginUnit:
         call_kwargs = mock_conn_factory.call_args.kwargs
         assert call_kwargs["api_key_value"] == "file-key"
         assert result is mock_project
+
+    # ── `hops setup` cache (~/.hops.toml) ────────────────────────────────────
+
+    def _write_hops_toml(self, mocker, tmp_path, body):
+        toml_path = tmp_path / ".hops.toml"
+        toml_path.write_text(body)
+        mocker.patch("hopsworks.cli.config.CONFIG_PATH", toml_path)
+        return toml_path
+
+    def test_login_no_args_uses_hops_setup_cache(self, mocker, tmp_path):
+        # Arrange — `hops setup` cached a host with a scheme, a key and a project.
+        self._write_hops_toml(
+            mocker,
+            tmp_path,
+            '[default]\nhost = "https://my.hopsworks.server"\napi_key = "cached-key"\n'
+            'project = "fraud_detection"\n',
+        )
+        mock_project = mocker.MagicMock()
+        mock_project.get_url.return_value = "https://my.hopsworks.server/p/1"
+        mock_conn_factory, _ = self._mock_conn_factory(mocker, mock_project)
+        self._patch_side_effects(mocker, mock_project)
+        mock_getpass = mocker.patch("getpass.getpass")
+
+        # Act
+        result = hopsworks.login()
+
+        # Assert — no SaaS prompt, the cached host, port and key are used and
+        # the cached project is passed on.
+        mock_getpass.assert_not_called()
+        call_kwargs = mock_conn_factory.call_args.kwargs
+        assert call_kwargs["host"] == "my.hopsworks.server"
+        assert call_kwargs["port"] == 443
+        assert call_kwargs["api_key_value"] == "cached-key"
+        assert hopsworks._prompt_project.call_args.args[1] == "fraud_detection"
+        assert result is mock_project
+
+    def test_login_explicit_host_ignores_hops_setup_cache(self, mocker, tmp_path):
+        # Arrange
+        self._write_hops_toml(
+            mocker,
+            tmp_path,
+            '[default]\nhost = "https://cached.server"\napi_key = "cached-key"\n',
+        )
+        mock_project = mocker.MagicMock()
+        mock_project.get_url.return_value = "https://other.server/p/1"
+        mock_conn_factory, _ = self._mock_conn_factory(mocker, mock_project)
+        self._patch_side_effects(mocker, mock_project)
+
+        # Act
+        hopsworks.login(host="other.server", api_key_value="explicit-key")
+
+        # Assert — arguments win over the cache.
+        call_kwargs = mock_conn_factory.call_args.kwargs
+        assert call_kwargs["host"] == "other.server"
+        assert call_kwargs["api_key_value"] == "explicit-key"
+
+    def test_login_no_args_without_cache_falls_back_to_saas(self, mocker, tmp_path):
+        # Arrange — no ~/.hops.toml (the autouse fixture points at a missing file).
+        mocker.patch(
+            "hopsworks._get_cached_api_key_path",
+            return_value=str(tmp_path / ".hw_api_key"),
+        )
+        mock_project = mocker.MagicMock()
+        mock_project.get_url.return_value = f"https://{HOSTS.SAAS_HOST}/p/1"
+        mock_conn_factory, _ = self._mock_conn_factory(mocker, mock_project)
+        self._patch_side_effects(mocker, mock_project)
+        mocker.patch("getpass.getpass", return_value="typed-key")
+
+        # Act
+        hopsworks.login()
+
+        # Assert — SaaS host and the typed key.
+        call_kwargs = mock_conn_factory.call_args.kwargs
+        assert call_kwargs["host"] == HOSTS.SAAS_HOST
+        assert call_kwargs["api_key_value"] == "typed-key"
 
     # ── Inside Hopsworks (REST_ENDPOINT) path ─────────────────────────────────
 
