@@ -128,8 +128,10 @@ class TrinoApi:
         if project is None:
             _client = client._get_instance()
             self.project_name = _client._project_name
+            self._project_id = _client._project_id
         else:
             self.project_name = project.name
+            self._project_id = project.id
 
     def _get_ca_chain_path(self, verify: bool | str) -> bool | str:
         """Get the SSL certificate or pass through a custom verify value.
@@ -214,7 +216,7 @@ class TrinoApi:
         _client = client._get_instance()
         try:
             credentials = _client._send_request(
-                "GET", ["project", _client._project_id, "trino", "credentials"]
+                "GET", ["project", self._project_id, "trino", "credentials"]
             )
             return credentials["password"]
         except RestAPIError as e:

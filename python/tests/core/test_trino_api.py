@@ -44,6 +44,7 @@ class TestTrinoApi:
         """Create a mock project."""
         project = Mock()
         project.name = "test_project"
+        project.id = 7
         return project
 
     @pytest.fixture
@@ -263,9 +264,23 @@ class TestTrinoApi:
         # Assert
         assert password == "test_password"
         trino_api._mock_client._send_request.assert_called_once_with(
-            "GET", ["project", 119, "trino", "credentials"]
+            "GET", ["project", 7, "trino", "credentials"]
         )
         trino_api._secret_api.get_secret.assert_not_called()
+
+    def test_get_password_stays_on_the_handle_project_after_the_active_project_changes(
+        self, trino_api
+    ):
+        # The handle was made for project 7 (A); a later login made 119 (B) the active project, and B is pending.
+        def send(method, path):
+            if path[1] == 119:
+                raise self._rest_error(409, 540025, {"Retry-After": "2"})
+            return {"user": "test_project__test_user", "password": "password_of_a"}
+
+        trino_api._mock_client._send_request.side_effect = send
+
+        assert trino_api._get_password("test_project__test_user") == "password_of_a"
+        assert trino_api.get_basic_auth()[1] == "password_of_a"
 
     @staticmethod
     def _rest_error(status, error_code, headers=None):
@@ -614,7 +629,7 @@ class TestTrinoApi:
         trino_api.connect(extra_credential=[("custom", "x")])
 
         for call in mock_client._send_request.call_args_list:
-            assert call.args == ("GET", ["project", 119, "trino", "credentials"])
+            assert call.args == ("GET", ["project", 7, "trino", "credentials"])
         assert "extra_credential" not in mock_trino_connect.call_args_list[0].kwargs
         assert mock_trino_connect.call_args_list[1].kwargs["extra_credential"] == [
             ("custom", "x")
