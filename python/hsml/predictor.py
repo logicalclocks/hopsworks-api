@@ -303,8 +303,9 @@ class Predictor(DeployableComponent):
     def _get_effective_knative_mode(cls, knative_mode, model_server):
         """Resolve the effective Knative mode used for client-side scaling defaults.
 
-        An explicit `knative_mode` value always wins. Otherwise every model server defaults to Standard mode,
-        which KEDA scales (with scale-to-zero when idle) wherever KEDA is installed; Knative is the opt-in.
+        An explicit `knative_mode` value always wins.
+        Otherwise every model server defaults to Standard mode, which KEDA scales (with scale-to-zero when idle) wherever KEDA is installed.
+        Knative mode is deprecated and is never the default.
         """
         if knative_mode is not None:
             return knative_mode
