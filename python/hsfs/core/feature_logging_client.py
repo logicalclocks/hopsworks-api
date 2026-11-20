@@ -62,7 +62,7 @@ class FeatureLoggingClientSingleton:
         _logger.debug("Initializing Feature Logging Client.")
         self._current_config = self._get_default_client_config()
         if config:
-            _logger.debug(f"Config: {config!r}")
+            _logger.debug(f"Config keys: {sorted(config)}")
             self._current_config.update(
                 {k: v for k, v in config.items() if v is not None}
             )

@@ -527,7 +527,10 @@ class ArrowFlightClient:
     )
     def _get_flight_info(self, descriptor):
         # The timeout needs not be as long as timeout for do_get or do_action
-        _logger.debug("Getting flight info for descriptor: %s", str(descriptor))
+        # The descriptor command is the HQS payload, which carries data source credentials.
+        _logger.debug(
+            "Getting flight info for a %s descriptor.", descriptor.descriptor_type
+        )
         options = pyarrow.flight.FlightCallOptions(timeout=self.health_check_timeout)
         return self._connection.get_flight_info(
             descriptor,
@@ -545,7 +548,10 @@ class ArrowFlightClient:
         if timeout is None:
             timeout = self.timeout
         info = self._get_flight_info(descriptor)
-        _logger.debug("Retrieved flight info: %s. Fetching dataset.", str(info))
+        _logger.debug(
+            "Retrieved flight info with %d endpoints. Fetching dataset.",
+            len(info.endpoints),
+        )
 
         if headers is None:
             headers = self._certificates_headers()
@@ -684,7 +690,12 @@ class ArrowFlightClient:
         training_dataset["fv_version"] = feature_view_obj.version
         training_dataset["tds_version"] = training_dataset_obj.version
         training_dataset["query"] = json.loads(query_obj.hqs_payload)
-        _logger.debug(f"Creating training dataset: {training_dataset}")
+        _logger.debug(
+            "Creating training dataset %s for feature view %s v%s.",
+            training_dataset_obj.version,
+            feature_view_obj.name,
+            feature_view_obj.version,
+        )
         try:
             training_dataset_encoded = json.dumps(training_dataset).encode("ascii")
             training_dataset_buf = pyarrow.py_buffer(training_dataset_encoded)

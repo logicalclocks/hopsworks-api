@@ -152,7 +152,7 @@ class OnlineStoreRestClientSingleton:
                 f"Initialising Online Store Rest Client {'with optional configuration' if optional_config else ''}."
             )
         if optional_config and _logger.isEnabledFor(logging.DEBUG):
-            _logger.debug(f"Optional Config: {optional_config!r}")
+            _logger.debug(f"Optional Config keys: {sorted(optional_config)}")
         self._check_hopsworks_connection()
         self.variable_api = variable_api.VariableApi()
         self._auth: client.auth.OnlineStoreKeyAuth
@@ -182,7 +182,7 @@ class OnlineStoreRestClientSingleton:
                 f"Resetting Online Store Rest Client {'with optional configuration' if optional_config else ''}."
             )
         if optional_config and _logger.isEnabledFor(logging.DEBUG):
-            _logger.debug(f"Optional Config: {optional_config}")
+            _logger.debug(f"Optional Config keys: {sorted(optional_config)}")
         self._check_hopsworks_connection()
         self._setup_rest_client(
             transport=transport,
@@ -205,7 +205,7 @@ class OnlineStoreRestClientSingleton:
                 "optional_config must be a dictionary. See documentation for allowed keys and values."
             )
         if _logger.isEnabledFor(logging.DEBUG):
-            _logger.debug("Optional Config: %s", optional_config)
+            _logger.debug("Optional Config keys: %s", sorted(optional_config or {}))
         if not use_current_config:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug(
@@ -480,7 +480,7 @@ class OnlineStoreRestClientSingleton:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug(f"Sending {method} request to {url}.")
                 _logger.debug(f"Provided Data: {data}")
-                _logger.debug(f"Provided Headers: {headers}")
+                _logger.debug(f"Provided Headers: {sorted(headers or {})}")
             return self._send_through_pool(
                 method, url, headers, data, remaining, deadline, whole_call
             )
