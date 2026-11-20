@@ -171,7 +171,7 @@ API protocol, request batching, inference logging, scheduling and Knative mode a
 
 A vLLM deployment serves the OpenAI API.
 The LLM gateway serves the Standard-mode vLLM deployments of the project whose LLM gateway switch is on and that do not scale to zero, through one URL, and the `model` field of the request is the deployment name.
-Knative-mode, scale-to-zero (minimum 0) and switched-off deployments are not served; use `deployment.get_openai_client()` for them.
+Knative-mode (deprecated since 5.3, removed in 5.4), scale-to-zero (minimum 0) and switched-off deployments are not served; use `deployment.get_openai_client()` for them.
 It answers 404 until a vLLM deployment of the project is running and the cluster has the LLM gateway enabled; the per-deployment client keeps working meanwhile.
 The client needs `pip install "hopsworks[openai]"`.
 
@@ -311,7 +311,7 @@ The model files are downloaded to the predictor's local disk, so the predictor's
 
 The scaling configuration (`min_instances`, `max_instances`, `scale_metric`, `target`, and the KEDA or Knative settings) is the same object for model and agent deployments; the modes, every metric with its unit and default, scale to zero when idle and how to verify that a deployment scales are in [hops-autoscaling](../../scaling/hops-autoscaling/SKILL.md). The short version:
 
-- A new deployment runs in **Standard mode** (a plain Deployment, scaled by KEDA where the cluster has it, else by KServe's own cpu/memory HPA); `knative_mode=True` opts into Knative's autoscaler. The mode changes only while the deployment is stopped.
+- A new deployment runs in **Standard mode** (a plain Deployment, scaled by KEDA where the cluster has it, else by KServe's own cpu/memory HPA); `knative_mode=True` (Knative's autoscaler) is deprecated, refused by 5.3 clusters and removed in 5.4; converting is in hops-autoscaling. The mode changes only while the deployment is stopped.
 - `min_instances=0` means scale to zero when idle in both modes; in Standard mode it needs KEDA and a predictor without a transformer, and the first request after an idle period pays the cold start.
 - Equal `min_instances` and `max_instances` run a fixed replica count with no autoscaler, the default for LLM deployments.
 

@@ -549,6 +549,50 @@ class ProvenanceWarning(Warning):
     pass
 
 
+@also_available_as("hopsworks.util.KnativeModeWarning", "hsml.util.KnativeModeWarning")
+class KnativeModeWarning(Warning):
+    """Warning about Knative mode, shown on every occurrence.
+
+    A `DeprecationWarning` is hidden unless it is attributed to `__main__`, which would hide a notice raised while loading a deployment.
+    """
+
+
+_KNATIVE_CONVERSION_RECIPE = (
+    "To convert a deployment to Standard mode: "
+    "deployment.stop(); deployment.knative_mode = False; deployment.save(); deployment.start()."
+)
+
+
+def _warn_knative_mode_deprecated() -> None:
+    """Warn that Knative mode is deprecated, attributed to the user's call.
+
+    Must be called directly from the public method or property setter the user called.
+    The usage-logging wrapper around public methods is skipped when attributing the warning.
+    """
+    stacklevel = 3
+    frame = sys._getframe(stacklevel - 1)
+    while frame.f_globals.get("__name__") == "hopsworks_common.usage":
+        stacklevel += 1
+        frame = frame.f_back
+    warnings.warn(
+        "Knative mode (knative_mode=True) is deprecated since 5.3 and will be removed in 5.4; "
+        "new deployments run in Standard mode, and 5.3 clusters refuse Knative mode unless an administrator allows it. "
+        + _KNATIVE_CONVERSION_RECIPE,
+        DeprecationWarning,
+        stacklevel=stacklevel,
+    )
+
+
+def _warn_knative_deployment_loaded(name: str) -> None:
+    """Warn that a loaded deployment runs in Knative mode, which is deprecated."""
+    warnings.warn(
+        f"Deployment '{name}' runs in Knative mode, which is deprecated since 5.3 and will be removed in 5.4. "
+        + _KNATIVE_CONVERSION_RECIPE,
+        KnativeModeWarning,
+        stacklevel=3,
+    )
+
+
 @also_available_as("hopsworks.util.JobWarning")
 class JobWarning(Warning):
     pass

@@ -30,4 +30,7 @@ A 422 on create or save names the rule that was broken (see the list in [metrics
 
 ## Knative mode specifics
 
+Knative mode is deprecated since 5.3 and removed in 5.4.
+Convert a Knative deployment with `deployment.stop(); deployment.knative_mode = False; deployment.save(); deployment.start()`; it restarts once, Knative-only scaling settings are dropped and Standard defaults fill the gaps.
+
 Knative scales on its own metrics and knobs; the KEDA settings are rejected there. A Knative deployment with a transformer scales each component on its own concurrency. Switching a Knative deployment to Standard mode keeps a concurrency or rps metric only where the HTTP add-on can measure it (predictor without a transformer, not vLLM); elsewhere the backend swaps in cpu at 80%.
