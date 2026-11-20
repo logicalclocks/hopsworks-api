@@ -20,9 +20,12 @@ package com.logicalclocks.hsfs.spark.engine;
 import com.logicalclocks.hsfs.EntityEndpointType;
 import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.StatisticsConfig;
+import com.logicalclocks.hsfs.TimeTravelFormat;
 import com.logicalclocks.hsfs.metadata.StatisticsApi;
 import com.logicalclocks.hsfs.metadata.Variable;
 import com.logicalclocks.hsfs.metadata.VariablesApi;
+import com.logicalclocks.hsfs.spark.ExternalFeatureGroup;
+import com.logicalclocks.hsfs.spark.FeatureGroup;
 import com.logicalclocks.hsfs.spark.TrainingDataset;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
@@ -50,20 +53,22 @@ class TestStatisticsEngine {
     SparkEngine.setInstance(sparkEngine);
     Dataset<Row> split = Mockito.mock(Dataset.class);
     Mockito.when(split.isEmpty()).thenReturn(false);
-    Mockito.when(sparkEngine.profile(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any()))
-        .thenReturn("{\"columns\": []}");
+    Mockito.when(sparkEngine.profile(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any(),
+        Mockito.any(), Mockito.any(), Mockito.any())).thenReturn("{\"columns\": []}");
     TrainingDataset trainingDataset = new TrainingDataset();
     StatisticsConfig config = new StatisticsConfig();
     config.setHistograms(true);
     config.setCorrelations(false);
+    config.setKll(true);
+    config.setHistogramBins(50);
     trainingDataset.setStatisticsConfig(config);
 
     new StatisticsEngine(EntityEndpointType.TRAINING_DATASET)
         .computeSplitStatistics(trainingDataset, Collections.singletonMap("train", split));
 
-    // SparkEngine.profile takes (correlation, histogram)
+    // SparkEngine.profile takes (correlation, histogram, exactUniqueness, kll, histogramBins, mergeableState)
     Mockito.verify(sparkEngine).profile(Mockito.eq(split), Mockito.any(), Mockito.eq(false), Mockito.eq(true),
-        Mockito.eq(false));
+        Mockito.eq(false), Mockito.eq(true), Mockito.eq(50), Mockito.eq(false));
   }
 
   private static VariablesApi variables(String enabled, String allowed) throws Exception {
@@ -122,29 +127,66 @@ class TestStatisticsEngine {
     Assertions.assertFalse(effective(failing, true));
   }
 
-  @Test
-  @SuppressWarnings({"unchecked", "rawtypes"})
-  void aMergeableProfileReachesTheProfilerWithCorrelationsAndHistogramsInOrder() throws Exception {
+  @SuppressWarnings("unchecked")
+  private static SparkEngine profiler() {
     SparkEngine sparkEngine = Mockito.mock(SparkEngine.class);
     SparkEngine.setInstance(sparkEngine);
-    Dataset<Row> data = Mockito.mock(Dataset.class);
-    Mockito.when(data.isEmpty()).thenReturn(false);
     Mockito.when(sparkEngine.profile(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any(),
         Mockito.any(), Mockito.any(), Mockito.any())).thenReturn("{\"columns\": []}");
-    StatisticsConfig config = config(true);
-    config.setCorrelations(true);
-    config.setHistograms(false);
-    config.setExactUniqueness(false);
-    FeatureGroupBase featureGroup = Mockito.mock(FeatureGroupBase.class);
-    Mockito.when(featureGroup.getStatisticsConfig()).thenReturn(config);
+    return sparkEngine;
+  }
 
+  @SuppressWarnings("unchecked")
+  private static Dataset<Row> rows() {
+    Dataset<Row> data = Mockito.mock(Dataset.class);
+    Mockito.when(data.isEmpty()).thenReturn(false);
+    return data;
+  }
+
+  @SuppressWarnings("rawtypes")
+  private static void profileFeatureGroup(FeatureGroupBase featureGroup, Dataset<Row> data) throws Exception {
     try (MockedConstruction<StatisticsApi> ignored = Mockito.mockConstruction(StatisticsApi.class)) {
       new StatisticsEngine(EntityEndpointType.FEATURE_GROUP, variables("true", "true"))
           .computeStatistics(featureGroup, data, 7L);
     }
+  }
+
+  @Test
+  void aMergeableProfileReachesTheProfilerWithTheConfiguredFlagsInOrder() throws Exception {
+    SparkEngine sparkEngine = profiler();
+    Dataset<Row> data = rows();
+    StatisticsConfig config = config(true);
+    config.setCorrelations(true);
+    config.setHistograms(false);
+    config.setExactUniqueness(false);
+    config.setKll(true);
+    config.setHistogramBins(50);
+    FeatureGroup featureGroup = Mockito.mock(FeatureGroup.class);
+    Mockito.when(featureGroup.getStatisticsConfig()).thenReturn(config);
+    Mockito.when(featureGroup.getTimeTravelFormat()).thenReturn(TimeTravelFormat.DELTA);
+
+    profileFeatureGroup(featureGroup, data);
 
     // SparkEngine.profile takes (correlation, histogram, exactUniqueness, kll, histogramBins, mergeableState)
     Mockito.verify(sparkEngine).profile(Mockito.eq(data), Mockito.any(), Mockito.eq(true), Mockito.eq(false),
-        Mockito.eq(false), Mockito.isNull(), Mockito.isNull(), Mockito.eq(true));
+        Mockito.eq(false), Mockito.eq(true), Mockito.eq(50), Mockito.eq(true));
+  }
+
+  @Test
+  void groupsWithoutTimeTravelGetNoMergeableState() throws Exception {
+    SparkEngine sparkEngine = profiler();
+    Dataset<Row> data = rows();
+    FeatureGroup noTimeTravel = Mockito.mock(FeatureGroup.class);
+    Mockito.when(noTimeTravel.getStatisticsConfig()).thenReturn(config(true));
+    Mockito.when(noTimeTravel.getTimeTravelFormat()).thenReturn(TimeTravelFormat.NONE);
+    ExternalFeatureGroup external = Mockito.mock(ExternalFeatureGroup.class);
+    Mockito.when(external.getStatisticsConfig()).thenReturn(config(true));
+    Mockito.when(external.getTimeTravelFormat()).thenReturn(TimeTravelFormat.HUDI);
+
+    profileFeatureGroup(noTimeTravel, data);
+    profileFeatureGroup(external, data);
+
+    Mockito.verify(sparkEngine, Mockito.times(2)).profile(Mockito.eq(data), Mockito.any(), Mockito.any(),
+        Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any(), Mockito.eq(false));
   }
 }

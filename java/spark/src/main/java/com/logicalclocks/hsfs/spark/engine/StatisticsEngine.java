@@ -22,6 +22,7 @@ import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.Split;
 import com.logicalclocks.hsfs.StatisticsConfig;
 import com.logicalclocks.hsfs.FeatureGroupBase;
+import com.logicalclocks.hsfs.TimeTravelFormat;
 import com.logicalclocks.hsfs.metadata.FeatureDescriptiveStatistics;
 import com.logicalclocks.hsfs.metadata.SplitStatistics;
 import com.logicalclocks.hsfs.metadata.Statistics;
@@ -29,7 +30,9 @@ import com.logicalclocks.hsfs.metadata.StatisticsApi;
 import com.logicalclocks.hsfs.metadata.Variable;
 import com.logicalclocks.hsfs.metadata.VariablesApi;
 
+import com.logicalclocks.hsfs.spark.FeatureGroup;
 import com.logicalclocks.hsfs.spark.FeatureView;
+import com.logicalclocks.hsfs.spark.StreamFeatureGroup;
 import com.logicalclocks.hsfs.spark.TrainingDataset;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
@@ -71,50 +74,33 @@ public class StatisticsEngine {
 
   public Statistics computeStatistics(TrainingDataset trainingDataset, Dataset<Row> dataFrame)
       throws IOException, FeatureStoreException {
-    Statistics statistics = computeStatistics(dataFrame,
-        trainingDataset.getStatisticsConfig().getColumns(),
-        trainingDataset.getStatisticsConfig().getHistograms(),
-        trainingDataset.getStatisticsConfig().getCorrelations(),
-        trainingDataset.getStatisticsConfig().getExactUniqueness(),
-        null);
+    Statistics statistics = computeStatistics(dataFrame, trainingDataset.getStatisticsConfig(), null, false);
 
     return statisticsApi.post(trainingDataset, statistics);
   }
 
   public Statistics computeStatistics(FeatureView featureView, TrainingDataset trainingDataset,
       Dataset<Row> dataFrame) throws FeatureStoreException, IOException {
-    Statistics statistics = computeStatistics(dataFrame,
-        trainingDataset.getStatisticsConfig().getColumns(),
-        trainingDataset.getStatisticsConfig().getHistograms(),
-        trainingDataset.getStatisticsConfig().getCorrelations(),
-        trainingDataset.getStatisticsConfig().getExactUniqueness(),
-        null);
+    Statistics statistics = computeStatistics(dataFrame, trainingDataset.getStatisticsConfig(), null, false);
 
     return statisticsApi.post(featureView, trainingDataset.getVersion(), statistics);
   }
 
   public Statistics computeStatistics(FeatureGroupBase featureGroup, Dataset<Row> dataFrame, Long commitId)
       throws FeatureStoreException, IOException {
-    // A feature group's statistics carry the state the statistics job merges the next commit's rows into
-    // when the cluster enables incremental statistics; whether a merge applies is decided there.
-    Statistics statistics = computeStatistics(dataFrame,
-        featureGroup.getStatisticsConfig().getColumns(),
-        featureGroup.getStatisticsConfig().getHistograms(),
-        featureGroup.getStatisticsConfig().getCorrelations(),
-        featureGroup.getStatisticsConfig().getExactUniqueness(),
-        commitId, incrementalStatisticsEnabled(featureGroup.getStatisticsConfig()));
+    // A time-travel feature group's statistics carry the state the statistics job merges the next commit's rows
+    // into when incremental statistics are on; whether a merge applies is decided there.
+    boolean mergeableState = mergeable(featureGroup)
+        && incrementalStatisticsEnabled(featureGroup.getStatisticsConfig());
+    Statistics statistics = computeStatistics(dataFrame, featureGroup.getStatisticsConfig(), commitId,
+        mergeableState);
 
     return statisticsApi.post(featureGroup, statistics);
   }
 
-  private Statistics computeStatistics(Dataset<Row> dataFrame, List<String> statisticColumns, Boolean histograms,
-      Boolean correlations, Boolean exactUniqueness, Long commitId) {
-    return computeStatistics(dataFrame, statisticColumns, histograms, correlations, exactUniqueness, commitId,
-        false);
-  }
-
-  private Statistics computeStatistics(Dataset<Row> dataFrame, List<String> statisticColumns, Boolean histograms,
-      Boolean correlations, Boolean exactUniqueness, Long commitId, boolean mergeableState) {
+  private Statistics computeStatistics(Dataset<Row> dataFrame, StatisticsConfig config, Long commitId,
+      boolean mergeableState) {
+    List<String> statisticColumns = config.getColumns();
     String content;
 
     if (dataFrame.isEmpty()) {
@@ -127,17 +113,22 @@ public class StatisticsEngine {
       content = buildEmptyStatistics(statisticColumns);
     } else {
       // if no empty, compute statistics
-      content = mergeableState
-          ? SparkEngine.getInstance().profile(dataFrame, statisticColumns, correlations, histograms,
-              exactUniqueness, null, null, true)
-          : SparkEngine.getInstance().profile(dataFrame, statisticColumns, correlations, histograms,
-              exactUniqueness);
+      content = SparkEngine.getInstance().profile(dataFrame, statisticColumns, config.getCorrelations(),
+          config.getHistograms(), config.getExactUniqueness(), config.getKll(), config.getHistogramBins(),
+          mergeableState);
     }
 
     Collection<FeatureDescriptiveStatistics> featureDescriptiveStatistics = parseDeequStatistics(content);
     
     Long commitTime = Timestamp.valueOf(LocalDateTime.now()).getTime();
     return new Statistics(commitTime, 1.0f, featureDescriptiveStatistics, commitId, null);
+  }
+
+  // only the feature groups whose commits the statistics job can read between versions ever merge
+  private static boolean mergeable(FeatureGroupBase featureGroup) {
+    return (featureGroup instanceof FeatureGroup || featureGroup instanceof StreamFeatureGroup)
+        && (featureGroup.getTimeTravelFormat() == TimeTravelFormat.HUDI
+            || featureGroup.getTimeTravelFormat() == TimeTravelFormat.DELTA);
   }
 
   /**
@@ -184,11 +175,7 @@ public class StatisticsEngine {
     List<SplitStatistics> splitStatistics = new ArrayList<>();
     for (Split split : trainingDataset.getSplits()) {
       Statistics statistics = computeStatistics(trainingDataset.read(split.getName()),
-          trainingDataset.getStatisticsConfig().getColumns(),
-          trainingDataset.getStatisticsConfig().getHistograms(),
-          trainingDataset.getStatisticsConfig().getCorrelations(),
-          trainingDataset.getStatisticsConfig().getExactUniqueness(),
-          null);
+          trainingDataset.getStatisticsConfig(), null, false);
       splitStatistics.add(new SplitStatistics(split.getName(), statistics.getFeatureDescriptiveStatistics()));
     }
     Long commitTime = Timestamp.valueOf(LocalDateTime.now()).getTime();
@@ -198,12 +185,8 @@ public class StatisticsEngine {
   public Statistics computeSplitStatistics(TrainingDataset trainingDataset, Map<String, Dataset<Row>> splitDatasets) {
     List<SplitStatistics> splitStatistics = new ArrayList<>();
     for (Map.Entry<String, Dataset<Row>> entry : splitDatasets.entrySet()) {
-      Statistics statistics = computeStatistics(entry.getValue(),
-          trainingDataset.getStatisticsConfig().getColumns(),
-          trainingDataset.getStatisticsConfig().getHistograms(),
-          trainingDataset.getStatisticsConfig().getCorrelations(),
-          trainingDataset.getStatisticsConfig().getExactUniqueness(),
-          null);
+      Statistics statistics = computeStatistics(entry.getValue(), trainingDataset.getStatisticsConfig(),
+          null, false);
       splitStatistics.add(new SplitStatistics(entry.getKey(), statistics.getFeatureDescriptiveStatistics()));
     }
     Long commitTime = Timestamp.valueOf(LocalDateTime.now()).getTime();

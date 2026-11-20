@@ -123,9 +123,10 @@ public class ProfileMergerTest {
       Assertions.assertEquals(want.path("numRecordsNonNull").asLong(), got.path("numRecordsNonNull").asLong(), name);
       Assertions.assertEquals(want.path("numRecordsNull").asLong(), got.path("numRecordsNull").asLong(), name);
       Assertions.assertEquals(want.path("completeness").asDouble(), got.path("completeness").asDouble(), 1e-12, name);
-      long exactDistinct = all.select(name).distinct().count();
+      // the sketches count non-null values only
+      long exactDistinct = all.select(name).where(all.col(name).isNotNull()).distinct().count();
       Assertions.assertEquals(exactDistinct, got.path("approximateNumDistinctValues").asLong(),
-          Math.max(1, exactDistinct / 20), name + " distinct");
+          exactDistinct == 0 ? 0 : Math.max(1, exactDistinct / 20), name + " distinct");
       Assertions.assertTrue(got.has("mergeable"), name + " keeps its mergeable state");
       if (want.has("mean")) {
         assertClose(want.path("sum").asDouble(), got.path("sum").asDouble(), name + " sum");

@@ -161,7 +161,19 @@ class TestIncrementalStatisticsEngine:
 
     # region compute
     def _previous(self, mocker, rows):
-        self.statistics_engine._statistics_api._get_all_in_window.return_value = rows
+        # listed newest end first without content; a snapshot's content is read by its end commit
+        api = self.statistics_engine._statistics_api
+        api._get_all_in_window.return_value = sorted(
+            rows, key=lambda row: row.window_end_commit_time, reverse=True
+        )
+        snapshots = {
+            row.window_end_commit_time: row
+            for row in rows
+            if row.window_start_commit_time in (None, 0)
+        }
+        api._get.side_effect = lambda entity, end_commit_time, **kwargs: snapshots.get(
+            end_commit_time
+        )
 
     def _commits(self, mocker, commits):
         mocker.patch.object(
@@ -315,28 +327,96 @@ class TestIncrementalStatisticsEngine:
 
         assert self.engine._read_commits_after(fg, ["a"], 500, 1000) is None
 
-    def test_the_previous_snapshot_is_looked_up_before_the_new_commit(self, mocker):
+    def test_the_previous_snapshot_is_the_newest_earlier_commit_with_one(self, mocker):
+        # the commit at 800 has only a rolling window row, the one at 500 a snapshot
+        self._previous(mocker, [_snapshot(800, start=100), _snapshot(500)])
+
+        previous = self.engine._previous_snapshot(
+            _fg(mocker), [_commit(800), _commit(500), _commit(200)]
+        )
+
+        assert previous.window_end_commit_time == 500
+        api = self.statistics_engine._statistics_api
+        listing = api._get_all_in_window.call_args.kwargs
+        assert listing["end_commit_time"] == 800
+        assert listing["with_content"] is False
+        assert listing["row_percentage"] == 1.0
+        # only the snapshot's content is read
+        api._get.assert_called_once()
+        assert api._get.call_args.kwargs["end_commit_time"] == 500
+        assert api._get.call_args.kwargs["with_content"] is True
+
+    def test_the_snapshot_content_is_read_with_no_start_bound_and_checked(self, mocker):
+        # a rolling window registered at the snapshot's commit, at 100% of the rows
         self._previous(mocker, [_snapshot(500)])
+        api = self.statistics_engine._statistics_api
+        api._get.side_effect = None
+        api._get.return_value = _snapshot(500, start=100)
 
-        self.engine._previous_snapshot(_fg(mocker), 1000)
+        assert (
+            self.engine._previous_snapshot(_fg(mocker), [_commit(800), _commit(500)])
+            is None
+        )
+        assert api._get.call_args.kwargs["start_commit_time"] == 0
 
-        api = self.statistics_engine._statistics_api._get_all_in_window
-        assert api.call_args.kwargs["end_commit_time"] == 999
+    def test_a_snapshot_many_commits_back_is_found(self, mocker):
+        # a feature group committing faster than its statistics runs skips commits between snapshots
+        commits = [_commit(1000 - i) for i in range(60)]
+        self._previous(mocker, [_snapshot(941)])
 
-    def test_a_commit_at_the_previous_snapshot_is_not_part_of_the_new_rows(
-        self, mocker
-    ):
+        previous = self.engine._previous_snapshot(_fg(mocker), commits[1:])
+
+        assert previous.window_end_commit_time == 941
+
+    def test_rolling_window_rows_do_not_hide_the_previous_snapshot(self, mocker):
+        # any number of other rows may end before the new commit, the lookup is by commit
+        self._previous(
+            mocker,
+            [_snapshot(500)] + [_snapshot(900 - i, start=100) for i in range(10)],
+        )
+        self._commits(mocker, [_commit(1000), _commit(900), _commit(500)])
+        spark_engine = mocker.patch("hsfs.engine._get_instance").return_value
+        spark_engine._profile.return_value = '{"columns": []}'
+        self.statistics_engine._parse_deequ_statistics.return_value = []
+
+        assert (
+            self.engine._merge(_fg(mocker, "HUDI"), ["a", "b"], 1000, False, None)
+            is not None
+        )
+
+    def test_a_commit_at_the_previous_snapshot_is_not_part_of_the_new_rows(self):
         # the previous snapshot already holds the commit at 500, whatever it updated
-        self._commits(mocker, [_commit(1000), _commit(500, updated=3)])
-
-        assert self.engine._append_only_between(_fg(mocker), 500, 1000)
+        assert self.engine._append_only_after(
+            [_commit(1000), _commit(500, updated=3)], 500
+        )
 
     def test_a_commit_after_the_previous_snapshot_that_updated_rows_blocks_the_merge(
+        self,
+    ):
+        assert not self.engine._append_only_after(
+            [_commit(1000, updated=1), _commit(500)], 500
+        )
+
+    def test_a_scheduled_window_ending_at_wall_clock_time_merges_up_to_the_latest_commit(
         self, mocker
     ):
-        self._commits(mocker, [_commit(1000, updated=1), _commit(500)])
+        fg = _fg(mocker, "HUDI")
+        self._previous(mocker, [_snapshot(500)])
+        self._commits(mocker, [_commit(1000), _commit(500)])
+        spark_engine = mocker.patch("hsfs.engine._get_instance").return_value
+        spark_engine._profile.return_value = '{"columns": []}'
+        self.statistics_engine._parse_deequ_statistics.return_value = []
 
-        assert not self.engine._append_only_between(_fg(mocker), 500, 1000)
+        assert self.engine._compute(fg, ["a", "b"], 5000) is not None
+
+        self.engine._feature_group_api._get_commit_details.assert_called_once_with(
+            fg, 5000, self.engine.MAX_COMMITS + 1
+        )
+        fg.select.return_value.as_of.assert_called_once_with(
+            exclude_until=500, wallclock_time=1000
+        )
+        statistics = self.statistics_engine._save_statistics.call_args.args[0]
+        assert statistics.window_end_commit_time == 1000
 
     def test_an_error_while_merging_falls_back(self, mocker):
         self._previous(mocker, [_snapshot(500)])
@@ -404,11 +484,13 @@ class TestIncrementalStatisticsEngine:
 
     def test_falls_back_without_a_previous_snapshot(self, mocker):
         self._previous(mocker, [_snapshot(500, start=100)])
+        self._commits(mocker, [_commit(1000), _commit(500)])
 
         assert self.engine._compute(_fg(mocker), ["a"], 1000) is None
 
     def test_falls_back_when_the_previous_snapshot_has_no_mergeable_state(self, mocker):
         self._previous(mocker, [_snapshot(500, mergeable=False)])
+        self._commits(mocker, [_commit(1000), _commit(500)])
 
         assert self.engine._compute(_fg(mocker), ["a"], 1000) is None
 
@@ -418,11 +500,15 @@ class TestIncrementalStatisticsEngine:
 
         assert self.engine._compute(_fg(mocker), ["a"], 1000) is None
 
-    def test_falls_back_when_too_many_commits_separate_the_snapshots(self, mocker):
+    def test_falls_back_when_the_previous_snapshot_is_beyond_the_look_back(
+        self, mocker
+    ):
+        # the API returns at most the commits looked back over, the snapshot is older
         self._previous(mocker, [_snapshot(1)])
-        many = [_commit(1000 - i) for i in range(self.engine.MAX_COMMITS)]
+        many = [_commit(1000 - i) for i in range(self.engine.MAX_COMMITS + 1)]
         self._commits(mocker, many)
 
         assert self.engine._compute(_fg(mocker), ["a"], 1000) is None
+        self.statistics_engine._statistics_api._get.assert_not_called()
 
     # endregion

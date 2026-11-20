@@ -3122,10 +3122,24 @@ class TestDeltaVersionAt:
         assert engine._delta_version_at("hdfs:///fg", 5000) == 1
         assert opened == ["00000000000000000001.json"]
 
-    def test_a_commit_file_without_commit_info_is_skipped(self, mocker):
+    def test_a_commit_file_without_commit_info_leaves_the_version_to_the_full_scan(
+        self, mocker
+    ):
+        # commitInfo past the line limit reads as none; skipping it would pin the version before it
         engine, _ = self._engine_with_log(mocker, {0: 1000, 1: None, 2: 3000})
 
-        assert engine._delta_version_at("hdfs:///fg", 2500) == 0
+        assert engine._delta_version_at("hdfs:///fg", 2500) is None
+
+    def test_a_bound_further_back_than_the_tail_leaves_the_version_to_the_full_scan(
+        self, mocker
+    ):
+        engine, opened = self._engine_with_log(mocker, {v: 1000 + v for v in range(10)})
+        engine._DELTA_LOG_TAIL_MAX_VERSIONS = 3
+
+        assert engine._delta_version_at("hdfs:///fg", 1005) is None
+        assert len(opened) == 3
+        # within the tail the version is found
+        assert engine._delta_version_at("hdfs:///fg", 1007) == 7
 
     def test_without_a_jvm_the_caller_falls_back(self, mocker):
         fg = mocker.Mock()

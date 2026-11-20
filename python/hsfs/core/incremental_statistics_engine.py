@@ -54,8 +54,10 @@ class IncrementalStatisticsEngine:
     ALLOWED_VARIABLE = "statistics_incremental_allowed"
     FULL_PROFILE_EVERY_VARIABLE = "statistics_incremental_full_profile_every"
     DEFAULT_FULL_PROFILE_EVERY = 50
-    # commits looked at between two snapshots; more than this profiles the snapshot in full
+    # commits looked back over for the previous snapshot; further back profiles the snapshot in full
     MAX_COMMITS = 100
+    # rows listed, without content, while looking for the previous snapshot among other windows' rows
+    MAX_LISTED_ROWS = 1000
     _MERGEABLE_FORMAT = "datasketches-native-v1"
 
     def __init__(self, statistics_engine: statistics_engine.StatisticsEngine):
@@ -68,7 +70,7 @@ class IncrementalStatisticsEngine:
         try:
             return self._variable_api._get_variable(name)
         except Exception as e:
-            _logger.debug(f"Incremental statistics setting {name} not readable: {e}")
+            _logger.debug("Incremental statistics setting %s not readable: %s", name, e)
             return None
 
     def _enabled(self, entity) -> bool:
@@ -141,8 +143,7 @@ class IncrementalStatisticsEngine:
     ) -> Statistics | None:
         """Merge the rows committed since the previous snapshot into its statistics.
 
-        Returns the saved statistics, or `None` when the merge does not apply or fails, and
-        the caller profiles the whole snapshot.
+        Returns the saved statistics, or `None` when the merge does not apply or fails, and the caller profiles the whole snapshot.
         """
         try:
             return self._merge(
@@ -150,7 +151,7 @@ class IncrementalStatisticsEngine:
             )
         except Exception as e:
             _logger.warning(
-                f"Incremental statistics failed, profiling the whole snapshot: {e}"
+                "Incremental statistics failed, profiling the whole snapshot: %s", e
             )
             return None
 
@@ -164,10 +165,15 @@ class IncrementalStatisticsEngine:
     ) -> Statistics | None:
         """The merge itself, or `None` when it does not apply.
 
-        It does not apply without a previous snapshot with a mergeable state, with a feature
-        the snapshot does not cover, or with a commit in between that updated or deleted rows.
+        It does not apply without a previous snapshot with a mergeable state, with a feature the snapshot does not cover, or with a commit in between that updated or deleted rows.
         """
-        previous = self._previous_snapshot(entity, end_commit_time)
+        commits = self._commits_until(entity, end_commit_time)
+        if not commits:
+            return None
+        # A scheduled run ends its window at the time it ran.
+        # Its statistics are those of the latest commit at or before that time, and the commit time is what the merge reads up to.
+        end_commit_time = commits[0].commit_time
+        previous = self._previous_snapshot(entity, commits[1:])
         if previous is None:
             return None
         names = self._profiled_names(
@@ -184,7 +190,8 @@ class IncrementalStatisticsEngine:
         missing = [name for name in names if name not in previous_fds]
         if missing:
             _logger.info(
-                f"Incremental statistics: previous snapshot has no mergeable state for {missing}"
+                "Incremental statistics: previous snapshot has no mergeable state for %s",
+                missing,
             )
             return None
         full_profile_every = self._full_profile_every()
@@ -203,12 +210,11 @@ class IncrementalStatisticsEngine:
             )
             if merges >= full_profile_every:
                 _logger.info(
-                    f"Incremental statistics: {merges} commits merged since the last full profile, profiling the whole snapshot"
+                    "Incremental statistics: %s commits merged since the last full profile, profiling the whole snapshot",
+                    merges,
                 )
                 return None
-        if not self._append_only_between(
-            entity, previous.window_end_commit_time, end_commit_time
-        ):
+        if not self._append_only_after(commits, previous.window_end_commit_time):
             return None
         delta_df = self._read_commits_after(
             entity, names, previous.window_end_commit_time, end_commit_time
@@ -239,8 +245,9 @@ class IncrementalStatisticsEngine:
             window_end_commit_time=end_commit_time,
         )
         _logger.info(
-            f"Incremental statistics: merged the commits after {previous.window_end_commit_time} "
-            f"into the snapshot at {end_commit_time}"
+            "Incremental statistics: merged the commits after %s into the snapshot at %s",
+            previous.window_end_commit_time,
+            end_commit_time,
         )
         return self._statistics_engine._save_statistics(statistics, entity, None)
 
@@ -279,13 +286,8 @@ class IncrementalStatisticsEngine:
                 .as_of(exclude_until=previous_end, wallclock_time=end_commit_time)
                 .read()
             )
-        # Delta resolves the timestamp bounds of a change feed against the modification
-        # times of the commit files, which are later than the commit times the backend
-        # records: a timestamp-bounded read would take in the previous snapshot's commit and
-        # leave out the last one. The bounds are read from the log as versions instead, and
-        # each must be the very commit the backend recorded.
-        # Writers record different clocks, so a version matches on either:
-        # delta-rs the commitInfo timestamp, Spark the commit file's modification time from DeltaTable.history().
+        # The change feed is bounded by version, read from the log, and each bound must be the very commit the backend recorded.
+        # How a commit time maps to a version: DeltaEngine._delta_version_at.
         from hsfs.core import delta_engine
         from pyspark.sql import functions as F
 
@@ -310,7 +312,8 @@ class IncrementalStatisticsEngine:
                 reader, spark, location, version
             ):
                 _logger.info(
-                    f"Incremental statistics: no Delta version recorded at {commit_time}"
+                    "Incremental statistics: no Delta version recorded at %s",
+                    commit_time,
                 )
                 return None
             versions.append(version)
@@ -323,10 +326,9 @@ class IncrementalStatisticsEngine:
             .option("endingVersion", versions[1])
             .load(location)
         )
-        # The commit details bound the window by commit time, the feed by version, and the
-        # two can disagree on which commits fall in between. The feed is the authority on what
-        # changed, so any update or delete in it rules the merge out. Stopping at the first such
-        # row keeps the check cheap when there is one.
+        # The commit details bound the window by commit time, the feed by version, and the two can disagree on which commits fall in between.
+        # The feed is the authority on what changed, so any update or delete in it rules the merge out.
+        # Stopping at the first such row keeps the check cheap when there is one.
         if feed.filter(F.col("_change_type") != "insert").limit(1).count() > 0:
             _logger.info(
                 "Incremental statistics: the change feed holds updated or deleted rows"
@@ -354,46 +356,68 @@ class IncrementalStatisticsEngine:
             times.add(commit_info_time)
         return times
 
-    def _previous_snapshot(self, entity, end_commit_time: int) -> Statistics | None:
-        # the newest snapshot row (no start bound) before this commit, with its content
-        rows = self._statistics_engine._statistics_api._get_all_in_window(
-            entity, end_commit_time=end_commit_time - 1, limit=5
+    def _commits_until(self, entity, end_commit_time: int) -> list:
+        """The latest commits at or before `end_commit_time`, newest first."""
+        commits = self._feature_group_api._get_commit_details(
+            entity, end_commit_time, self.MAX_COMMITS + 1
+        )
+        if not isinstance(commits, list):
+            commits = [commits] if commits is not None else []
+        return [c for c in commits if c.commit_time is not None]
+
+    def _previous_snapshot(self, entity, earlier_commits: list) -> Statistics | None:
+        """The newest snapshot of the whole table at one of the commits, newest first, with its content.
+
+        The rows ending at or before the newest of the commits are listed once without content, and only the snapshot's content is read.
+        A snapshot is a row of the whole table, with no start bound, ending at one of the commits.
+        """
+        if not earlier_commits:
+            return None
+        commit_times = {commit.commit_time for commit in earlier_commits}
+        api = self._statistics_engine._statistics_api
+        rows = api._get_all_in_window(
+            entity,
+            end_commit_time=earlier_commits[0].commit_time,
+            limit=self.MAX_LISTED_ROWS,
+            row_percentage=1.0,
+            with_content=False,
         )
         for row in rows or []:
             if (
                 row.window_start_commit_time in (None, 0)
-                and row.window_end_commit_time is not None
+                and row.window_end_commit_time in commit_times
             ):
-                return row
+                # start 0 is how the backend stores a window with no start bound
+                snapshot = api._get(
+                    entity,
+                    start_commit_time=0,
+                    end_commit_time=row.window_end_commit_time,
+                    row_percentage=1.0,
+                    with_content=True,
+                )
+                if (
+                    snapshot is not None
+                    and snapshot.window_start_commit_time in (None, 0)
+                    and snapshot.window_end_commit_time == row.window_end_commit_time
+                ):
+                    return snapshot
+                break
+        _logger.info(
+            "Incremental statistics: no snapshot at the %s commits before this one",
+            len(earlier_commits),
+        )
         return None
 
-    def _append_only_between(
-        self, entity, previous_end: int, end_commit_time: int
-    ) -> bool:
-        commits = self._feature_group_api._get_commit_details(
-            entity, end_commit_time, self.MAX_COMMITS
-        )
-        if not isinstance(commits, list):
-            commits = [commits] if commits is not None else []
-        between = [
-            c
-            for c in commits
-            if c.commit_time is not None and c.commit_time > previous_end
-        ]
-        if not between:
-            _logger.info(
-                "Incremental statistics: no commit after the previous snapshot"
-            )
-            return False
-        if len(commits) >= self.MAX_COMMITS and len(between) == len(commits):
-            _logger.info(
-                "Incremental statistics: too many commits since the previous snapshot"
-            )
-            return False
-        for commit in between:
+    @staticmethod
+    def _append_only_after(commits: list, previous_end: int) -> bool:
+        """Whether every commit after the previous snapshot only inserted rows."""
+        for commit in commits:
+            if commit.commit_time <= previous_end:
+                break
             if (commit.rows_updated or 0) > 0 or (commit.rows_deleted or 0) > 0:
                 _logger.info(
-                    f"Incremental statistics: commit {commit.commit_time} updated or deleted rows"
+                    "Incremental statistics: commit %s updated or deleted rows",
+                    commit.commit_time,
                 )
                 return False
         return True

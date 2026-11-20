@@ -1277,11 +1277,10 @@ class TestPython:
         assert cols["col1"]["minimum"] == 1.0
         assert cols["col1"]["maximum"] == 4.0
         assert cols["col1"]["sum"] == 10.0
-        # polars uses nearest-rank interpolation; just assert percentiles are populated
-        assert cols["col1"]["approxPercentiles"][49] in {2.0, 2.5, 3.0}
+        # polars uses nearest-rank interpolation
+        assert cols["col1"]["approxPercentiles"][49] == 3.0
         assert cols["col2"]["dataType"] == "String"
-        # polars returns describe values as strings for non-numeric columns
-        assert str(cols["col2"]["count"]) == "4"
+        assert cols["col2"]["count"] == 4
         assert "approxPercentiles" not in cols["col2"]
 
     @pytest.mark.skipif(

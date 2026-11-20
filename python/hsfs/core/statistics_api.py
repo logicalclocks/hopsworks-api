@@ -185,8 +185,10 @@ class StatisticsApi:
         end_commit_time: int | None = None,
         feature_names: list[str] | None = None,
         limit: int | None = None,
+        row_percentage: float | None = None,
+        with_content: bool | str = True,
     ) -> list[statistics.Statistics] | None:
-        """Get all statistics rows for an entity within a commit time window, with content.
+        """Get all statistics rows for an entity within a commit time window, with content by default.
 
         Used by the KLL-merge path to enumerate per-batch statistics rows. Passing `limit`
         caps the response size; callers should treat a fully-populated response as a
@@ -199,9 +201,11 @@ class StatisticsApi:
             feature_names: List of feature names to retrieve statistics for
             limit: Maximum number of rows to return; None = unlimited (not recommended
                 for content-heavy responses).
+            row_percentage: Percentage of feature values used during statistics computation
+            with_content: Whether to include the feature descriptive statistics, as in `_get`.
 
         Returns:
-            A list of statistics objects with feature descriptive statistics, or None.
+            A list of statistics objects, or None.
         """
         _client = client._get_instance()
         path_params = self._get_path(metadata_instance, None)
@@ -212,9 +216,10 @@ class StatisticsApi:
             end_commit_time=end_commit_time,
             filter_eq_times=False,
             feature_names=feature_names,
+            row_percentage=row_percentage,
             offset=0,
             limit=limit,
-            with_content=True,
+            with_content=with_content,
         )
 
         return statistics.Statistics.from_response_json(

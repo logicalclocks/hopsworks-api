@@ -23,7 +23,6 @@ import numbers
 import os
 import random
 import re
-import sys
 import uuid
 import warnings
 from datetime import datetime, timedelta, timezone
@@ -883,10 +882,9 @@ class Engine:
     def _started_execution(started_job: job.Job) -> execution.Execution | None:
         """The execution the compute endpoint started, when the backend returned it.
 
-        A feature group's statistics job is shared with the ingestion trigger, so waiting on
-        the job's latest execution can wait on a run that a concurrent commit started. The
-        backend returns the execution it started with the job; older backends return the job
-        alone, and the caller then falls back to the latest execution.
+        A feature group's statistics job is shared with the ingestion trigger, so waiting on the job's latest execution can wait on a run that a concurrent commit started.
+        The backend returns the execution it started with the job.
+        Older backends return the job alone, and the caller then falls back to the latest execution.
         """
         executions = started_job.executions
         if isinstance(executions, list):
@@ -993,8 +991,8 @@ class Engine:
             {"columns": final_stats},
         )
 
-    # Fractions 0.01 .. 0.99, the 99 entries of approxPercentiles the Spark profiler emits, so
-    # transformations that index them (winsorize) behave the same on both engines.
+    # Fractions 0.01 .. 0.99, the 99 entries of approxPercentiles the Spark profiler emits.
+    # Transformations that index them (winsorize) find the same shape on every engine; the interpolation differs.
     _PERCENTILE_FRACTIONS = [(ii + 1) / 100 for ii in range(99)]
 
     def _profile_pandas(
@@ -1107,11 +1105,9 @@ class Engine:
             return "Integral"
         if hopsworks_type == "boolean":
             return "Boolean"
-        print(
-            "Data type could not be inferred for column '"
-            + col.split(".")[-1]
-            + "'. Defaulting to 'String'",
-            file=sys.stderr,
+        _logger.warning(
+            "Data type could not be inferred for column '%s'. Defaulting to 'String'",
+            col.split(".")[-1],
         )
         return "String"
 

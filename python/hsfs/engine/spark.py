@@ -1214,8 +1214,8 @@ class Engine:
                 # Statistics are always refit (training_dataset_version not
                 # passed): an unsplit in-memory training dataset retrieved by
                 # version is not consistent.
-                # coalesce(1) must land between the fit and the transformations
-                # (FSTORE-2109), so the engine applies it.
+                # coalesce(1) must land between the fit and the transformations,
+                # so the engine applies it.
                 transformed = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
                     training_dataset,
                     feature_view_obj,
