@@ -316,6 +316,38 @@ def save(cfg: HopsConfig, profile: str = "default") -> None:
     os.replace(tmp, CONFIG_PATH)
 
 
+def forget_project(host: str | None, project: str, profile: str = "default") -> None:
+    """Drop the saved project selection when it is ``project`` on ``host``, after the user left it.
+
+    Only the saved file is read and written: a project picked by a flag or the environment for one command
+    leaves the saved selection, host and key as they are.
+
+    Args:
+        host: Host the project was left on.
+        project: Name of the project left.
+        profile: TOML table to update.
+    """
+    existing = _read_toml(CONFIG_PATH)
+    saved = existing.get(profile)
+    if not isinstance(saved, dict) or saved.get("project") != project:
+        return
+    from hopsworks.cli.auth import normalize_host  # noqa: PLC0415
+
+    if (
+        not host
+        or not saved.get("host")
+        or normalize_host(saved["host"]) != normalize_host(host)
+    ):
+        return
+    for key in ("project", "project_id", "feature_store_id"):
+        saved.pop(key, None)
+    tmp = CONFIG_PATH.with_suffix(CONFIG_PATH.suffix + ".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "wb") as f:
+        tomli_w.dump(existing, f)
+    os.replace(tmp, CONFIG_PATH)
+
+
 def clear(profile: str = "default") -> None:
     """Delete ``[profile]`` from the config file; drop the file if it becomes empty.
 
