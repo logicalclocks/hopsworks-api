@@ -248,6 +248,63 @@ class TestBaseClient:
         sleep.assert_called_once_with(3)
         refused.close.assert_called_once()
 
+    @pytest.mark.parametrize(
+        "error_code", [150131, 130095, 100086, 240077, 510032], ids=lambda c: str(c)
+    )
+    def test_compute_busy_request_waits_and_retries(self, mocker, error_code):
+        client = self._init_test_client()
+        refused = self._rate_limited_response(
+            mocker, retry_after="7", error_code=error_code
+        )
+        mocker.patch("requests.sessions.Session.prepare_request")
+        send = mocker.patch(
+            "requests.sessions.Session.send",
+            side_effect=[refused, self._ok_response()],
+        )
+        sleep = self._mock_clock(mocker)
+
+        client._send_request("POST", ["project", 1, "jobs", "j", "executions"])
+
+        assert send.call_count == 2
+        sleep.assert_called_once_with(7)
+        refused.close.assert_called_once()
+
+    def test_compute_busy_wait_beyond_budget_raises_with_the_server_message(
+        self, mocker
+    ):
+        client = self._init_test_client()
+        refused = self._rate_limited_response(
+            mocker, retry_after="61", error_code=130095
+        )
+        refused._content = json.dumps(
+            {"errorCode": 130095, "errorMsg": "needs 4.1 CPU, only 4.05 free"}
+        ).encode()
+        mocker.patch("requests.sessions.Session.prepare_request")
+        send = mocker.patch("requests.sessions.Session.send", return_value=refused)
+        sleep = self._mock_clock(mocker)
+
+        with pytest.raises(RestAPIError) as error:
+            client._send_request("POST", ["project", 1, "jobs", "j", "executions"])
+
+        assert error.value.response is refused
+        assert error.value.response.json()["errorMsg"].startswith("needs 4.1 CPU")
+        assert send.call_count == 1
+        sleep.assert_not_called()
+
+    def test_compute_busy_without_retry_after_is_not_retried(self, mocker):
+        client = self._init_test_client()
+        refused = self._rate_limited_response(mocker, error_code=130095)
+        del refused.headers["Retry-After"]
+        mocker.patch("requests.sessions.Session.prepare_request")
+        send = mocker.patch("requests.sessions.Session.send", return_value=refused)
+        sleep = self._mock_clock(mocker)
+
+        with pytest.raises(RestAPIError):
+            client._send_request("POST", ["project", 1, "jobs", "j", "executions"])
+
+        assert send.call_count == 1
+        sleep.assert_not_called()
+
     def test_other_too_many_requests_is_not_retried(self, mocker):
         client = self._init_test_client()
         mocker.patch("requests.sessions.Session.prepare_request")

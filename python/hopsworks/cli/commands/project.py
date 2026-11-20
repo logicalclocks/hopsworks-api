@@ -115,7 +115,41 @@ def project_info(ctx: click.Context) -> None:
         ["Feature store ID", str(cfg.feature_store_id or "?")],
         ["Mode", cfg.mode()],
     ]
+    rows.extend(_compute_quota_rows())
     output.print_table(["FIELD", "VALUE"], rows)
+
+
+def _compute_quota_rows() -> list[list[str]]:
+    """Rows for the compute the project may use: used and limit per resource.
+
+    A quota Hopsworks could not read is shown as unavailable, never as a value.
+    """
+    from hopsworks_common.core import rest  # noqa: PLC0415
+
+    try:
+        quota = rest._send_request("GET", rest._project_path("kube", "quota"))
+    except Exception:  # noqa: BLE001 - the rest of the info still prints
+        return [["Compute quota", "unavailable"]]
+    method = quota.get("method") or "NONE"
+    if method == "NONE":
+        return [["Compute quota", "none"]]
+    source = quota.get("source")
+    rows = [["Compute quota", f"{method} ({source})" if source else method]]
+    for label, key, scale, unit in (
+        ("CPU", "cpu", 1, " cores"),
+        ("Memory", "memory", 1024**3, " GiB"),
+        ("GPU", "gpu", 1, ""),
+    ):
+        limit = quota.get(key)
+        if limit and limit.get("limit") is not None:
+            used = (limit.get("used") or 0) / scale
+            text = f"{used:g} of {limit['limit'] / scale:g}{unit} used"
+            if limit.get("canBorrow"):
+                text += f", {limit['canBorrow'] / scale:g} more can be borrowed"
+            rows.append([label, text])
+    for warning in quota.get("warnings") or []:
+        rows.append(["Warning", str(warning)])
+    return rows
 
 
 @project_group.command("costs")
