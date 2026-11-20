@@ -204,8 +204,9 @@ class TestIncrementalStatisticsEngine:
         assert statistics.feature_descriptive_statistics[0].count == 20
         assert saved is self.statistics_engine._save_statistics.return_value
 
-    def _delta_log(self, mocker, versions):
-        # version -> commit time recorded in its commitInfo
+    def _delta_log(self, mocker, versions, file_times=None):
+        # version -> commit time recorded in its commitInfo, and the commit file's
+        # modification time, which a Spark writer records and which defaults to later
         delta = mocker.patch("hsfs.core.delta_engine.DeltaEngine")
         delta.DELTA_SPARK_FORMAT = "delta"
         reader = delta.return_value
@@ -214,6 +215,10 @@ class TestIncrementalStatisticsEngine:
         )
         reader._delta_commit_timestamp.side_effect = lambda jvm, fs, path, version: (
             versions[version]
+        )
+        file_times = file_times or {v: t + 150 for v, t in versions.items()}
+        reader._delta_commit_file_time.side_effect = lambda jvm, fs, path, version: (
+            file_times[version]
         )
         return reader
 
@@ -280,6 +285,24 @@ class TestIncrementalStatisticsEngine:
         )
         assert df is not None
         fg.select.assert_not_called()
+
+    def test_reads_delta_commits_a_spark_writer_recorded_by_file_time(self, mocker):
+        fg = _fg(mocker, "DELTA")
+        fg.prepare_spark_location.return_value = "hopsfs://nn/fg"
+        # a Spark writer records the commit file's modification time, which on HopsFS is
+        # some hundred milliseconds after the commitInfo timestamp
+        self._delta_log(mocker, {0: 500, 1: 1000}, file_times={0: 858, 1: 1152})
+        spark = mocker.patch("hsfs.engine._get_instance").return_value._spark_session
+        mocker.patch("pyspark.sql.functions.col")
+        self._feed(spark, non_insert_rows=0)
+
+        assert self.engine._read_commits_after(fg, ["a"], 858, 1152) is not None
+        chain = spark.read.format.return_value.option
+        assert chain.return_value.option.call_args.args == ("startingVersion", 1)
+        assert chain.return_value.option.return_value.option.call_args.args == (
+            "endingVersion",
+            1,
+        )
 
     def test_delta_without_a_version_at_the_recorded_commit_time_falls_back(
         self, mocker

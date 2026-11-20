@@ -284,6 +284,8 @@ class IncrementalStatisticsEngine:
         # records: a timestamp-bounded read would take in the previous snapshot's commit and
         # leave out the last one. The bounds are read from the log as versions instead, and
         # each must be the very commit the backend recorded.
+        # Writers record different clocks, so a version matches on either:
+        # delta-rs the commitInfo timestamp, Spark the commit file's modification time from DeltaTable.history().
         from hsfs.core import delta_engine
         from pyspark.sql import functions as F
 
@@ -304,9 +306,9 @@ class IncrementalStatisticsEngine:
         versions = []
         for commit_time in (previous_end, end_commit_time):
             version = reader._delta_version_at(location, commit_time)
-            if version is None or self._delta_commit_time(
+            if version is None or int(commit_time) not in self._delta_commit_times(
                 reader, spark, location, version
-            ) != int(commit_time):
+            ):
                 _logger.info(
                     f"Incremental statistics: no Delta version recorded at {commit_time}"
                 )
@@ -342,11 +344,15 @@ class IncrementalStatisticsEngine:
         )
 
     @staticmethod
-    def _delta_commit_time(reader, spark, location: str, version: int) -> int | None:
+    def _delta_commit_times(reader, spark, location: str, version: int) -> set[int]:
         jvm = spark._jvm
         log_path = jvm.org.apache.hadoop.fs.Path(location.rstrip("/") + "/_delta_log")
         fs = log_path.getFileSystem(spark._jsc.hadoopConfiguration())
-        return reader._delta_commit_timestamp(jvm, fs, log_path, version)
+        times = {reader._delta_commit_file_time(jvm, fs, log_path, version)}
+        commit_info_time = reader._delta_commit_timestamp(jvm, fs, log_path, version)
+        if commit_info_time is not None:
+            times.add(commit_info_time)
+        return times
 
     def _previous_snapshot(self, entity, end_commit_time: int) -> Statistics | None:
         # the newest snapshot row (no start bound) before this commit, with its content

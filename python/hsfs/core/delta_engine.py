@@ -451,6 +451,11 @@ class DeltaEngine:
         finally:
             reader.close()
 
+    def _delta_commit_file_time(self, jvm, fs, log_path, version: int) -> int:
+        """The modification time of one commit file, the clock `DeltaTable.history()` reports."""
+        path = jvm.org.apache.hadoop.fs.Path(log_path, f"{version:020d}.json")
+        return int(fs.getFileStatus(path).getModificationTime())
+
     def _get_delta_commits(self, location: str):
         """Get all commits from the Delta log.
 
