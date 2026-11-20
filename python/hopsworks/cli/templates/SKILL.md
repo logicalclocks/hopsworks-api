@@ -189,6 +189,11 @@ hops deployment create <model> [--version N] [--script predict.py]
 hops deployment start <name> [--wait 600]
 hops deployment stop <name>
 hops deployment predict <name> --data '{"instances": [[1,2,3]]}'
+hops deployment predict <name> --data '{...}' --via-api --timing --json   # through the Hopsworks API: {status, ms, response}
+hops deployment env <name>                       # Predictor env vars, KEY=VALUE
+hops deployment set-env <name> K=V... [--unset K]...   # Merge, save as a new version, wait for Running (--timeout 300)
+hops deployment versions <name>                  # Versions, active one, env key names and digest
+hops deployment rollback <name> <version>        # Activate an earlier version
 hops deployment logs <name> [--component predictor] [--tail 50]
 hops deployment lineage <name>                  # Served model + its FV/TD lineage
 hops deployment delete <name> --yes
@@ -197,6 +202,7 @@ hops deployment delete <name> --yes
 **Tips**
 - sklearn serving image uses pinned versions — train with `scikit-learn==1.3.2` to match.
 - Deployment names must be alphanumeric only.
+- `set-env` and `rollback`: `refused` means nothing changed; `unknown` means the write was sent and may still apply, so read `hops deployment versions <name>` before trying again. The deployment verbs work with a SERVING-only key when `HOPSWORKS_PROJECT_ID` is set.
 - Artifact layout at inference time: predictor script at `/mnt/artifacts/`, model at `/mnt/models/`.
 
 ## Jobs

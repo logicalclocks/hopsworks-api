@@ -462,6 +462,122 @@ class TestBaseClient:
 
         assert send.call_count == 2
 
+    def test_request_deadline_cuts_off_a_stalled_server(self):
+        """A server that accepts the connection and never answers: the block's deadline ends the wait."""
+        import socket
+        import time
+
+        from hopsworks_common.client.base import request_deadline
+
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(8)
+        accepted = []
+        threading.Thread(
+            target=lambda: accepted.append(listener.accept()), daemon=True
+        ).start()
+        client = self._init_test_client()
+        client._session.trust_env = False
+        client._base_url = f"https://127.0.0.1:{listener.getsockname()[1]}"
+        try:
+            started = time.monotonic()
+            with request_deadline(started + 5), request_deadline(started + 1):
+                with pytest.raises(requests.exceptions.RequestException):
+                    client._send_request("GET", ["variables", "versions"])
+                assert accepted
+                assert time.monotonic() - started < 3
+                started = time.monotonic()
+                with pytest.raises(requests.exceptions.Timeout):
+                    client._send_request("GET", ["variables", "versions"])
+                assert time.monotonic() - started < 0.5
+        finally:
+            listener.close()
+            for connection, _ in accepted:
+                connection.close()
+
+    def test_request_deadline_cuts_off_a_trickling_body(self, tmp_path):
+        """Headers and the first body bytes at once, then one byte a second: the deadline still ends the read."""
+        import socket
+        import ssl
+        import time
+
+        from hopsworks_common.client.base import request_deadline
+
+        from tests.cli.serving_server import tls_context
+
+        context = tls_context(tmp_path)
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(8)
+        stop = threading.Event()
+
+        def serve():
+            raw, _ = listener.accept()
+            with context.wrap_socket(raw, server_side=True) as conn:
+                conn.recv(65536)
+                conn.sendall(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+                    b"Content-Length: 1000\r\n\r\n[1,"
+                )
+                while not stop.wait(1):
+                    try:
+                        conn.sendall(b" ")
+                    except (OSError, ssl.SSLError):
+                        return
+
+        threading.Thread(target=serve, daemon=True).start()
+        client = self._init_test_client()
+        client._session.trust_env = False
+        client._base_url = f"https://127.0.0.1:{listener.getsockname()[1]}"
+        try:
+            started = time.monotonic()
+            with (
+                request_deadline(started + 2),
+                pytest.raises(
+                    requests.exceptions.Timeout, match="still running at its deadline"
+                ),
+            ):
+                client._send_request("GET", ["variables", "versions"])
+            assert time.monotonic() - started < 3
+        finally:
+            stop.set()
+            listener.close()
+
+    def test_request_deadline_leaves_a_streamed_body_to_the_caller(self, tmp_path):
+        """With stream=True the deadline's cut ends with the headers: the caller reads the body after it, each socket wait still clipped."""
+        import socket
+        import time
+
+        from hopsworks_common.client.base import request_deadline
+
+        from tests.cli.serving_server import tls_context
+
+        context = tls_context(tmp_path)
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(8)
+
+        def serve():
+            raw, _ = listener.accept()
+            with context.wrap_socket(raw, server_side=True) as conn:
+                conn.recv(65536)
+                conn.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n")
+                for byte in b"hello":  # the last bytes after the deadline
+                    time.sleep(0.4)
+                    conn.sendall(bytes([byte]))
+                time.sleep(0.5)
+
+        threading.Thread(target=serve, daemon=True).start()
+        client = self._init_test_client()
+        client._session.trust_env = False
+        client._base_url = f"https://127.0.0.1:{listener.getsockname()[1]}"
+        try:
+            with request_deadline(time.monotonic() + 1):
+                response = client._send_request("GET", ["x"], stream=True)
+            assert response.content == b"hello"
+        finally:
+            listener.close()
+
     def _init_test_client(self):
         client = Client()
         client._connected = True

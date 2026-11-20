@@ -139,3 +139,22 @@ def test_unrelated_exceptions_are_not_rewritten(tmp_home):
     result = _run_command_raising(tmp_home, ValueError("boom"))
 
     assert isinstance(result.exception, ValueError)
+
+
+def test_a_sdk_error_wrapping_a_scope_refusal_names_the_scope(tmp_home):
+    """hopsworks.login raises ProjectException from the 403 of a key without PROJECT."""
+    from hopsworks_common.client.exceptions import ProjectException
+
+    body = dict(NO_SCOPE, usrMsg="Valid scope for this invocation is: [PROJECT]")
+    try:
+        raise ProjectException("Could not find project demo") from _rest_error(
+            403, body
+        )
+    except ProjectException as exc:
+        wrapped = exc
+
+    result = _run_command_raising(tmp_home, wrapped)
+
+    assert result.exit_code == 1
+    assert "the PROJECT scope, and yours does not have it" in result.output
+    assert "Traceback" not in result.output

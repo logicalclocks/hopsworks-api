@@ -27,6 +27,7 @@ else:  # pragma: no cover - 3.10 path
     import tomli as tomllib
 
 import tomli_w
+from hopsworks.cli import auth
 
 
 _logger = logging.getLogger(__name__)
@@ -215,9 +216,11 @@ def load(
         project_id = os.environ.get("HOPSWORKS_PROJECT_ID")
         if project_id and project_id.isdigit():
             cfg.project_id = int(project_id)
-        return _apply_overrides(
+        ids_for = _identity(cfg)
+        _apply_overrides(
             cfg, flag_host, flag_api_key, flag_project, flag_hostname_verification
         )
+        return _drop_foreign_ids(cfg, ids_for)
 
     _migrate_legacy_yaml()
     file_data = _read_toml(CONFIG_PATH).get(profile, {})
@@ -237,6 +240,9 @@ def load(
     env_project = os.environ.get("HOPSWORKS_PROJECT") or os.environ.get("PROJECT_NAME")
     env_project_id = os.environ.get("HOPSWORKS_PROJECT_ID")
 
+    # The saved ids belong to the saved host and project.
+    ids_for = _identity(cfg)
+
     if env_host:
         cfg.host = env_host
     if env_api_key:
@@ -245,10 +251,41 @@ def load(
         cfg.project = env_project
     if env_project_id and env_project_id.isdigit():
         cfg.project_id = int(env_project_id)
+        cfg.feature_store_id = None
+        # An exported id belongs to the host and project the environment names.
+        ids_for = _identity(cfg)
 
-    return _apply_overrides(
+    _apply_overrides(
         cfg, flag_host, flag_api_key, flag_project, flag_hostname_verification
     )
+    return _drop_foreign_ids(cfg, ids_for)
+
+
+def _identity(cfg: HopsConfig) -> tuple[str | None, str | None]:
+    """The host and project a project id is valid for, the host reduced to ``hostname:port``."""
+    host = cfg.host
+    if host:
+        try:
+            hostname, port = auth._host_port(host)
+            host = f"{hostname.lower()}:{port}"
+        except ValueError:  # a port that is not a number: compared as written
+            pass
+    return host, cfg.project
+
+
+def _drop_foreign_ids(
+    cfg: HopsConfig, ids_for: tuple[str | None, str | None]
+) -> HopsConfig:
+    """Forget the project and feature store ids when the host or project they were saved with changed.
+
+    A key that cannot read the project by name falls back to ``project_id``,
+    so an id kept across a project or host change would send every call,
+    deletes included, to the old project.
+    """
+    if _identity(cfg) != ids_for:
+        cfg.project_id = None
+        cfg.feature_store_id = None
+    return cfg
 
 
 def _apply_overrides(

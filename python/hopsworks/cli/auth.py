@@ -109,13 +109,7 @@ def login(
             kwargs["engine"] = engine
         return _quiet_login(hopsworks, kwargs)
 
-    parsed = urllib.parse.urlparse(host if "://" in host else "https://" + host)
-    scheme = (parsed.scheme or "https").lower()
-    netloc = parsed.netloc or parsed.path
-    default_port = 80 if scheme == "http" else 443
-    port = parsed.port or default_port
-    hostname = netloc.split(":")[0]
-
+    hostname, port = _host_port(host)
     kwargs = {
         "host": hostname,
         "port": port,
@@ -128,6 +122,112 @@ def login(
     if engine:
         kwargs["engine"] = engine
     return _quiet_login(hopsworks, kwargs)
+
+
+def _host_port(host: str) -> tuple[str, int]:
+    """Split a host as the user gives it into the SDK's hostname and port: 443 for https or no scheme, 80 for http."""
+    parsed = urllib.parse.urlparse(host if "://" in host else "https://" + host)
+    scheme = (parsed.scheme or "https").lower()
+    netloc = parsed.netloc or parsed.path
+    return netloc.split(":")[0], parsed.port or (80 if scheme == "http" else 443)
+
+
+# RESTCodes.ApiKeyErrorCode: the key carries none of the scopes the endpoint accepts.
+NO_VALID_SCOPE = 320004
+
+
+def is_scope_refusal(exc: BaseException) -> bool:
+    """Whether ``exc`` is Hopsworks refusing an API key for its scopes."""
+    from hopsworks_common.client.exceptions import RestAPIError  # noqa: PLC0415
+
+    return (
+        isinstance(exc, RestAPIError)
+        and getattr(exc.response, "status_code", None) == 403
+        and getattr(exc, "error_code", None) == NO_VALID_SCOPE
+    )
+
+
+def login_serving(
+    host: str,
+    api_key_value: str,
+    project: str,
+    project_id: int | None = None,
+    hostname_verification: bool = False,
+) -> Any:
+    """Connect for the model serving endpoints only, with a key that may hold just the SERVING scope.
+
+    ``hopsworks.login`` reads the project by name, the username, the client
+    certificates and the serving settings, which need the PROJECT scope, and
+    ``get_model_serving`` checks the Models dataset, which needs DATASET_VIEW.
+    The serving endpoints themselves take SERVING. This connects without a
+    project, then sets it from its id: read by name when the key may, else
+    ``project_id`` (``HOPSWORKS_PROJECT_ID``, or the saved config, only for
+    the host and project it was set with: ``config.load``). No certificates
+    are downloaded; serving is REST only.
+
+    Args:
+        host: Hopsworks host; ``https://`` prefix and trailing paths tolerated.
+        api_key_value: API key.
+        project: Project name.
+        project_id: The project's id, used when the key cannot read the project by name.
+        hostname_verification: Whether to verify Hopsworks' TLS certificate.
+
+    Returns:
+        The SDK ``ModelServing`` handle of the project.
+
+    Raises:
+        click.ClickException: When the project id cannot be known.
+    """
+    import click  # noqa: PLC0415
+    import hopsworks  # noqa: PLC0415 - intentionally lazy
+    from hopsworks_common import client  # noqa: PLC0415
+    from hsml.model_serving import ModelServing  # noqa: PLC0415
+
+    hostname, port = _host_port(host)
+    connection = hopsworks.connection(
+        host=hostname,
+        port=port,
+        api_key_value=api_key_value,
+        hostname_verification=hostname_verification,
+        engine="python",
+    )
+    _client = client._get_instance()
+    namespace = None
+    by_name = True
+    try:
+        info = _client._get_project_info(project)
+        project_id = info["projectId"]
+        namespace = info.get("namespace")
+    except Exception as exc:
+        if not is_scope_refusal(exc):
+            raise
+        by_name = False
+    if not by_name and project_id is None:
+        # Raised outside the handler: the CLI would otherwise append its
+        # generic missing-scope advice to this one.
+        raise click.ClickException(
+            f"This API key cannot read project '{project}' by name (it has no "
+            "PROJECT scope). Give the project's id: HOPSWORKS_PROJECT_ID=<id>. "
+            "A saved or exported id holds only for the host and project it was "
+            "set with; --host, --project or their environment variables naming "
+            "another drop it."
+        )
+    _client._project_name = project
+    _client._project_id = str(project_id)
+    connection._project = project
+    try:
+        connection._load_serving_defaults()
+    except Exception as exc:
+        if not is_scope_refusal(exc):
+            raise
+        # The serving settings are variables, which take the PROJECT scope.
+        # Without them there is no Istio client, so predictions go through
+        # Hopsworks, which serves every key with SERVING.
+        client._set_kserve_installed(False)
+        client._set_serving_num_instances_limits([-1, -1])
+        client._set_knative_domain("")
+        connection._serving_defaults_loaded = True
+    return ModelServing(project, int(project_id), project_namespace=namespace)
 
 
 class _ThreadSilencedStdout(io.TextIOBase):

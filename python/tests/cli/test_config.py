@@ -206,3 +206,95 @@ def test_env_applies_in_internal_mode(tmp_home, monkeypatch):
     cfg = config.load()
     assert cfg.internal is True
     assert cfg.hostname_verification is True
+
+
+SAVED = {"host": "https://h.example", "project": "alpha", "project_id": 101}
+
+
+@pytest.fixture
+def saved_ids(tmp_home):
+    config.save(config.HopsConfig(api_key="k", feature_store_id=67, **SAVED))
+
+
+@pytest.mark.parametrize(
+    "env, flags",
+    [
+        ({"HOPSWORKS_PROJECT": "beta"}, {}),
+        ({"PROJECT_NAME": "beta"}, {}),
+        ({"HOPSWORKS_HOST": "https://other.example"}, {}),
+        ({"REST_ENDPOINT": "https://other.example"}, {}),
+        ({"HOPSWORKS_HOST": "h.example:8181"}, {}),
+        ({}, {"flag_host": "https://other.example"}),
+        ({}, {"flag_project": "beta"}),
+        ({"HOPSWORKS_PROJECT": "beta"}, {"flag_project": "beta"}),
+        ({"HOPSWORKS_HOST": "https://other.example"}, {"flag_project": "alpha"}),
+    ],
+    ids=[
+        "env_project",
+        "env_project_name",
+        "env_host",
+        "env_rest_endpoint",
+        "env_host_other_port",
+        "flag_host",
+        "flag_project",
+        "flag_project_repeating_env",
+        "env_host_flag_same_project",
+    ],
+)
+def test_saved_ids_dropped_when_host_or_project_changes(
+    saved_ids, monkeypatch, env, flags
+):
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    cfg = config.load(**flags)
+    assert (cfg.project_id, cfg.feature_store_id) == (None, None)
+
+
+@pytest.mark.parametrize(
+    "env, flags",
+    [
+        ({}, {}),
+        ({}, {"flag_project": "alpha"}),
+        ({"HOPSWORKS_HOST": "h.example"}, {}),
+        ({}, {"flag_host": "https://H.example:443/hopsworks-api/api"}),
+        ({"HOPSWORKS_PROJECT": "alpha"}, {}),
+    ],
+    ids=[
+        "none",
+        "same_project_flag",
+        "same_host_no_scheme",
+        "same_host_long",
+        "same_project_env",
+    ],
+)
+def test_saved_ids_kept_for_the_same_host_and_project(
+    saved_ids, monkeypatch, env, flags
+):
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    cfg = config.load(**flags)
+    assert (cfg.project_id, cfg.feature_store_id) == (101, 67)
+
+
+def test_an_exported_id_belongs_to_the_exported_project(saved_ids, monkeypatch):
+    monkeypatch.setenv("HOPSWORKS_PROJECT", "beta")
+    monkeypatch.setenv("HOPSWORKS_PROJECT_ID", "202")
+    assert config.load().project_id == 202
+    assert config.load(flag_project="beta").project_id == 202
+    assert config.load(flag_project="gamma").project_id is None
+    assert config.load(flag_host="https://other.example").project_id is None
+    monkeypatch.delenv("HOPSWORKS_PROJECT")
+    assert config.load().project_id == 202  # with the saved project, alpha
+
+
+def test_internal_mode_id_dropped_for_another_project(tmp_home, monkeypatch):
+    secrets = tmp_home / "secrets"
+    secrets.mkdir()
+    (secrets / "token.jwt").write_text("jwt")
+    monkeypatch.setenv("REST_ENDPOINT", "https://cluster.internal")
+    monkeypatch.setenv("SECRETS_DIR", str(secrets))
+    monkeypatch.setenv("PROJECT_NAME", "inside_project")
+    monkeypatch.setenv("HOPSWORKS_PROJECT_ID", "42")
+    assert config.load(flag_project="inside_project").project_id == 42
+    assert config.load(flag_project="other").project_id is None
+    assert config.load(flag_host="https://elsewhere").project_id is None

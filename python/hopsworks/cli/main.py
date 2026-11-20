@@ -17,7 +17,7 @@ import sys
 from typing import TYPE_CHECKING, Any
 
 import click
-from hopsworks.cli import config, output
+from hopsworks.cli import auth, config, output
 
 
 if TYPE_CHECKING:
@@ -62,10 +62,6 @@ _LAZY_SUBCOMMANDS: dict[str, str] = {
 }
 
 
-# RESTCodes.ApiKeyErrorCode: the key carries none of the scopes the endpoint accepts.
-_NO_VALID_SCOPE = 320004
-
-
 def _explain_rest_error(exc: BaseException | None) -> str | None:
     """Reduce a REST failure to the one line a user can act on.
 
@@ -82,6 +78,12 @@ def _explain_rest_error(exc: BaseException | None) -> str | None:
 
     if isinstance(exc, exceptions.SemanticLayerException):
         return str(exc)
+    # The SDK wraps some refusals in its own exception, e.g. ProjectException
+    # ("Could not find project") around a key without the PROJECT scope.
+    if not isinstance(exc, exceptions.RestAPIError) and isinstance(
+        getattr(exc, "__cause__", None), exceptions.RestAPIError
+    ):
+        exc = exc.__cause__
     if not isinstance(exc, exceptions.RestAPIError):
         return None
     response = exc.response
@@ -98,7 +100,7 @@ def _explain_rest_error(exc: BaseException | None) -> str | None:
         or getattr(response, "reason", "")
         or ""
     )
-    if code == _NO_VALID_SCOPE:
+    if code == auth.NO_VALID_SCOPE:
         wanted = re.search(r"\[([^\]]+)\]", detail)
         scopes = [s.strip() for s in wanted.group(1).split(",")] if wanted else []
         if len(scopes) == 1:
