@@ -2397,13 +2397,7 @@ class Engine:
             feature_view.query._left_feature_group.event_time,
         )
 
-        fully_qualified_serving_key_mapper = {
-            _generate_fully_qualified_feature_name(
-                key._feature_group, key.feature_name
-            ): key.feature_name
-            for key in feature_view.serving_keys
-            if key.required
-        }
+        fully_qualified_serving_key_mapper = feature_view._serving_key_log_names
 
         # Create an expression to select the primary key, event time and alias it to original name if needed.
         severing_key_select_expr = []
