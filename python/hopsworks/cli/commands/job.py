@@ -11,6 +11,7 @@ import contextlib
 import os
 import shutil
 import tempfile
+from datetime import timezone
 from typing import TYPE_CHECKING, Any
 
 import click
@@ -53,9 +54,10 @@ def _ts_label(value: Any) -> str:
     if isinstance(value, (int, float)):
         seconds = value / 1000 if value > 10**12 else value
         from datetime import datetime as _dt  # noqa: PLC0415
-        from datetime import timezone as _tz
 
-        return _dt.fromtimestamp(seconds, tz=_tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return _dt.fromtimestamp(seconds, tz=timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
     return str(value)
 
 
@@ -347,19 +349,30 @@ def job_deploy(
 _DT_FORMATS = ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"]
 
 
+class _UtcDateTime(click.DateTime):
+    """A timestamp without an offset is UTC, so it compares with one that has one."""
+
+    def convert(self, value, param, ctx):
+        parsed = super().convert(value, param, ctx)
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+_UTC_DATETIME = _UtcDateTime(formats=_DT_FORMATS)
+
+
 @job_group.command("run")
 @click.argument("name")
 @click.option("--args", "app_args", help="Argument string passed to this execution.")
 @click.option("--wait", is_flag=True, help="Block until the execution terminates.")
 @click.option(
     "--start-time",
-    type=click.DateTime(formats=_DT_FORMATS),
+    type=_UTC_DATETIME,
     default=None,
     help="ISO timestamp for HOPS_START_TIME (data interval start).",
 )
 @click.option(
     "--end-time",
-    type=click.DateTime(formats=_DT_FORMATS),
+    type=_UTC_DATETIME,
     default=None,
     help="ISO timestamp for HOPS_END_TIME (data interval end). Requires --start-time.",
 )
@@ -414,13 +427,13 @@ def job_run(
 @click.argument("name")
 @click.option(
     "--start-time",
-    type=click.DateTime(formats=_DT_FORMATS),
+    type=_UTC_DATETIME,
     required=True,
     help="ISO timestamp for the start of the backfill window (HOPS_START_TIME).",
 )
 @click.option(
     "--end-time",
-    type=click.DateTime(formats=_DT_FORMATS),
+    type=_UTC_DATETIME,
     required=True,
     help="ISO timestamp for the end of the backfill window (HOPS_END_TIME).",
 )
@@ -659,12 +672,12 @@ def _expand_cron_alias(cron: str) -> str:
 @click.argument("cron")
 @click.option(
     "--start-time",
-    type=click.DateTime(formats=_DT_FORMATS),
+    type=_UTC_DATETIME,
     help="ISO timestamp for the first trigger (e.g. 2026-04-26T09:00:00).",
 )
 @click.option(
     "--end-time",
-    type=click.DateTime(formats=_DT_FORMATS),
+    type=_UTC_DATETIME,
     help="ISO timestamp for the last trigger.",
 )
 @click.option(
