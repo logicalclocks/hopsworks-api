@@ -1,8 +1,8 @@
 """``hops factory``: the software factories of this project, and the systems they build.
 
-Nine are built in, as YAML definitions the cluster ships: ``ml-batch``,
+Ten are built in, as YAML definitions the cluster ships: ``ml-batch``,
 ``ml-realtime``, ``ml-streaming`` and ``ml-agent`` build ML systems, ``analytics-bronze``,
-``analytics-silver`` and ``analytics-gold`` build analytics layers,
+``analytics-silver``, ``analytics-gold`` and ``analytics-semantic`` build analytics layers,
 ``analytics-pipeline`` builds a data pipeline and ``analytics-ingestion`` the
 ingestion of data sources into feature groups, each from its written instructions. A
 project's own factories are YAML definitions (apiVersion hopsworks.ai/factory/v1) its data owners create,
@@ -831,6 +831,8 @@ def _resume(ctx: click.Context, definition: dict, target: Path, launch: bool) ->
     elif builtin in ("analytics-bronze", "analytics-silver", "analytics-gold"):
         layer = builtin.removeprefix("analytics-")
         analytics._launch(target, launch, f"/hops-{layer} {target.name}")
+    elif builtin == "analytics-semantic":
+        analytics._launch(target, launch, f"/hops-semantic-layer {target.name}")
     else:
         _write_build_files(target, definition, definition["spec"], target.name)
         analytics._launch(target, launch, f"/hops-factory-{name} {target.name}")
@@ -844,7 +846,7 @@ def create_system(
 ) -> Path:
     """Create a system with a factory from its answers; returns its directory.
 
-    A factory whose build is a built-in's (mlsystem, analytics-bronze|silver|gold, and any
+    A factory whose build is a built-in's (mlsystem, analytics-bronze|silver|gold|semantic, and any
     clone of them) hands the answers that built-in knows, with the factory's constant answers,
     to that built-in's create; the rest are recorded as `requirements.extra`, with the factory's
     instructions, in system.yaml. Any other factory writes system.yaml itself and starts Claude
@@ -882,6 +884,7 @@ def create_system(
         "analytics-bronze": analytics.create_bronze,
         "analytics-silver": analytics.create_silver,
         "analytics-gold": analytics.create_gold,
+        "analytics-semantic": analytics.create_semantic,
     }[builtin]
     return create(ctx, data, launch)
 
@@ -892,6 +895,7 @@ BUILTIN_KEYS = {
     "analytics-bronze": analytics.BRONZE_KEYS,
     "analytics-silver": analytics.ANSWER_KEYS,
     "analytics-gold": analytics.GOLD_KEYS,
+    "analytics-semantic": analytics.SEMANTIC_KEYS,
 }
 
 

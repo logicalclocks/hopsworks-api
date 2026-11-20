@@ -34,6 +34,7 @@ from hopsworks_common.core import (
     opensearch_api,
     project_members_api,
     search_api,
+    semantic_layer_api,
     superset_api,
     trino_api,
     trino_catalog_api,
@@ -107,6 +108,7 @@ class Project:
         self._trino_api = None
         self._trino_catalog_api = None
         self._superset_api = None
+        self._semantic_layer_api = None
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -489,9 +491,11 @@ class Project:
             delete_home_dir: Whether to also delete the member's home directory in the project.
             new_file_owner: Email address of the data owner that takes over the removed member's home directory.
                 Defaults to the data owner who has been in the project longest.
+                The semantic projects the member owns go to this data owner too, or to the caller when none is given or this one may not run their exports.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if a data scientist tries to remove someone other than themselves.
+                The removal is also refused when the member owns semantic projects that neither `new_file_owner` nor the caller can take over; the message names them, and [`SemanticProject.transfer_ownership`][hopsworks_common.semantic_layer.SemanticProject.transfer_ownership] hands them to another data owner first.
         """
         self._project_members_api.remove_member(
             email, delete_home_dir=delete_home_dir, new_file_owner=new_file_owner
@@ -585,6 +589,28 @@ class Project:
         if self._superset_api is None:
             self._superset_api = superset_api.SupersetApi(project=self)
         return self._superset_api
+
+    @public
+    def get_semantic_layer_api(self) -> semantic_layer_api.SemanticLayerApi:
+        """Get the Semantic Layer API for the project, to register semantic projects and query their metrics.
+
+        It works from outside the cluster too, since the semantic gateway is reached through the Hopsworks host.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+            sales = project.get_semantic_layer_api().get_project("sales")
+            df = sales.query(metrics=["revenue"], group_by=["metric_time__month"])
+            ```
+
+        Returns:
+            The Semantic Layer API handle.
+        """
+        if self._semantic_layer_api is None:
+            self._semantic_layer_api = semantic_layer_api.SemanticLayerApi(project=self)
+        return self._semantic_layer_api
 
     @public
     def get_alerts(self) -> list[alert.ProjectAlert]:

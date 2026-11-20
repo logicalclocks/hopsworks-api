@@ -238,6 +238,7 @@ CLI_BUNDLE = {
     ".claude/commands/hops-bronze.md": "hops-bronze.md",
     ".claude/commands/hops-silver.md": "hops-silver.md",
     ".claude/commands/hops-gold.md": "hops-gold.md",
+    ".claude/commands/hops-semantic-layer.md": "hops-semantic-layer.md",
     ".claude/agents/hops-train-agent.md": "hops-train-agent.md",
     ".claude/agents/hops-infer-agent.md": "hops-infer-agent.md",
     ".claude/agents/hops-dashboard-builder.md": "hops-dashboard-builder.md",

@@ -46,9 +46,6 @@ class FeatureGroupTools:
             self.get_feature_group_details
         )
         self.mcp.tool(tags=[TAGS.FEATURE_GROUP, TAGS.READ, TAGS.STATEFUL])(
-            self.get_feature_group_details
-        )
-        self.mcp.tool(tags=[TAGS.FEATURE_GROUP, TAGS.READ, TAGS.STATEFUL])(
             self.preview_feature_group
         )
         self.mcp.tool(tags=[TAGS.FEATURE_GROUP, TAGS.READ, TAGS.STATEFUL])(
