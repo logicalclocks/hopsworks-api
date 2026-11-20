@@ -66,7 +66,11 @@ def test_every_table_is_keyed_and_timed_as_its_feature_group(code, history):
         assert set(key) <= set(frame.columns), name
         # The offline upsert key: a duplicate would silently be one row.
         assert not frame.duplicated(key).any(), name
-        assert str(frame[spec["event_time"]].dtype) == "datetime64[us]", name
+        times = frame[spec["event_time"]]
+        assert (times == times.dt.floor("s")).all(), name
+        # pandas 1.x keeps every datetime64 column in nanoseconds.
+        if int(pd.__version__.split(".")[0]) >= 2:
+            assert str(times.dtype) == "datetime64[us]", name
     assert "damage_risk" not in history[names.EQUIPMENT].columns
 
 
