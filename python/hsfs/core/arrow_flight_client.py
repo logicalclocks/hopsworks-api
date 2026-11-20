@@ -208,6 +208,7 @@ class ArrowFlightClient:
         StorageConnector.HOPSWORKS,
         StorageConnector.S3,
         StorageConnector.GLUE,
+        StorageConnector.HOPSFS,
     ]
     # Oracle rides on StorageConnector.SQL above — it's distinguished on the
     # backend by sqlConnector.databaseType == "ORACLE". Keep that routing in
@@ -244,6 +245,8 @@ class ArrowFlightClient:
         )
 
         self._certificates_json: str | None = None
+        # Set before the health check, which can fail and leave the client enabled for a later read.
+        self._server_version: bytes | None = None
 
         try:
             self._check_cluster_service_enabled()
@@ -270,8 +273,6 @@ class ArrowFlightClient:
                 action.type for action in self._connection.list_actions()
             ]:
                 self._server_version = self._get_server_version()
-            else:
-                self._server_version = None
             if self._server_version is None:
                 self._register_certificates()
         except Exception as e:
