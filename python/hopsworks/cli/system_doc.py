@@ -506,11 +506,14 @@ def release(directory: Path, token: str | None = None) -> bool:
         Whether it was released.
     """
     token = token or os.environ.get(TOKEN_ENV)
-    held = lease(directory)
-    if not token or held is None or held.get("token") != token:
+    if not token:
         return False
-    with contextlib.suppress(FileNotFoundError):
-        (directory / LEASE).unlink()
+    with _guard(directory):
+        held = lease(directory)
+        if held is None or held.get("token") != token:
+            return False
+        with contextlib.suppress(FileNotFoundError):
+            (directory / LEASE).unlink()
     return True
 
 

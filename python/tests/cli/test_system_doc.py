@@ -6,6 +6,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import threading
 import time
 from datetime import timedelta
 from pathlib import Path
@@ -221,6 +222,24 @@ def test_an_old_agent_written_lock_counts_until_a_ttl_after_it_was_written(tmp_p
     assert system_doc.acquire(target)["token"]
 
 
+def test_a_release_waits_for_a_takeover_and_leaves_the_new_lease(tmp_path):
+    target = _system(tmp_path)
+    lapsed = system_doc.acquire(target, ttl=timedelta(seconds=-1))
+    released = []
+    with system_doc._guard(target):
+        # A takeover holds the guard: the release must read the lease only after it.
+        worker = threading.Thread(
+            target=lambda: released.append(system_doc.release(target, lapsed["token"]))
+        )
+        worker.start()
+        time.sleep(0.3)
+        taken = {**lapsed, "token": "taken-over", "expires": "2999-01-01T00:00:00Z"}
+        (target / ".hops.lock").write_text(json.dumps(taken))
+    worker.join(10)
+    assert released == [False]
+    assert system_doc.lease(target)["token"] == "taken-over"
+
+
 def test_the_lease_commands(tmp_path, monkeypatch):
     target = _system(tmp_path)
     monkeypatch.chdir(target)
@@ -237,6 +256,15 @@ def test_the_lease_commands(tmp_path, monkeypatch):
         cli, ["factory", "system", "lease", "renew", "churn", "--token", "x"]
     )
     assert lost.exit_code == 4
+    # A release that releases nothing says so in its exit code, and leaves the lease alone.
+    missed = CliRunner().invoke(
+        cli, ["factory", "system", "lease", "release", "churn", "--token", "x"]
+    )
+    assert missed.exit_code == 4 and (target / ".hops.lock").exists()
+    tokenless = CliRunner().invoke(
+        cli, ["factory", "system", "lease", "release", "churn"]
+    )
+    assert tokenless.exit_code == 2 and "HOPS_LEASE_TOKEN" in tokenless.output
     released = CliRunner().invoke(
         cli, ["factory", "system", "lease", "release", "churn", "--token", token]
     )
