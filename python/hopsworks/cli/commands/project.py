@@ -109,6 +109,9 @@ def project_info(ctx: click.Context) -> None:
         ctx: Click context carrying the resolved ``HopsConfig``.
     """
     cfg = _require_auth(ctx)
+    if not cfg.project and not cfg.internal:
+        # The SDK would prompt for a project and wait on stdin.
+        raise click.ClickException("No active project. Run `hops project use <name>`.")
     project = session.get_project(ctx)
     team = _team(getattr(project, "id", cfg.project_id))
     rows = [
@@ -137,6 +140,9 @@ def project_leave(ctx: click.Context, yes: bool) -> None:
         yes: Skip the confirmation prompt.
     """
     cfg = _require_auth(ctx)
+    if not cfg.project and not cfg.internal:
+        # The SDK would prompt for a project and wait on stdin.
+        raise click.ClickException("No active project. Run `hops project use <name>`.")
     project = session.get_project(ctx)
     name = getattr(project, "name", cfg.project or "?")
     from hopsworks_common import client  # noqa: PLC0415
