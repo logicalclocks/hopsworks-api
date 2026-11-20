@@ -5303,6 +5303,18 @@ class FeatureGroup(FeatureGroupBase):
         """
         return self._feature_group_engine._delta_checkpoint(self)
 
+    def _delta_has_data(self) -> bool:
+        """Whether the Delta table holds a data file; False for a table no write has reached, and for another format."""
+        return self._feature_group_engine._delta_has_data(self)
+
+    def _delta_transaction_commit(
+        self, app_id: str, version: int, search: int
+    ) -> int | None:
+        """The Delta version of the commit carrying the application transaction `(app_id, version)`, searching `search` versions back from the head, or None when it is not found."""
+        return self._feature_group_engine._delta_transaction_commit(
+            self, app_id, version, search
+        )
+
     @public
     def delta_cleanup_metadata(self) -> dict | None:
         """Expire the Delta log entries an existing checkpoint already covers.

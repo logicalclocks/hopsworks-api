@@ -21,6 +21,7 @@ import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import quote
 
 import click
 import numpy as np
@@ -1340,14 +1341,23 @@ class FakeSuperset:
         self.next_id = 100
         self.databases = [{"id": 3, "database_name": "Trino"}]
         self.datasets, self.charts, self.dashboards = {}, {}, {}
+        self.refreshed = []
+        # Superset 6 served dashboards under /superset/dashboard/.
+        self.dashboard_route = "/dashboard/"
 
     def _id(self) -> int:
         self.next_id += 1
         return self.next_id
 
     def _request(self, method, path):
+        if method == "PUT":
+            self.refreshed.append(
+                int(re.match(r"/api/v1/dataset/(\d+)/refresh", path)[1])
+            )
+            return {}
         resource, page = re.match(r"/api/v1/(\w+)/\?q=\(page:(\d+)", path).groups()
         store = {
+            "database": {db["id"]: db for db in self.databases},
             "dataset": self.datasets,
             "chart": self.charts,
             "dashboard": self.dashboards,
@@ -1368,16 +1378,22 @@ class FakeSuperset:
         }
         return {"id": i}
 
+    def update_dataset(self, dataset_id, sql):
+        self.datasets[dataset_id]["sql"] = sql
+
     def delete_dataset(self, dataset_id):
         del self.datasets[dataset_id]
 
-    def create_chart(self, slice_name, viz_type, datasource_id, params):
+    def create_chart(
+        self, slice_name, viz_type, datasource_id, params, datasource_type="table"
+    ):
         i = self._id()
         self.charts[i] = {
             "id": i,
             "slice_name": slice_name,
             "viz_type": viz_type,
             "datasource_id": datasource_id,
+            "datasource_type": datasource_type,
             "params": params,
             "dashboards": [],
         }
@@ -1403,6 +1419,14 @@ class FakeSuperset:
             "position_json": position_json,
         }
         return {"id": i}
+
+    def get_dashboard(self, dashboard_id):
+        return {
+            "result": {
+                **self.dashboards[dashboard_id],
+                "url": f"{self.dashboard_route}{dashboard_id}/",
+            }
+        }
 
     def update_dashboard(self, dashboard_id, **fields):
         self.dashboards[dashboard_id].update(fields)
@@ -1481,6 +1505,197 @@ def test_delete_keeps_a_dataset_another_chart_still_reads():
     )
     program.delete(api, "p")
     assert dataset in api.datasets
+
+
+class FakeSemanticLayer:
+    def __init__(self):
+        self.compiled = "SELECT revenue FROM build_1"
+        self.calls = []
+        self.explored = []
+        self.error = None
+
+    def get_project(self, name):
+        if name != "sales":
+            return None
+        layer = self
+
+        class Project:
+            id = 7
+
+            def sql(self, metrics, group_by=None):
+                layer.calls.append((metrics, group_by))
+                return layer.compiled
+
+            def explore_url(self, metric):
+                # Hopsworks creates or refreshes the caller's dataset of the metrics table here.
+                layer.explored.append(metric)
+                if layer.error is not None:
+                    raise layer.error
+                form_data = {"datasource": "51__table", "viz_type": "line"}
+                return (
+                    "https://host/hopsworks-api/superset/explore/?form_data="
+                    + quote(json.dumps(form_data))
+                    + "&projectId=119"
+                )
+
+        return Project()
+
+
+def test_a_metric_dataset_takes_the_sql_the_semantic_layer_compiles_on_every_run():
+    program, api, semantic = _dashboard_program(), FakeSuperset(), FakeSemanticLayer()
+    program.METRIC_DATASETS = [
+        {
+            "name": "revenue_by_month",
+            "semantic_project": "sales",
+            "metrics": ["revenue"],
+            "group_by": ["metric_time__month"],
+        }
+    ]
+    program.CHARTS = [{**program.CHARTS[0], "dataset": "revenue_by_month"}]
+
+    program.build(api, "p", semantic)
+    metric_dataset = next(
+        i
+        for i, d in api.datasets.items()
+        if d["table_name"] == program.metric_dataset_name(program.METRIC_DATASETS[0])
+    )
+    assert api.datasets[metric_dataset]["sql"] == "SELECT revenue FROM build_1"
+    assert next(iter(api.charts.values()))["datasource_id"] == metric_dataset
+    assert semantic.calls == [(["revenue"], ["metric_time__month"])]
+
+    semantic.compiled = "SELECT revenue FROM build_2"
+    program.build(api, "p", semantic)
+    assert api.datasets[metric_dataset]["sql"] == "SELECT revenue FROM build_2"
+    assert api.refreshed == [metric_dataset]
+
+    program.delete(api, "p")
+    assert metric_dataset not in api.datasets
+
+
+def test_two_dashboards_with_the_same_metric_dataset_name_keep_their_own():
+    first, api, semantic = _dashboard_program(), FakeSuperset(), FakeSemanticLayer()
+    entry = {"name": "revenue_by_month", "semantic_project": "sales", "metrics": ["r"]}
+    first.METRIC_DATASETS = [entry]
+    first.CHARTS = [{**first.CHARTS[0], "dataset": "revenue_by_month"}]
+    second = _dashboard_program()
+    second.TITLE = "Finance"
+    second.METRIC_DATASETS = [entry]
+    second.CHARTS = [{**second.CHARTS[0], "dataset": "revenue_by_month"}]
+
+    first.build(api, "p", semantic)
+    semantic.compiled = "SELECT other FROM build_2"
+    second.build(api, "p", semantic)
+
+    sql = {d["table_name"]: d["sql"] for d in api.datasets.values()}
+    assert sql[first.metric_dataset_name(entry)] == "SELECT revenue FROM build_1"
+    assert sql[second.metric_dataset_name(entry)] == "SELECT other FROM build_2"
+
+
+def test_titles_that_differ_only_in_punctuation_name_different_datasets():
+    first, second = _dashboard_program(), _dashboard_program()
+    first.TITLE, second.TITLE = "Sales Overview", "Sales-Overview"
+    entry = {"name": "revenue_by_month"}
+
+    names = {first.metric_dataset_name(entry), second.metric_dataset_name(entry)}
+    assert len(names) == 2
+    assert all(name.startswith("sales_overview_") for name in names)
+
+
+def test_a_metric_dataset_on_an_unknown_semantic_project_fails_the_run():
+    program, api = _dashboard_program(), FakeSuperset()
+    program.METRIC_DATASETS = [
+        {"name": "x", "semantic_project": "missing", "metrics": ["m"]}
+    ]
+    with pytest.raises(RuntimeError, match="No semantic project named missing"):
+        program.build(api, "p", FakeSemanticLayer())
+
+
+SALES_METRICS = {
+    "name": "sales_metrics",
+    "semantic_project": "sales",
+    "metric": "revenue",
+}
+
+
+def _revenue_chart():
+    return {
+        "slice_name": "Revenue",
+        "dataset": "sales_metrics",
+        "viz_type": "echarts_timeseries_line",
+        "params": {
+            "x_axis": "metric_time__day",
+            "time_grain_sqla": "P1M",
+            "metrics": ["revenue"],
+        },
+    }
+
+
+class _Refused(Exception):
+    def __init__(self, error_code):
+        super().__init__(f"refused with {error_code}")
+        self.error_code = error_code
+
+
+def test_a_chart_of_metrics_reads_the_dataset_hopsworks_names_in_its_explore_link():
+    program, api, semantic = _dashboard_program(), FakeSuperset(), FakeSemanticLayer()
+    # The caller's dataset of sales' metrics table, which Hopsworks made, and another member's.
+    api.datasets[50] = {"id": 50, "table_name": "metrics", "schema": "sales"}
+    api.datasets[51] = {"id": 51, "table_name": "metrics", "schema": "sales"}
+    program.SEMANTIC_DATASETS = [SALES_METRICS]
+    program.CHARTS = [program.CHARTS[0], _revenue_chart()]
+
+    program.build(api, "p", semantic)
+
+    charts = {c["slice_name"]: c for c in api.charts.values()}
+    assert charts["Revenue"]["datasource_id"] == 51
+    assert charts["Revenue"]["datasource_type"] == "table"
+    assert json.loads(charts["Revenue"]["params"])["metrics"] == ["revenue"]
+    assert semantic.explored == ["revenue"]
+
+    program.delete(api, "p")
+    assert {50, 51} <= set(api.datasets), "Hopsworks' datasets are not the program's"
+
+
+def test_without_a_semantic_connection_the_dashboard_is_left_as_it_was():
+    program, api, semantic = _dashboard_program(), FakeSuperset(), FakeSemanticLayer()
+    dashboard = program.build(api, "p")
+    charts = set(api.charts)
+    program.SEMANTIC_DATASETS = [SALES_METRICS]
+    program.CHARTS = [*program.CHARTS, _revenue_chart()]
+    semantic.error = _Refused(600014)
+
+    with pytest.raises(RuntimeError, match="use METRIC_DATASETS instead"):
+        program.build(api, "p", semantic)
+
+    assert set(api.charts) == charts
+    assert set(api.dashboards) == {dashboard}
+
+
+def test_another_superset_failure_is_raised_as_it_is():
+    program, api, semantic = _dashboard_program(), FakeSuperset(), FakeSemanticLayer()
+    program.SEMANTIC_DATASETS = [SALES_METRICS]
+    program.CHARTS = [_revenue_chart()]
+    semantic.error = _Refused(600015)
+
+    with pytest.raises(_Refused):
+        program.build(api, "p", semantic)
+
+    assert not api.charts and not api.dashboards
+
+
+@pytest.mark.parametrize(
+    ("route", "path"),
+    [("/dashboard/", "dashboard"), ("/superset/dashboard/", "superset/dashboard")],
+    ids=["superset-7", "superset-6"],
+)
+def test_the_printed_url_follows_the_route_superset_reports(route, path):
+    program, api = _dashboard_program(), FakeSuperset()
+    api.dashboard_route = route
+    dashboard = program.build(api, "p")
+
+    url = program.dashboard_url(api, "https://h.example/p/119", dashboard)
+
+    assert url == f"https://h.example/hopsworks-api/superset/{path}/{dashboard}/"
 
 
 # endregion
