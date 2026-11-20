@@ -75,7 +75,7 @@ class StatisticsEngine:
         ):
             # If the feature dataframe is None, then trigger a read on the metadata instance
             # We do it here to avoid making a useless request when using the Python engine
-            # and calling compute_and_save_statistics
+            # and calling _compute_and_save_statistics
             if feature_dataframe is None:
                 if feature_group_commit_id is not None:
                     feature_dataframe = (
@@ -149,8 +149,8 @@ class StatisticsEngine:
             correlations: Whether to compute feature correlations.
             kll: Whether to compute KLL sketches.
             histogram_bins: Number of bins to use for histograms.
-            mergeable_state: Also emit the state a later profile is merged into this one with
-                (incremental statistics).
+            mergeable_state: Also emit the state a later profile is merged into this one with.
+                Incremental statistics use it.
 
         Returns:
             Statistics metadata containing a list of single feature descriptive statistics.
@@ -547,8 +547,8 @@ class StatisticsEngine:
             event_time: Name of the feature the window is sliced by
             feature_names: List of feature names of which statistics are retrieved.
             row_percentage: Percentage of feature values used during statistics computation
-            with_content: Whether to include the extended statistics (`True`, `"content"`) or
-                the descriptive values alone (`"descriptive"`).
+            with_content: Whether to include the extended statistics (`True`, `"content"`).
+                `"descriptive"` includes the descriptive values alone.
 
         Returns:
             Statistics metadata containing a list of single feature descriptive statistics.

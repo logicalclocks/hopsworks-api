@@ -138,8 +138,11 @@ public final class ProfileMerger {
       }
       byte[] kllBytes = sketch.toByteArray();
       mergeable.put("kll", Base64.getEncoder().encodeToString(kllBytes));
-      // a batch with no finite value carries no sidecar of its own, while the snapshot may
-      if (delta.has("kll") || previousExtended.has("kll")) {
+      // a batch with no finite value carries no sidecar of its own, while the snapshot may;
+      // the bucket split points must strictly increase, as the profiler checks
+      if ((delta.has("kll") || previousExtended.has("kll"))
+          && ColumnProfiler.hasUsableBinGrid(sketch.getMinItem(), sketch.getMaxItem(),
+              ProfileJsonSerializer.KLL_BUCKETS)) {
         out.set("kll", MAPPER.valueToTree(ProfileJsonSerializer.buildKllMap(kllBytes)));
       }
     }

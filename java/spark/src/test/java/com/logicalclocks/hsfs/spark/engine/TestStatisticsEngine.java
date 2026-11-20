@@ -18,7 +18,9 @@
 package com.logicalclocks.hsfs.spark.engine;
 
 import com.logicalclocks.hsfs.EntityEndpointType;
+import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.StatisticsConfig;
+import com.logicalclocks.hsfs.metadata.StatisticsApi;
 import com.logicalclocks.hsfs.metadata.Variable;
 import com.logicalclocks.hsfs.metadata.VariablesApi;
 import com.logicalclocks.hsfs.spark.TrainingDataset;
@@ -27,6 +29,7 @@ import org.apache.spark.sql.Row;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedConstruction;
 import org.mockito.Mockito;
 
 import java.io.IOException;
@@ -102,9 +105,9 @@ class TestStatisticsEngine {
     // the kill switch beats everything
     Assertions.assertFalse(effective(variables("true", "false"), null));
     Assertions.assertFalse(effective(variables("true", "false"), true));
-    // a missing allowed variable allows; a missing default is off
-    Assertions.assertTrue(effective(variables("true", null), null));
-    Assertions.assertTrue(effective(variables(null, null), true));
+    // a missing allowed variable does not allow; a missing default is off
+    Assertions.assertFalse(effective(variables("true", null), null));
+    Assertions.assertFalse(effective(variables(null, null), true));
     Assertions.assertFalse(effective(variables(null, "true"), null));
     // no config at all follows the cluster default
     Assertions.assertTrue(new StatisticsEngine(EntityEndpointType.FEATURE_GROUP, variables("true", "true"))
@@ -116,6 +119,32 @@ class TestStatisticsEngine {
     VariablesApi failing = Mockito.mock(VariablesApi.class);
     Mockito.when(failing.get(Mockito.any())).thenThrow(new IOException("forbidden"));
     Assertions.assertFalse(effective(failing, null));
-    Assertions.assertTrue(effective(failing, true));
+    Assertions.assertFalse(effective(failing, true));
+  }
+
+  @Test
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  void aMergeableProfileReachesTheProfilerWithCorrelationsAndHistogramsInOrder() throws Exception {
+    SparkEngine sparkEngine = Mockito.mock(SparkEngine.class);
+    SparkEngine.setInstance(sparkEngine);
+    Dataset<Row> data = Mockito.mock(Dataset.class);
+    Mockito.when(data.isEmpty()).thenReturn(false);
+    Mockito.when(sparkEngine.profile(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any(),
+        Mockito.any(), Mockito.any(), Mockito.any())).thenReturn("{\"columns\": []}");
+    StatisticsConfig config = config(true);
+    config.setCorrelations(true);
+    config.setHistograms(false);
+    config.setExactUniqueness(false);
+    FeatureGroupBase featureGroup = Mockito.mock(FeatureGroupBase.class);
+    Mockito.when(featureGroup.getStatisticsConfig()).thenReturn(config);
+
+    try (MockedConstruction<StatisticsApi> ignored = Mockito.mockConstruction(StatisticsApi.class)) {
+      new StatisticsEngine(EntityEndpointType.FEATURE_GROUP, variables("true", "true"))
+          .computeStatistics(featureGroup, data, 7L);
+    }
+
+    // SparkEngine.profile takes (correlation, histogram, exactUniqueness, kll, histogramBins, mergeableState)
+    Mockito.verify(sparkEngine).profile(Mockito.eq(data), Mockito.any(), Mockito.eq(true), Mockito.eq(false),
+        Mockito.eq(false), Mockito.isNull(), Mockito.isNull(), Mockito.eq(true));
   }
 }

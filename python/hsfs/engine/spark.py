@@ -1808,6 +1808,8 @@ class Engine:
             exact_uniqueness: Whether to compute exact uniqueness metrics.
             kll: Whether to compute KLL sketches for percentile estimates.
             histogram_bins: Number of histogram bins. None falls back to the Deequ default (20).
+            mergeable_state: Also emit the sketches and moments a later profile is merged into this one with.
+                Incremental statistics use it.
         """
         if self._is_connect:
             _logger.warning(
@@ -1833,12 +1835,6 @@ class Engine:
         jvm_spark_engine = (
             self._jvm.com.logicalclocks.hsfs.spark.engine.SparkEngine.getInstance()
         )
-        # py4j cannot disambiguate Java method overloads when a trailing arg is None
-        # (the Integer param on the 7-arg overload). Route to the 5-arg overload when
-        # neither kll nor histogram_bins was set — keeps the common path working and
-        # preserves the JVM-side defaults. Fall through to the 7-arg overload only
-        # when at least one of the two is explicitly configured, and always pass a
-        # concrete Integer (20 mirrors the JVM default applied inside SparkEngine).
         if mergeable_state:
             # The mergeable state is the sketches and moments a later profile is merged
             # into this one with, for incremental statistics.
@@ -1852,6 +1848,12 @@ class Engine:
                 int(histogram_bins) if histogram_bins is not None else 20,
                 True,
             )
+        # py4j cannot disambiguate Java method overloads when a trailing arg is None
+        # (the Integer param on the 7-arg overload). Route to the 5-arg overload when
+        # neither kll nor histogram_bins was set — keeps the common path working and
+        # preserves the JVM-side defaults. Fall through to the 7-arg overload only
+        # when at least one of the two is explicitly configured, and always pass a
+        # concrete Integer (20 mirrors the JVM default applied inside SparkEngine).
         if not kll and histogram_bins is None:
             return jvm_spark_engine.profile(
                 dataframe._jdf,

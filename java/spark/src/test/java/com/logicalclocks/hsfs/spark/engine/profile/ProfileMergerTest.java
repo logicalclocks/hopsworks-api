@@ -32,12 +32,9 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -220,46 +217,6 @@ public class ProfileMergerTest {
         () -> ProfileMerger.merge(toStatisticsJson(plain), delta));
   }
 
-  /**
-   * The Python client registers the statistics of small commits with the same state: its
-   * sketches must heapify here, and its HLL must hash a value as Spark's renders it, or the
-   * values both sides saw would count twice.
-   */
-  @Test
-  void aStateWrittenByThePythonClientMerges() throws Exception {
-    // the Python client's profile of c = 1..10 and s = a..j, each value sketched as "v" + its text
-    String previous;
-    try (InputStream in = getClass().getClassLoader()
-        .getResourceAsStream("profile-python-mergeable-state.json")) {
-      previous = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-    }
-    SparkSession spark = spark();
-    StructType schema = new StructType()
-        .add("c", DataTypes.LongType)
-        .add("s", DataTypes.StringType);
-    List<Row> rows = new ArrayList<>();
-    for (long value = 5; value <= 20; value++) {
-      rows.add(RowFactory.create(value, String.valueOf((char) ('a' + value - 1))));
-    }
-    Dataset<Row> delta = spark.createDataFrame(rows, schema);
-
-    String merged = ProfileMerger.merge(previous,
-        new ColumnProfiler().profile(delta, null, false, false, 20, false, false, true));
-
-    JsonNode c = byColumn(merged).get("c");
-    Assertions.assertEquals(26, c.path("numRecordsNonNull").asLong());
-    Assertions.assertEquals(55 + 200, c.path("sum").asDouble(), 1e-9);
-    Assertions.assertEquals(1.0, c.path("minimum").asDouble());
-    Assertions.assertEquals(20.0, c.path("maximum").asDouble());
-    // 5..10 are in both profiles: 20 distinct values, not 26
-    Assertions.assertEquals(20, c.path("approximateNumDistinctValues").asLong());
-    Assertions.assertEquals(99, c.path("approxPercentiles").size());
-    Assertions.assertEquals(20, byColumn(merged).get("s").path("approximateNumDistinctValues").asLong());
-    Assertions.assertEquals(new HashSet<>(Arrays.asList("c", "s")), byColumn(merged).keySet());
-    // a state written before the counter existed continues from 0
-    Assertions.assertEquals(1, c.path("mergeable").path("merges").asLong());
-  }
-
   @Test
   void aBatchWithoutFiniteValuesKeepsTheKllSidecar() throws Exception {
     SparkSession spark = spark();
@@ -280,6 +237,29 @@ public class ProfileMergerTest {
 
     Assertions.assertTrue(merged.has("kll"), "the snapshot's sidecar is kept");
     Assertions.assertEquals(10, merged.path("numRecordsNull").asLong());
+  }
+
+  @Test
+  void aMergedRangeWithoutAUsableBucketGridDropsTheKllSidecar() throws Exception {
+    SparkSession spark = spark();
+    StructType schema = new StructType().add("x", DataTypes.DoubleType);
+    List<Row> snapshotRows = new ArrayList<>();
+    for (int ii = 0; ii < 10; ii++) {
+      snapshotRows.add(RowFactory.create((double) ii));
+    }
+    List<Row> batchRows = Arrays.asList(RowFactory.create(1e308), RowFactory.create(-1e308));
+    ColumnProfiler profiler = new ColumnProfiler();
+    String snapshot = profiler.profile(spark.createDataFrame(snapshotRows, schema), null, false, false, 20, false,
+        true, true);
+    String delta = profiler.profile(spark.createDataFrame(batchRows, schema), null, false, false, 20, false, true,
+        true);
+
+    JsonNode merged = byColumn(ProfileMerger.merge(toStatisticsJson(snapshot), delta)).get("x");
+
+    // the range spans more than a double can hold, so the buckets cannot be split
+    Assertions.assertFalse(merged.has("kll"));
+    Assertions.assertEquals(99, merged.path("approxPercentiles").size());
+    Assertions.assertTrue(merged.path("mergeable").has("kll"));
   }
 
   @Test

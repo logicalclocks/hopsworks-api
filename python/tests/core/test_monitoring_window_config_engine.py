@@ -1768,3 +1768,36 @@ class TestIncrementalStatisticsHook:
         )
         assert "mergeable_state" not in save_kwargs
         incremental._compute.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("profile_flags", "with_content"),
+        [
+            ({"for_distribution_comparison": True}, "content"),
+            ({"for_distribution_comparison": False}, "descriptive"),
+            ({"kll": True}, "descriptive"),
+            (None, "descriptive"),
+        ],
+    )
+    def test_only_a_distribution_comparison_reads_the_extended_statistics(
+        self, mocker, profile_flags, with_content
+    ):
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        engine, stats_engine_mock, _ = self._engine_with_mocked_statistics(mocker)
+        incremental = MagicMock()
+        incremental._applies.return_value = False
+        mocker.patch.object(
+            engine, "_incremental_statistics_engine", return_value=incremental
+        )
+
+        engine._run_single_window_monitoring(
+            entity=_make_hudi_fg(),
+            monitoring_window_config=mwc.MonitoringWindowConfig(
+                window_config_type=mwc.WindowConfigType.ALL_TIME, row_percentage=1.0
+            ),
+            feature_names=["intt"],
+            profile_flags=profile_flags,
+            end_commit_time_override=1000,
+        )
+
+        lookup = stats_engine_mock._get_by_time_window.call_args.kwargs
+        assert lookup["with_content"] == with_content

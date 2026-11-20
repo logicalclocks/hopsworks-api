@@ -37,17 +37,17 @@ _logger = logging.getLogger(__name__)
 class IncrementalStatisticsEngine:
     """Statistics of a commit from the statistics of the commit before it.
 
-    An ingestion statistics run profiles the whole table as of its commit, so a feature group
-    that keeps growing pays more for every commit.
-    When `statistics_incremental_enabled` is set, the run profiles only the rows the commits
-    since the previous snapshot added, with the state a profile can be merged with, and merges
-    them into the previous snapshot's statistics in the JVM.
-    The result is the snapshot's statistics, as before: counts, sums, min and max are exact,
-    mean and standard deviation follow the parallel variance formula, the percentiles come
-    from a merged KLL sketch and the distinct count from a merged HLL sketch.
-    The merge applies to an append-only stretch of commits on a Delta or Hudi feature group
-    whose statistics ask for nothing without a mergeable state, that is no correlations,
-    histograms or exact uniqueness; anything else profiles the whole snapshot as before.
+    An ingestion statistics run profiles the whole table as of its commit.
+    A feature group that keeps growing therefore pays more for every commit.
+    When `statistics_incremental_enabled` is set, the run profiles only the rows the commits since the previous snapshot added.
+    It profiles them with the state a profile can be merged with, and merges them into the previous snapshot's statistics in the JVM.
+    The result is the snapshot's statistics, as before.
+    Counts, sums, min and max are exact.
+    Mean and standard deviation follow the parallel variance formula.
+    The percentiles come from a merged KLL sketch and the distinct count from a merged HLL sketch.
+    The merge applies to an append-only stretch of commits on a Delta or Hudi feature group.
+    Its statistics must ask for nothing without a mergeable state, that is no correlations, histograms or exact uniqueness.
+    Anything else profiles the whole snapshot as before.
     """
 
     VARIABLE = "statistics_incremental_enabled"
@@ -75,10 +75,10 @@ class IncrementalStatisticsEngine:
         """Whether incremental statistics are on for the entity.
 
         The cluster must allow them, and the entity's own setting decides, falling back to the cluster default when it has none.
-        A backend without the settings allows them and defaults to off.
+        When the allow switch cannot be read, they are not allowed.
+        When the cluster default cannot be read, it is off.
         """
-        allowed = self._read_variable(self.ALLOWED_VARIABLE)
-        if allowed is not None and str(allowed).lower() != "true":
+        if str(self._read_variable(self.ALLOWED_VARIABLE)).lower() != "true":
             return False
         config = getattr(entity, "statistics_config", None)
         incremental = getattr(config, "incremental", None)
@@ -296,6 +296,11 @@ class IncrementalStatisticsEngine:
             spark.sparkContext,
         )
         location = entity.prepare_spark_location()
+        if not self._change_data_feed_enabled(spark, location):
+            _logger.info(
+                "Incremental statistics: the Delta table has no change data feed"
+            )
+            return None
         versions = []
         for commit_time in (previous_end, end_commit_time):
             version = reader._delta_version_at(location, commit_time)
@@ -326,6 +331,15 @@ class IncrementalStatisticsEngine:
             )
             return None
         return feed.filter(F.col("_change_type") == "insert").select(*names)
+
+    @staticmethod
+    def _change_data_feed_enabled(spark, location: str) -> bool:
+        properties = spark.sql(f"DESCRIBE DETAIL delta.`{location}`").first()[
+            "properties"
+        ]
+        return (
+            str((properties or {}).get("delta.enableChangeDataFeed")).lower() == "true"
+        )
 
     @staticmethod
     def _delta_commit_time(reader, spark, location: str, version: int) -> int | None:

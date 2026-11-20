@@ -59,7 +59,15 @@ public class StatisticsConfig {
   @Setter
   private Integer histogramBins = null;
 
-  // null uses the cluster default; always sent, even as null, so the backend tells "reset" from "not set"
+  /**
+   * Whether a commit's statistics merge the new rows into the previous statistics instead of profiling the whole
+   * table. Null uses the cluster default.
+   * On update, null resets the setting to the cluster default, unlike kll and histogramBins, where null keeps the
+   * stored value.
+   * Merged percentiles and the approximate distinct count come from KLL and HLL sketches over finite values, so they
+   * can differ from a full profile computed without KLL, for example on columns holding infinities.
+   */
+  // always sent, even as null, so the backend tells "reset" from "not set"
   @Getter
   @Setter
   @JsonInclude(JsonInclude.Include.ALWAYS)

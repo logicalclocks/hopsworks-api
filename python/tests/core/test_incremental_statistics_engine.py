@@ -121,8 +121,8 @@ class TestIncrementalStatisticsEngine:
             (None, "true", "false", False),
             (True, "true", "false", False),
             (False, "false", "false", False),
-            (True, "false", Exception("missing"), True),
-            (None, "true", Exception("missing"), True),
+            (True, "false", Exception("missing"), False),
+            (None, "true", Exception("missing"), False),
             (None, Exception("missing"), "true", False),
             (True, Exception("missing"), "true", True),
         ],
@@ -218,7 +218,10 @@ class TestIncrementalStatisticsEngine:
         return reader
 
     @staticmethod
-    def _feed(spark, non_insert_rows):
+    def _feed(spark, non_insert_rows, change_data_feed="true"):
+        spark.sql.return_value.first.return_value = {
+            "properties": {"delta.enableChangeDataFeed": change_data_feed}
+        }
         reader = spark.read.format.return_value
         feed = reader.option.return_value.option.return_value.option.return_value.load.return_value
         feed.filter.return_value.limit.return_value.count.return_value = non_insert_rows
@@ -236,6 +239,25 @@ class TestIncrementalStatisticsEngine:
         assert self.engine._read_commits_after(fg, ["a"], 500, 1000) is None
         feed.filter.return_value.limit.assert_called_once_with(1)
         feed.filter.return_value.select.assert_not_called()
+
+    @pytest.mark.parametrize("change_data_feed", ["false", None])
+    def test_a_delta_table_without_a_change_data_feed_falls_back_quietly(
+        self, mocker, caplog, change_data_feed
+    ):
+        fg = _fg(mocker, "DELTA")
+        fg.prepare_spark_location.return_value = "hopsfs://nn/fg"
+        reader = self._delta_log(mocker, {0: 500, 1: 1000})
+        spark = mocker.patch("hsfs.engine._get_instance").return_value._spark_session
+        feed = self._feed(spark, non_insert_rows=0, change_data_feed=change_data_feed)
+
+        with caplog.at_level("DEBUG"):
+            assert self.engine._read_commits_after(fg, ["a"], 500, 1000) is None
+
+        spark.sql.assert_called_once_with("DESCRIBE DETAIL delta.`hopsfs://nn/fg`")
+        reader._delta_version_at.assert_not_called()
+        spark.read.format.return_value.option.assert_not_called()
+        assert not [r for r in caplog.records if r.levelname == "WARNING"]
+        assert feed is not None
 
     def test_reads_delta_commits_by_version_not_by_timestamp(self, mocker):
         fg = _fg(mocker, "DELTA")
@@ -269,6 +291,29 @@ class TestIncrementalStatisticsEngine:
         mocker.patch("hsfs.engine._get_instance")
 
         assert self.engine._read_commits_after(fg, ["a"], 500, 1000) is None
+
+    def test_the_previous_snapshot_is_looked_up_before_the_new_commit(self, mocker):
+        self._previous(mocker, [_snapshot(500)])
+
+        self.engine._previous_snapshot(_fg(mocker), 1000)
+
+        api = self.statistics_engine._statistics_api._get_all_in_window
+        assert api.call_args.kwargs["end_commit_time"] == 999
+
+    def test_a_commit_at_the_previous_snapshot_is_not_part_of_the_new_rows(
+        self, mocker
+    ):
+        # the previous snapshot already holds the commit at 500, whatever it updated
+        self._commits(mocker, [_commit(1000), _commit(500, updated=3)])
+
+        assert self.engine._append_only_between(_fg(mocker), 500, 1000)
+
+    def test_a_commit_after_the_previous_snapshot_that_updated_rows_blocks_the_merge(
+        self, mocker
+    ):
+        self._commits(mocker, [_commit(1000, updated=1), _commit(500)])
+
+        assert not self.engine._append_only_between(_fg(mocker), 500, 1000)
 
     def test_an_error_while_merging_falls_back(self, mocker):
         self._previous(mocker, [_snapshot(500)])

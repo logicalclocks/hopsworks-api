@@ -90,6 +90,23 @@ public class ColumnProfilerSmokeTest {
     df.unpersist();
   }
 
+  /** A column the profiler skips makes its selection a plan of its own, which must not be cached again. */
+  @Test
+  void profilingKeepsTheCacheOfAFrameWithASkippedColumn() throws Exception {
+    Dataset<Row> df = buildDataset()
+        .withColumn("skipped_ts", org.apache.spark.sql.functions.current_timestamp())
+        .persist(StorageLevel.MEMORY_AND_DISK());
+    df.count();
+    int cachedBefore = df.sparkSession().sparkContext().getPersistentRDDs().size();
+
+    String json = new ColumnProfiler().profile(df, null, false, true, 20, false, false);
+
+    Assertions.assertNull(findColumn(new ObjectMapper().readTree(json).get("columns"), "skipped_ts"));
+    Assertions.assertEquals(StorageLevel.MEMORY_AND_DISK(), df.storageLevel());
+    Assertions.assertEquals(cachedBefore, df.sparkSession().sparkContext().getPersistentRDDs().size());
+    df.unpersist();
+  }
+
   @Test
   void smokeTestKll() throws Exception {
     Dataset<Row> df = buildDataset();

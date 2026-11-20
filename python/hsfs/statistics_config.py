@@ -147,6 +147,8 @@ class StatisticsConfig:
 
         If `None`, the cluster default is used.
         Incremental statistics apply to Delta and Hudi feature groups whose statistics config has no histograms, correlations or exact uniqueness.
+        Merged percentiles and the approximate distinct count come from KLL and HLL sketches over finite values.
+        They can therefore differ from a full profile computed without KLL, for example on columns holding infinities.
         A cluster administrator can disable incremental statistics for all feature groups.
         """
         return self._incremental

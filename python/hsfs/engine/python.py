@@ -889,13 +889,14 @@ class Engine:
         alone, and the caller then falls back to the latest execution.
         """
         executions = started_job.executions
-        if not executions or not isinstance(executions, (dict, list)):
-            return None
         if isinstance(executions, list):
             # a bare list of execution payloads: the first is the one the endpoint started
-            if not executions or not isinstance(executions[0], dict):
-                return None
-            executions = executions[0]
+            executions = executions[0] if executions else None
+        if not isinstance(executions, dict):
+            return None
+        # An older backend returns the unexpanded DTO, {"href": ".../executions"}.
+        if "id" not in executions and not executions.get("items"):
+            return None
         started = execution.Execution.from_response_json(executions, started_job)
         if isinstance(started, list):
             return started[0] if started else None
@@ -912,9 +913,22 @@ class Engine:
         histogram_bins: int | None = None,
         mergeable_state: bool = False,
     ) -> str:
+        """Profile a dataframe in process.
+
+        Parameters:
+            df: The dataframe to profile.
+            relevant_columns: Columns to include, all columns if empty.
+            correlations: Ignored, the in-process profiler computes no correlations.
+            histograms: Ignored, the in-process profiler computes no histograms.
+            exact_uniqueness: Ignored, the in-process profiler computes no exact uniqueness.
+            kll: Ignored, percentiles are always computed.
+            histogram_bins: Ignored, the in-process profiler computes no histograms.
+            mergeable_state: Accepted for the Spark Connect fallback and ignored, because the in-process profiler keeps no sketches.
+
+        Returns:
+            The profile as a JSON string.
+        """
         # TODO: add statistics for correlations, histograms and exact_uniqueness
-        # mergeable_state: the in-process profiler keeps no sketches, so the flag is accepted
-        # for the Spark Connect fallback and ignored
         _logger.info("Computing insert statistics")
         is_polars = HAS_POLARS and isinstance(
             df, (pl.DataFrame, pl.dataframe.frame.DataFrame)

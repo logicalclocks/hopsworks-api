@@ -83,9 +83,8 @@ class StatisticsApi:
             row_percentage: Percentage of feature values used during statistics computation
             before_transformation: Whether the statistics were computed before transformations or not
             training_dataset_version: Version of the training dataset on which statistics were computed
-
-            with_content: Whether to include the feature descriptive statistics, with their
-                extended statistics (`True`, `"content"`) or alone (`"descriptive"`).
+            with_content: Whether to include the feature descriptive statistics, with their extended statistics (`True`, `"content"`).
+                `"descriptive"` includes them alone.
 
         Returns:
             The statistics object, or `None` if not found.
@@ -341,9 +340,9 @@ class StatisticsApi:
             offset: Offset for pagination queries
             limit: Limit for pagination queries
             with_content: Whether to include the feature descriptive statistics in the response.
-                `True` or `"content"` includes them with their extended statistics, which the
-                backend reads from one file per feature; `"descriptive"` includes the descriptive
-                values alone.
+                `True` or `"content"` includes them with their extended statistics.
+                The backend reads those from one file per feature.
+                `"descriptive"` includes the descriptive values alone.
         """
         if (start_commit_time is not None or end_commit_time is not None) and (
             start_event_time is not None

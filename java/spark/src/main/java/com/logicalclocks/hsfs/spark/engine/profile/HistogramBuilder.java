@@ -86,9 +86,13 @@ class HistogramBuilder {
     if (range == 0.0) {
       binExpr = functions.lit(0);
     } else {
-      binExpr = functions.least(
-          functions.floor((col.minus(minValue)).divide(binWidth)).cast("int"),
-          functions.lit(histogramBins - 1)
+      // A value outside [min, max] can only come from data that changed after the scalar
+      // pass; clamping keeps it out of an index the counts array does not have.
+      binExpr = functions.greatest(
+          functions.least(
+              functions.floor((col.minus(minValue)).divide(binWidth)).cast("int"),
+              functions.lit(histogramBins - 1)),
+          functions.lit(0)
       );
     }
 

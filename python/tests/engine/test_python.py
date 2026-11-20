@@ -1445,6 +1445,10 @@ class TestPython:
                 (index + 1) / 100, interpolation="nearest"
             )
 
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
     def test_profile_polars_percentiles_are_the_nearest_rank_quantiles(self):
         python_engine = python.Engine()
         # Nulls change the rank each fraction lands on and the ties at a half rank.
@@ -10790,6 +10794,10 @@ class TestPython:
             ({"id": 7, "state": "INITIALIZING"}, 7),
             ({"count": 1, "items": [{"id": 8, "state": "INITIALIZING"}]}, 8),
             ({"count": 0, "items": []}, None),
+            (
+                {"href": "https://host/hopsworks-api/api/project/1/jobs/j/executions"},
+                None,
+            ),
             ([{"id": 7, "state": "INITIALIZING"}], 7),
             ([], None),
             (None, None),

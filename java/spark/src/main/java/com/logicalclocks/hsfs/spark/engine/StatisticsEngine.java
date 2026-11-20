@@ -143,11 +143,11 @@ public class StatisticsEngine {
   /**
    * Whether incremental statistics are on for a feature group: the cluster allows them, and the feature group's
    * own setting decides, falling back to the cluster default when it has none.
-   * A backend without the settings allows them and defaults to off.
+   * When the allow switch cannot be read, they are not allowed; when the cluster default cannot be read, it is off.
    */
   public boolean incrementalStatisticsEnabled(StatisticsConfig statisticsConfig) {
     String allowed = readVariable(INCREMENTAL_STATISTICS_ALLOWED_VARIABLE);
-    if (allowed != null && !"true".equalsIgnoreCase(allowed)) {
+    if (!"true".equalsIgnoreCase(allowed)) {
       return false;
     }
     if (statisticsConfig != null && statisticsConfig.getIncremental() != null) {
