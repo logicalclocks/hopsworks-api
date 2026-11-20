@@ -2563,3 +2563,124 @@ class TestDeploymentLlmGateway:
 
         post.assert_called_once_with(d, False)
         assert d.llm_gateway is False
+
+
+class TestDeploymentSharing:
+    def _deployment(self, mocker):
+        mocker.patch("hsml.predictor.Predictor._validate_serving_tool")
+        p = predictor.Predictor(
+            id=7,
+            name="llm",
+            model_server=PREDICTOR.MODEL_SERVER_VLLM,
+            serving_tool=PREDICTOR.SERVING_TOOL_KSERVE,
+        )
+        return deployment.Deployment(predictor=p, name="llm")
+
+    def _stored(self, mocker, d, all_projects=False, projects=()):
+        mocker.patch.object(
+            d._serving_api,
+            "_get_deployment_sharing",
+            return_value={"allProjects": all_projects, "projects": list(projects)},
+        )
+
+        # As the backend applies a change: to what it stores, naming no project while all are shared.
+        def change(_, all_change, add, remove):
+            everyone = all_projects if all_change is None else all_change
+            names = [n for n in [*projects, *add] if n not in remove]
+            return {
+                "allProjects": everyone,
+                "projects": [] if everyone else list(dict.fromkeys(names)),
+            }
+
+        return mocker.patch.object(
+            d._serving_api, "_change_deployment_sharing", side_effect=change
+        )
+
+    def test_shared_with_reads_the_backend(self, mocker):
+        d = self._deployment(mocker)
+        self._stored(mocker, d, True, ["b"])
+
+        assert d.shared_with == {"all_projects": True, "projects": ["b"]}
+
+    def test_share_with_sends_only_the_added_projects(self, mocker):
+        d = self._deployment(mocker)
+        change = self._stored(mocker, d, False, ["a"])
+
+        result = d.share_with(projects=["b", "a"])
+
+        # Never what was read: the backend applies the change to what it stores.
+        change.assert_called_once_with(d, None, ["b", "a"], [])
+        d._serving_api._get_deployment_sharing.assert_not_called()
+        assert result == {"all_projects": False, "projects": ["a", "b"]}
+
+    def test_share_with_accepts_a_single_name(self, mocker):
+        d = self._deployment(mocker)
+        change = self._stored(mocker, d)
+
+        d.share_with(projects="b")
+
+        change.assert_called_once_with(d, None, ["b"], [])
+
+    def test_share_with_all_projects(self, mocker):
+        d = self._deployment(mocker)
+        change = self._stored(mocker, d, False, ["a"])
+
+        result = d.share_with(all_projects=True)
+
+        change.assert_called_once_with(d, True, [], [])
+        assert result == {"all_projects": True, "projects": []}
+
+    def test_share_with_all_projects_false_restricts(self, mocker):
+        d = self._deployment(mocker)
+        change = self._stored(mocker, d, True, [])
+
+        d.share_with(all_projects=False)
+
+        change.assert_called_once_with(d, False, [], [])
+
+    def test_share_with_needs_an_argument(self, mocker):
+        d = self._deployment(mocker)
+        change = self._stored(mocker, d)
+
+        with pytest.raises(ValueError):
+            d.share_with()
+
+        change.assert_not_called()
+
+    def test_a_change_without_a_body_reads_the_sharing_back(self, mocker):
+        d = self._deployment(mocker)
+        self._stored(mocker, d, False, ["a"])
+        mocker.patch.object(
+            d._serving_api, "_change_deployment_sharing", return_value=None
+        )
+
+        assert d.share_with(projects=["b"]) == {
+            "all_projects": False,
+            "projects": ["a"],
+        }
+
+    def test_unshare_sends_only_the_removed_projects(self, mocker):
+        d = self._deployment(mocker)
+        change = self._stored(mocker, d, False, ["a", "b"])
+
+        result = d.unshare(projects=["a", "missing"])
+
+        change.assert_called_once_with(d, None, [], ["a", "missing"])
+        assert result == {"all_projects": False, "projects": ["b"]}
+
+    def test_unshare_all_projects(self, mocker):
+        d = self._deployment(mocker)
+        change = self._stored(mocker, d, True, [])
+
+        d.unshare(all_projects=True)
+
+        change.assert_called_once_with(d, False, [], [])
+
+    def test_unshare_needs_an_argument(self, mocker):
+        d = self._deployment(mocker)
+        change = self._stored(mocker, d)
+
+        with pytest.raises(ValueError):
+            d.unshare()
+
+        change.assert_not_called()
