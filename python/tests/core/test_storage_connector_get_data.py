@@ -27,6 +27,7 @@ from hsfs.storage_connector import (
     CRMSource,
     HopsFSConnector,
     RestConnector,
+    S3Connector,
     SqlConnector,
 )
 
@@ -190,6 +191,29 @@ class TestStorageConnectorGetData:
 
         assert [table.table for table in tables] == ["contacts", "deals"]
         assert all(table.storage_connector is connector for table in tables)
+
+    @pytest.mark.parametrize(
+        "payload, tables",
+        [
+            ({}, []),
+            ({"table": "orders", "path": "orders.csv", "format": "CSV"}, ["orders"]),
+            (
+                {
+                    "items": [
+                        {"table": "a", "path": "a.csv"},
+                        {"table": "b", "path": "b.csv"},
+                    ]
+                },
+                ["a", "b"],
+            ),
+        ],
+    )
+    def test_s3_get_tables_empty_listing_is_no_table(self, mocker, payload, tables):
+        mocker.patch("hsfs.core.data_source_api.client._get_instance")
+        connector = S3Connector(id=1, name="s3", featurestore_id=1, bucket="bucket")
+        mocker.patch.object(connector._data_source_api, "_browse", return_value=payload)
+
+        assert [t.table for t in connector.get_tables()] == tables
 
 
 class TestStorageConnectorGetDataBatch:
