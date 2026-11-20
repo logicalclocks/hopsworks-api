@@ -67,8 +67,15 @@ path runs only against `system.target.stage: development`.
 | app | main agent | infer | `app` |
 | verify | main agent | any | `verify` only |
 
-A phase is satisfied when its status is `met`, `skipped` or `accepted`. Each
-phase writes only its block, records `started` and `finished`, and ends with a
+A phase is satisfied when its status is `met`, `skipped` or `accepted` and every
+asset its block records still exists in the project.
+`hops factory system plan <slug>` checks the assets and names the next phase;
+`--sync` marks a satisfied phase with an asset gone `stale` and writes
+`system.progress`. "Blocked by" is what a phase reads, not an order: a phase
+whose inputs exist starts without the earlier ones (a model or feature view the
+user brought is recorded in the block that would have made it, which is then
+`skipped` with a `reason`), and `--goal <phase>` plans only what it needs.
+Each phase writes only its block, records `started` and `finished`, and ends with a
 commit. The status vocabulary, the transitions to `stale`, the full schema and
 the progress rules are in [references/system-yaml.md](references/system-yaml.md);
 [references/example-system.yaml](references/example-system.yaml) is a complete

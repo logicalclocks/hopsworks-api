@@ -59,7 +59,9 @@ as `training` for an agent system without a model, `data` and `features` for a s
 pretrained model reads only what a request sends, or `app` declined); `accepted` (the user
 waived the target or SLA; the block records what was accepted and a `decisions` line says so).
 Not satisfied: `pending`, `running`, `unmet`, `stale`. `verify` has `pass | fail`, is rerun by
-every resume, and is never a gate.
+every resume, and is never a gate. A satisfied phase with a recorded asset gone from the project is
+`stale`: `hops factory system plan <slug> --sync` marks it, and writes `system.progress.done` and
+`.phase`.
 
 | Change, or failed claim | Marked `stale` |
 |---|---|

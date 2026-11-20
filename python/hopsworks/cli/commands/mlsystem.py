@@ -501,6 +501,80 @@ def system_status(
     )
 
 
+@system_group.command("plan")
+@click.argument("slug_or_dir")
+@click.option("--goal", help="Plan only what this phase needs, and the phase itself.")
+@click.option(
+    "--sync",
+    is_flag=True,
+    help="Write the computed state into system.yaml: stale and system.progress (needs the build lease when one is held).",
+)
+@click.pass_context
+def system_plan(
+    ctx: click.Context, slug_or_dir: str, goal: str | None, sync: bool
+) -> None:
+    """Print what SLUG_OR_DIR's project already has of each phase, and the phase to work on next.
+
+    A phase is done when its status says so and every asset its block in
+    system.yaml records still exists in the project; the first phase that names
+    an asset makes it, a later one needs it. Each phase is done, build (what it
+    makes is missing, or it has not finished), blocked (what it needs is
+    missing), todo (a decision or check), failed, skipped or unknown. Exits 0;
+    `next` is empty when nothing is left.
+
+    Args:
+        ctx: Click context.
+        slug_or_dir: The system's slug or directory.
+        goal: The phase to plan for.
+        sync: Write the computed state back.
+    """
+    from hopsworks.cli import plan, system_doc
+
+    directory = _require_path(slug_or_dir)
+    doc, _sha = system_doc.read(directory)
+    checker = plan.Project(session.get_project(ctx))
+    try:
+        result = plan.compute(doc, checker.exists, goal)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc), param_hint="--goal") from exc
+    result["errors"] = {str(r): e for r, e in checker.errors.items()}
+    if sync:
+        plan.sync(directory, result)
+    if output.JSON_MODE:
+        output.print_json(result)
+        return
+    output.print_table(
+        ["PHASE", "STATE", "DETAIL"],
+        [[p["phase"], p["state"], _plan_detail(p)] for p in result["phases"]],
+    )
+    for gone in result["outputs_missing"]:
+        output.warn(f"missing: {gone}")
+    for ref, error in result["errors"].items():
+        output.warn(f"could not check {ref}: {error}")
+    click.echo(f"next: {result['next'] or 'nothing'}")
+
+
+def _plan_detail(p: dict) -> str:
+    if p["state"] == "blocked":
+        return f"needs {', '.join(p['missing'])}" + (
+            f" (from {', '.join(p['by'])})" if p.get("by") else ""
+        )
+    if p["state"] == "build":
+        if not p["missing"]:
+            return "not finished" + (
+                f"; has {', '.join(p['makes'])}" if p["makes"] else ""
+            )
+        reused = len(p["makes"]) - len(p["missing"])
+        return f"make {', '.join(p['missing'])}" + (
+            f"; reuse {reused}" if reused else ""
+        )
+    if p["state"] == "unknown":
+        return f"could not check {', '.join(p['unknown'])}"
+    if p["state"] in ("done", "failed") and p["makes"]:
+        return f"has {', '.join(p['makes'])}"
+    return f"status {p['status'] or 'none'}"
+
+
 def _system_path(slug_or_dir: str) -> Path | None:
     """The directory of a system: SLUG_OR_DIR itself, ./SLUG, the current directory when it is SLUG, or an analytics layer's in its analytics repository."""
     from hopsworks.cli.commands import analytics
