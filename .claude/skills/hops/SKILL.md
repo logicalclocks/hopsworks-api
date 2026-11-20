@@ -38,7 +38,8 @@ Inside a Hopsworks terminal pod, authentication is automatic via JWT.
 ```bash
 hops project list                         # List projects
 hops project use <name>                   # Switch active project
-hops project info                         # Current project details
+hops project info                         # Current project details: owner, your role
+hops project leave --yes                  # Leave the active project (members only; the owner cannot)
 ```
 
 ## Feature Groups
