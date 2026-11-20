@@ -1200,7 +1200,7 @@ class Predictor(DeployableComponent):
         The two mount strategies need the HopsFS CSI driver on the cluster.
         The values are also available as `PREDICTOR.LOADING_STRATEGY_*` constants in `hsml.constants`.
 
-        `None` lets Hopsworks choose when the deployment is created: `'MOUNT'` with the HopsFS CSI driver, `'DOWNLOAD'` without it.
+        `None` lets Hopsworks choose when the deployment is created: `'RUNAI_STREAMER'` for a vLLM deployment that requests GPUs, with the HopsFS CSI driver and a model the streamer can load, `'DOWNLOAD'` otherwise.
         Setting it to `None` before a save call keeps the stored value unchanged.
         A saved deployment of a model reports the strategy in effect; a deployment without a model reports `None`.
         """

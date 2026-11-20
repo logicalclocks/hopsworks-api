@@ -380,7 +380,7 @@ class ModelServing:
                 `'RUNAI_STREAMER'` mounts them the same way and vLLM loads them with the Run:ai Model Streamer, which can load faster when the deployment requests several GPUs; only vLLM accepts it, for a model with safetensors weights at the top of its files and not with the vLLM-Omni variant.
                 `'DOWNLOAD'` copies them to the local disk of the pod before the model server starts; every model server accepts it.
                 The two mount strategies need the HopsFS CSI driver on the cluster.
-                `None` lets Hopsworks choose on a new deployment: `'MOUNT'` with the HopsFS CSI driver, `'DOWNLOAD'` without it.
+                `None` lets Hopsworks choose on a new deployment: `'RUNAI_STREAMER'` for a vLLM deployment that requests GPUs, with the HopsFS CSI driver and a model the streamer can load, `'DOWNLOAD'` otherwise.
                 On an update, `None` keeps the deployment's current strategy.
                 The values are also available as `PREDICTOR.LOADING_STRATEGY_*` constants in `hsml.constants`; see [`Predictor.loading_strategy`][hsml.predictor.Predictor.loading_strategy].
 
