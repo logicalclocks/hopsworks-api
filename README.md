@@ -238,7 +238,7 @@
 | python/hopsworks\_common/core/sink\_job\_configuration.py                        |      426 |       60 |     86% |67, 95-96, 99, 106-107, 115, 119, 124, 128, 152, 186-193, 195, 203, 249, 332, 341, 439, 443, 448, 452, 463, 467, 480, 486-498, 507-515, 520, 594, 605, 614, 623, 632, 641, 650, 674, 683, 692, 702, 714, 726, 864 |
 | python/hopsworks\_common/core/superset\_api.py                                   |      174 |       46 |     74% |111-112, 212, 242-254, 267, 277, 292, 305, 339-352, 365, 375, 390, 403, 435-449, 462, 472, 487, 502, 512 |
 | python/hopsworks\_common/core/superset\_mcp\_api.py                              |       85 |        6 |     93% |122, 148, 163, 179, 183-184 |
-| python/hopsworks\_common/core/tag\_schemas\_api.py                               |       50 |       20 |     60% |63-64, 80-83, 148, 159-162, 179-187 |
+| python/hopsworks\_common/core/tag\_schemas\_api.py                               |       62 |       20 |     68% |66-67, 83-86, 150, 161-164, 200-203, 226, 232-235 |
 | python/hopsworks\_common/core/tags\_api.py                                       |       46 |        5 |     89% |67, 85-90, 175 |
 | python/hopsworks\_common/core/trino\_api.py                                      |       95 |        1 |     99% |       225 |
 | python/hopsworks\_common/core/trino\_catalog\_api.py                             |       63 |        2 |     97% |   130-131 |
@@ -545,7 +545,7 @@
 | python/hsml/utils/schema/tensor.py                                               |        8 |        0 |    100% |           |
 | python/hsml/utils/schema/tensor\_schema.py                                       |       34 |        0 |    100% |           |
 | python/hsml/version.py                                                           |        2 |        2 |      0% |     17-22 |
-| **TOTAL**                                                                        | **61648** | **13510** | **78%** |           |
+| **TOTAL**                                                                        | **61660** | **13510** | **78%** |           |
 
 
 ## Setup coverage badge
