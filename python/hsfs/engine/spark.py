@@ -2025,6 +2025,12 @@ class Engine:
     def _setup_s3_hadoop_conf(self, storage_connector, path):
         FS_S3_GLOBAL_CONF = "fs.s3a.global-conf"
 
+        # Iceberg manifests can contain s3:// paths even after the table's top-level
+        # location is rewritten to s3a://. HadoopFileIO resolves those paths itself.
+        self._set_hadoop_conf_if_unset(
+            "fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem"
+        )
+
         # The argument arrive here as strings
         if storage_connector.arguments.get(FS_S3_GLOBAL_CONF, "True").lower() == "true":
             # For legacy behaviour set the S3 values at global level
