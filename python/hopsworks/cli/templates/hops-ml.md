@@ -70,8 +70,9 @@ independent.
 
 ### Batch
 
-- **How often are predictions made, or the dashboard updated?** Hourly, daily (recommended for
-  most), weekly, or the user's own. Record `requirements.sla.batch.cadence`.
+- **How often are predictions made, or the dashboard updated?** Hourly, daily, weekly, or the
+  user's own, none marked "(Recommended)": a schedule holds cluster resources, so the user picks
+  it. Record `requirements.sla.batch.cadence`.
 - **Data.** See *Data sources* below.
 - **How are the predictions used?** A dashboard (recommended for a list people read), an app, or
   neither (another system reads the prediction feature group); ask the user to describe how they
@@ -165,7 +166,8 @@ GitHub login, keeping the code in Hopsworks only. Record
 ## Finish
 
 Print the requirements recorded so far (`python <slug>/status.py` for the table, then the
-`requirements` block in a few lines), and end with exactly one line:
+`requirements` block in a few lines). Leave `requirements.status` at `pending`: `/hops-build`
+completes the specification and writes `met`. End with exactly one line:
 
 > Interview recorded in `<slug>/system.yaml`. Run `/hops-build` to complete the specification
 > (target, features, budget) and build the system on a stronger model.
