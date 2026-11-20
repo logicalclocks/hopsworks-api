@@ -8,8 +8,11 @@ Create, start, stop, predict, logs, and delete are all served by the SDK's
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
+import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -30,8 +33,7 @@ def deployment_list(ctx: click.Context) -> None:
     Args:
         ctx: Click context.
     """
-    project = session.get_project(ctx)
-    ms = project.get_model_serving()
+    ms = session.get_model_serving(ctx)
     try:
         deployments = ms.get_deployments()
     except Exception as exc:  # noqa: BLE001
@@ -62,14 +64,7 @@ def deployment_info(ctx: click.Context, name: str) -> None:
         ctx: Click context.
         name: Deployment name.
     """
-    project = session.get_project(ctx)
-    ms = project.get_model_serving()
-    try:
-        deployment = ms.get_deployment(name)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Deployment '{name}' not found: {exc}") from exc
-    if deployment is None:
-        raise click.ClickException(f"Deployment '{name}' not found.")
+    deployment = _get_deployment(ctx, name)
 
     if output.JSON_MODE:
         output.print_json(_deployment_to_dict(deployment))
@@ -509,6 +504,21 @@ def deployment_stop(ctx: click.Context, name: str, wait: int) -> None:
     is_flag=True,
     help="Skip client-side validation against the deployment schema.",
 )
+@click.option(
+    "--via-api",
+    "via_api",
+    is_flag=True,
+    help="Send the request through the Hopsworks API "
+    "(/hopsworks-api/api/project/<id>/inference/models/<name>:predict), for "
+    "callers that reach Hopsworks but not the model serving ingress. The body "
+    "goes as given; the deployment validates it.",
+)
+@click.option(
+    "--timing",
+    is_flag=True,
+    help="Report the HTTP status and the call's milliseconds; with --json the "
+    "output is {status, ms, response}, also when the call fails.",
+)
 @click.pass_context
 def deployment_predict(
     ctx: click.Context,
@@ -516,6 +526,8 @@ def deployment_predict(
     data: str | None,
     file_path: str | None,
     no_validate: bool,
+    via_api: bool,
+    timing: bool,
 ) -> None:
     """Send an inference request to a running deployment.
 
@@ -525,6 +537,8 @@ def deployment_predict(
         data: Inline JSON body.
         file_path: Alternative JSON file source.
         no_validate: Skip client-side schema validation.
+        via_api: Send through the Hopsworks API instead of the ingress.
+        timing: Report the status and milliseconds of the call.
     """
     if not data and not file_path:
         raise click.UsageError("Provide --data or --file.")
@@ -537,15 +551,69 @@ def deployment_predict(
         raise click.BadParameter(f"Invalid JSON: {exc}") from exc
 
     deployment = _get_deployment(ctx, name)
+    started = time.monotonic()
+    status: int | None = 200
     try:
-        response = deployment.predict(data=payload, validate=not no_validate)
+        if via_api:
+            response = _predict_via_api(deployment, payload)
+        else:
+            response = deployment.predict(data=payload, validate=not no_validate)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Predict failed: {exc}") from exc
+        if not timing:
+            raise click.ClickException(f"Predict failed: {exc}") from exc
+        ms = round((time.monotonic() - started) * 1000)
+        error_response = getattr(exc, "response", None)
+        status = getattr(error_response, "status_code", None)
+        body = _response_body(error_response)
+        if output.JSON_MODE:
+            from hopsworks.cli.main import _explain_rest_error  # noqa: PLC0415
 
+            error = _explain_rest_error(exc) or str(exc).splitlines()[0]
+            output.print_json(
+                {"status": status, "ms": ms, "response": body, "error": error}
+            )
+            ctx.exit(1)
+        raise click.ClickException(
+            f"Predict failed with status {status or 'none'} in {ms} ms: "
+            f"{body if body is not None else exc}"
+        ) from exc
+    ms = round((time.monotonic() - started) * 1000)
+
+    if timing and output.JSON_MODE:
+        output.print_json({"status": status, "ms": ms, "response": response})
+        return
     if output.JSON_MODE:
         output.print_json(response)
         return
     click.echo(json.dumps(response, indent=2, default=str))
+    if timing:
+        click.echo(f"status {status} in {ms} ms", err=True)
+
+
+def _predict_via_api(deployment: Any, payload: Any) -> Any:
+    """POST the body to the deployment through the Hopsworks API, which forwards it to the model."""
+    from hopsworks_common import client  # noqa: PLC0415
+
+    _client = client._get_instance()
+    path = deployment._serving_api._get_hopsworks_inference_path(
+        _client._project_id, deployment
+    )
+    return _client._send_request(
+        "POST",
+        path,
+        headers={"content-type": "application/json"},
+        data=json.dumps(payload),
+    )
+
+
+def _response_body(response: Any) -> Any:
+    """An error response's body: its JSON when it has one, else its text."""
+    if response is None:
+        return None
+    try:
+        return response.json()
+    except Exception:  # noqa: BLE001 - an HTML page from a proxy
+        return getattr(response, "text", None)
 
 
 @deployment_group.command("logs")
@@ -734,6 +802,7 @@ def deployment_lineage(ctx: click.Context, name: str) -> None:
         ctx: Click context.
         name: Deployment name.
     """
+    session.get_project(ctx)  # the model registry needs the full login
     deployment = _get_deployment(ctx, name)
     model = lineage.fetch(deployment.get_model)
     label = f"deployment {getattr(deployment, 'name', name)}"
@@ -755,8 +824,7 @@ def deployment_lineage(ctx: click.Context, name: str) -> None:
 
 
 def _get_deployment(ctx: click.Context, name: str) -> Any:
-    project = session.get_project(ctx)
-    ms = project.get_model_serving()
+    ms = session.get_model_serving(ctx)
     try:
         deployment = ms.get_deployment(name)
     except Exception as exc:  # noqa: BLE001
@@ -764,3 +832,603 @@ def _get_deployment(ctx: click.Context, name: str) -> Any:
     if deployment is None:
         raise click.ClickException(f"Deployment '{name}' not found.")
     return deployment
+
+
+# region Environment and versions
+
+# A rollout counts as ready in these states; Idle is a scaled-to-zero deployment.
+_READY = ("Running", "Idle")
+# A save or rollback in these states changes the stored version and starts nothing.
+_AT_REST = ("Stopped", "Created", "Creating")
+# The SDK refuses a save in these states before it writes anything.
+_BUSY = ("Starting", "Stopping", "Updating")
+_POLL_SECONDS = 5
+
+
+def _reserved_env_vars() -> tuple[str, ...]:
+    from hopsworks_common.constants import MODEL_SERVING  # noqa: PLC0415
+
+    return MODEL_SERVING.RESERVED_ENV_VARS
+
+
+def _env_digest(env: dict[str, str] | None) -> str:
+    """SHA-256 of the user's variables, sorted: the names Hopsworks sets are left out, values never printed."""
+    reserved = _reserved_env_vars()
+    user = {k: v for k, v in (env or {}).items() if k not in reserved}
+    return hashlib.sha256(
+        json.dumps(user, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def _version_env(version: Any) -> dict[str, str]:
+    pairs = getattr(version, "predictor_env_vars", None) or []
+    return dict(p.split("=", 1) if "=" in p else (p, "") for p in pairs)
+
+
+def _live(ms: Any, name: str) -> dict[str, Any]:
+    """Read the deployment, its state and its versions fresh from Hopsworks."""
+    deployment = ms.get_deployment(name)
+    if deployment is None:
+        raise click.ClickException(f"Deployment '{name}' not found.")
+    state = deployment.get_state()
+    versions = deployment.get_versions()
+    active = next((v for v in versions if v.active), None)
+    condition = getattr(state, "condition", None) if state is not None else None
+    available = None
+    if state is not None and state.available_predictor_instances is not None:
+        available = state.available_predictor_instances + (
+            state.available_transformer_instances or 0
+        )
+    return {
+        "deployment": deployment,
+        "versions": versions,
+        "version": active.version if active is not None else None,
+        "latest": max((v.version for v in versions), default=None),
+        "digest": _env_digest(_version_env(active)) if active is not None else None,
+        "status": getattr(state, "status", None) if state is not None else None,
+        "revision": getattr(state, "revision", None) if state is not None else None,
+        "available_instances": available,
+        "reason": getattr(condition, "reason", None) if condition else None,
+    }
+
+
+def _public(live: dict[str, Any] | None) -> dict[str, Any] | None:
+    if live is None:
+        return None
+    return {k: v for k, v in live.items() if k not in ("deployment", "versions")}
+
+
+def _wait_ready(
+    ms: Any, name: str, prior_revision: str | None, timeout: int
+) -> dict[str, Any]:
+    """Poll until a new rollout is ready (a revision other than the prior one) or failed, at most ``timeout`` seconds."""
+    deadline = time.monotonic() + timeout
+    while True:
+        live = _live(ms, name)
+        if live["status"] in _READY and live["revision"] != prior_revision:
+            return live
+        if live["status"] == "Failed" or time.monotonic() >= deadline:
+            return live
+        time.sleep(min(_POLL_SECONDS, max(0.0, deadline - time.monotonic())))
+
+
+def _need(deployment: Any) -> tuple[float, float]:
+    """CPU cores and memory MB one rollout of the deployment adds: its components' limits per instance."""
+    cpu = memory = 0.0
+    for component in (deployment.predictor, getattr(deployment, "transformer", None)):
+        if component is None or component.resources is None:
+            continue
+        limits = component.resources.limits
+        scaling = getattr(component, "scaling_configuration", None)
+        instances = max(1, getattr(scaling, "min_instances", None) or 0)
+        cpu += (limits.cores or 0) * instances
+        memory += (limits.memory or 0) * instances
+    return cpu, memory
+
+
+def _room(deployment: Any) -> dict[str, Any]:
+    """The project's free compute against twice the deployment's need.
+
+    Twice: the new version's instances start beside the serving ones, and a
+    rollback after a failed rollout needs that room again.
+    """
+    from hopsworks_common import client  # noqa: PLC0415
+
+    need_cpu, need_memory = _need(deployment)
+    _client = client._get_instance()
+    quota = _client._send_request(
+        "GET", ["project", _client._project_id, "kube", "quota"]
+    )
+    room: dict[str, Any] = {
+        "checked": True,
+        "method": quota.get("method") or "NONE",
+        "need": {"cpu": need_cpu, "memory_mb": need_memory},
+        "free": {},
+        "limit": {},
+        "ok": True,
+    }
+    if room["method"] == "NONE":
+        return room
+    for key, field, scale in (
+        ("cpu", "cpu", 1),
+        ("memory_mb", "memory", 1024**2),
+    ):
+        limit = quota.get(field) or {}
+        if limit.get("limit") is None:
+            continue
+        free = limit.get("available")
+        if free is None:
+            free = limit["limit"] - (limit.get("used") or 0)
+        room["free"][key] = round(free / scale, 3)
+        room["limit"][key] = round(limit["limit"] / scale, 3)
+        if room["free"][key] < 2 * room["need"][key]:
+            room["ok"] = False
+    return room
+
+
+def _room_words(room: dict[str, Any]) -> str:
+    parts = []
+    for key, unit in (("cpu", " CPU"), ("memory_mb", " MB")):
+        if key in room["free"]:
+            parts.append(
+                f"needs {room['need'][key]:g}{unit} twice over "
+                f"({2 * room['need'][key]:g}), {room['free'][key]:g} of "
+                f"{room['limit'][key]:g} free"
+            )
+    return "; ".join(parts)
+
+
+def _finish(ctx: click.Context, result: dict[str, Any], text: str) -> None:
+    """Print a write verb's result: the JSON contract with --json, a line otherwise; non-zero unless done."""
+    ok = result["result"] in ("unchanged", "applied")
+    if output.JSON_MODE:
+        output.print_json(result)
+        if not ok:
+            ctx.exit(1)
+        return
+    if not ok:
+        raise click.ClickException(text)
+    click.echo(text)
+
+
+def _apply_write(
+    ms: Any,
+    name: str,
+    before: dict[str, Any],
+    write: Any,
+    is_target: Any,
+    timeout: int,
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    """Run a save or rollback, wait for it, and judge it from a fresh read only.
+
+    ``accepted`` is whether Hopsworks took the write, read back from the
+    versions rather than from the call: an error after the request was sent
+    (a reset, a timeout, a failed status poll) can follow a write that was
+    applied. ``None`` means the read could not tell.
+    """
+    result["phase"] = "save"
+    try:
+        # The SDK prints progress to stdout, which carries the --json payload.
+        with contextlib.redirect_stdout(sys.stderr):
+            write()
+    except Exception as exc:  # noqa: BLE001 - judged from the read below
+        from hopsworks.cli.main import _explain_rest_error  # noqa: PLC0415
+
+        response = getattr(exc, "response", None)
+        result["http_status"] = getattr(response, "status_code", None)
+        result["error"] = (_explain_rest_error(exc) or str(exc).splitlines()[0])[:500]
+
+    result["phase"] = "read"
+    try:
+        after = _live(ms, name)
+    except Exception as exc:  # noqa: BLE001
+        result.update(result="unknown", accepted=None, after=None)
+        result["error"] = result.get("error") or f"read failed: {exc}"
+        return result
+    if is_target(after):
+        result["accepted"] = True
+    elif after["version"] == before["version"] and after["latest"] == before["latest"]:
+        result["accepted"] = False
+    else:
+        result.update(result="unknown", accepted=None, after=_public(after))
+        return result
+    if not result["accepted"]:
+        result.update(result="refused", after=_public(after))
+        return result
+
+    if before["status"] not in _AT_REST:
+        result["phase"] = "wait"
+        try:
+            after = _wait_ready(ms, name, before["revision"], timeout)
+        except Exception as exc:  # noqa: BLE001
+            result.update(result="unknown", after=_public(after))
+            result["error"] = f"read failed: {exc}"
+            return result
+    ready = before["status"] in _AT_REST or (
+        after["status"] in _READY and after["revision"] != before["revision"]
+    )
+    result["after"] = _public(after)
+    result["result"] = "applied" if is_target(after) and ready else "not_ready"
+    result["phase"] = "done" if result["result"] == "applied" else "wait"
+    return result
+
+
+def _state_words(live: dict[str, Any] | None) -> str:
+    if live is None:
+        return "state unknown"
+    words = f"version {live['version']} active, {live['status']}"
+    if live.get("reason") and live["status"] not in _READY:
+        words += f" ({live['reason']})"
+    return words
+
+
+@deployment_group.command("env")
+@click.argument("name")
+@click.pass_context
+def deployment_env(ctx: click.Context, name: str) -> None:
+    """Print the predictor's environment variables, one KEY=VALUE per line.
+
+    With --json, an object of names to values. Values are printed as stored.
+
+    Args:
+        ctx: Click context.
+        name: Deployment name.
+    """
+    env = _get_deployment(ctx, name).env_vars or {}
+    if output.JSON_MODE:
+        output.print_json(env)
+        return
+    if not env:
+        click.echo(f"{name} has no environment variables.", err=True)
+    for key in sorted(env):
+        click.echo(f"{key}={env[key]}")
+
+
+def _parse_assignments(pairs: tuple[str, ...]) -> dict[str, str]:
+    env: dict[str, str] = {}
+    for pair in pairs:
+        key, sep, value = pair.partition("=")
+        if not sep or not key.strip():
+            raise click.BadParameter(
+                f"'{pair}' is not KEY=VALUE.", param_hint="KEY=VALUE"
+            )
+        env[key.strip()] = value
+    return env
+
+
+@deployment_group.command("set-env")
+@click.argument("name")
+@click.argument("assignments", nargs=-1, metavar="[KEY=VALUE]...")
+@click.option(
+    "--unset", "unset", multiple=True, metavar="KEY", help="Remove KEY (repeatable)."
+)
+@click.option(
+    "--timeout",
+    type=click.IntRange(min=0),
+    default=300,
+    show_default=True,
+    help="Seconds to wait for a running deployment's new version to be Running.",
+)
+@click.option(
+    "--no-room-check",
+    "no_room_check",
+    is_flag=True,
+    help="Save without first checking that the project's free compute is at "
+    "least twice the deployment's need (needed when the key cannot read the "
+    "project's quota).",
+)
+@click.pass_context
+def deployment_set_env(
+    ctx: click.Context,
+    name: str,
+    assignments: tuple[str, ...],
+    unset: tuple[str, ...],
+    timeout: int,
+    no_room_check: bool,
+) -> None:
+    """Set or remove predictor environment variables, saved as a new version.
+
+    The given variables are merged into the current ones. Nothing differs:
+    "unchanged", nothing is written. A running deployment rolls to the new
+    version without stopping; the old instances serve until it is Running.
+    A stopped one is saved and stays stopped. Before saving a running
+    deployment, the project's free CPU and memory must each be at least twice
+    what the deployment needs, so a rollback after a failed rollout has room.
+    Undo with `hops deployment rollback NAME <previous version>`.
+
+    With --json: {name, result, accepted, phase, set, unset, before, after,
+    room, http_status, error}. result is unchanged, applied, refused,
+    not_ready or unknown; accepted is whether Hopsworks took the save, read
+    back from the versions. Values are never printed, only key names and
+    digests.
+
+    Args:
+        ctx: Click context.
+        name: Deployment name.
+        assignments: KEY=VALUE pairs to set.
+        unset: Keys to remove.
+        timeout: Seconds to wait for Running.
+        no_room_check: Skip the room check.
+    """
+    sets = _parse_assignments(assignments)
+    if not sets and not unset:
+        raise click.UsageError("Give KEY=VALUE pairs to set, --unset KEY, or both.")
+    both = sorted(set(sets) & set(unset))
+    if both:
+        raise click.UsageError(f"Set and unset at once: {', '.join(both)}.")
+    reserved = sorted((set(sets) | set(unset)) & set(_reserved_env_vars()))
+    if reserved:
+        raise click.UsageError(
+            f"Environment variables {reserved} are set by Hopsworks for this "
+            "deployment and cannot be changed."
+        )
+
+    result: dict[str, Any] = {
+        "name": name,
+        "result": None,
+        "accepted": False,
+        "phase": "login",
+        "set": sorted(sets),
+        "unset": sorted(unset),
+        "before": None,
+        "after": None,
+        "room": None,
+        "http_status": None,
+        "error": None,
+    }
+    ms = session.get_model_serving(ctx)
+    result["phase"] = "read"
+    try:
+        before = _live(ms, name)
+    except click.ClickException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(
+            f"Could not read deployment '{name}': {exc}"
+        ) from exc
+    result["before"] = _public(before)
+    deployment = before["deployment"]
+    current = dict(deployment.env_vars or {})
+    merged = {**current, **sets}
+    for key in unset:
+        merged.pop(key, None)
+    if merged == current:
+        result.update(result="unchanged", phase="done")
+        _finish(ctx, result, f"Unchanged: {name} already has these variables.")
+        return
+    result["target_digest"] = _env_digest(merged)
+
+    if before["status"] in _BUSY:
+        result.update(result="refused", error=f"deployment is {before['status']}")
+        _finish(
+            ctx,
+            result,
+            f"Refused, nothing saved: {name} is {before['status']}; "
+            "try again once it is Running or Stopped.",
+        )
+        return
+
+    if before["status"] in _AT_REST:
+        result["room"] = {"checked": False, "reason": "not running"}
+    elif no_room_check:
+        result["room"] = {"checked": False, "reason": "--no-room-check"}
+    else:
+        result["phase"] = "room"
+        why = None
+        try:
+            result["room"] = _room(deployment)
+        except Exception as exc:  # noqa: BLE001
+            from hopsworks.cli import auth  # noqa: PLC0415
+
+            why = (
+                "this API key cannot read the project's quota (it needs the "
+                "PROJECT scope)"
+                if auth.is_scope_refusal(exc)
+                else f"the quota read failed: {str(exc).splitlines()[0]}"
+            )
+        # Reported outside the handler, so the CLI adds no advice of its own.
+        if why is not None:
+            result.update(result="refused", error=f"room unknown: {why}")
+            _finish(
+                ctx,
+                result,
+                f"Refused, nothing saved: {why}, so the room check cannot run. "
+                "Use a key with the PROJECT scope, or pass --no-room-check to "
+                "save without the check (a rollback after a failed rollout may "
+                "then lack room).",
+            )
+            return
+        if not result["room"]["ok"]:
+            result.update(result="refused", error="no room")
+            _finish(
+                ctx,
+                result,
+                f"Refused, nothing saved: no room to roll {name}: "
+                f"{_room_words(result['room'])}. Free compute in the project or "
+                "raise its quota.",
+            )
+            return
+
+    def write() -> None:
+        deployment.env_vars = merged
+        deployment.save(await_update=0, new_version=True)
+
+    _apply_write(
+        ms,
+        name,
+        before,
+        write,
+        lambda live: (
+            live["version"] is not None
+            and live["version"] > before["latest"]
+            and live["digest"] == result["target_digest"]
+        ),
+        timeout,
+        result,
+    )
+    after = result["after"]
+    if result["result"] == "applied":
+        text = f"Saved {name} as version {after['version']}; {_state_words(after)}."
+    elif result["result"] == "refused":
+        text = (
+            f"Refused, nothing saved: {result['error'] or 'the save was not applied'}."
+        )
+    elif result["result"] == "not_ready":
+        text = (
+            f"Saved {name} as version {after['version']}, not ready after "
+            f"{timeout} s: {_state_words(after)}. The previous version "
+            f"{before['version']} is `hops deployment rollback {name} "
+            f"{before['version']}`."
+        )
+    else:
+        text = (
+            f"Outcome unknown: {result['error']}. Read it with "
+            f"`hops deployment versions {name}`."
+        )
+    _finish(ctx, result, text)
+
+
+@deployment_group.command("versions")
+@click.argument("name")
+@click.pass_context
+def deployment_versions(ctx: click.Context, name: str) -> None:
+    """List the deployment's versions, newest first, with their environment key names and digest.
+
+    Args:
+        ctx: Click context.
+        name: Deployment name.
+    """
+    deployment = _get_deployment(ctx, name)
+    try:
+        versions = deployment.get_versions()
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not read the versions: {exc}") from exc
+    rows = []
+    for v in versions:
+        env = _version_env(v)
+        rows.append(
+            {
+                "version": v.version,
+                "active": bool(v.active),
+                "created": v.created,
+                "created_by": v.created_by,
+                "env_keys": sorted(env),
+                "env_digest": _env_digest(env),
+            }
+        )
+    if output.JSON_MODE:
+        output.print_json(rows)
+        return
+    output.print_table(
+        ["VERSION", "ACTIVE", "CREATED", "CREATED BY", "ENV KEYS", "ENV DIGEST"],
+        [
+            [
+                r["version"],
+                "yes" if r["active"] else "",
+                r["created"] or "-",
+                r["created_by"] or "-",
+                ",".join(r["env_keys"]) or "-",
+                r["env_digest"][:12],
+            ]
+            for r in rows
+        ],
+    )
+
+
+@deployment_group.command("rollback")
+@click.argument("name")
+@click.argument("version", type=int)
+@click.option(
+    "--timeout",
+    type=click.IntRange(min=0),
+    default=120,
+    show_default=True,
+    help="Seconds to wait for a running deployment to be Running on the version.",
+)
+@click.pass_context
+def deployment_rollback(
+    ctx: click.Context, name: str, version: int, timeout: int
+) -> None:
+    """Make an earlier version of the deployment the active one again.
+
+    Accepted while a new version is updating or has failed; the serving
+    instances keep serving until the version is ready. A stopped deployment
+    stays stopped. With --json, the same contract as set-env.
+
+    Args:
+        ctx: Click context.
+        name: Deployment name.
+        version: The version to activate.
+        timeout: Seconds to wait for Running.
+    """
+    result: dict[str, Any] = {
+        "name": name,
+        "result": None,
+        "accepted": False,
+        "phase": "login",
+        "version": version,
+        "before": None,
+        "after": None,
+        "http_status": None,
+        "error": None,
+    }
+    ms = session.get_model_serving(ctx)
+    result["phase"] = "read"
+    try:
+        before = _live(ms, name)
+    except click.ClickException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(
+            f"Could not read deployment '{name}': {exc}"
+        ) from exc
+    result["before"] = _public(before)
+    if before["version"] == version:
+        result.update(result="unchanged", phase="done")
+        _finish(ctx, result, f"Unchanged: version {version} of {name} is active.")
+        return
+    if version not in {v.version for v in before["versions"]}:
+        result.update(result="refused", error=f"no version {version}")
+        _finish(
+            ctx, result, f"Refused, nothing changed: {name} has no version {version}."
+        )
+        return
+    if before["status"] in ("Starting", "Stopping"):
+        result.update(result="refused", error=f"deployment is {before['status']}")
+        _finish(
+            ctx,
+            result,
+            f"Refused, nothing changed: {name} is {before['status']}.",
+        )
+        return
+
+    deployment = before["deployment"]
+    _apply_write(
+        ms,
+        name,
+        before,
+        lambda: deployment.rollback(version, await_update=0),
+        lambda live: live["version"] == version,
+        timeout,
+        result,
+    )
+    after = result["after"]
+    if result["result"] == "applied":
+        text = f"Rolled {name} back to version {version}; {_state_words(after)}."
+    elif result["result"] == "refused":
+        text = f"Refused, nothing changed: {result['error'] or 'the rollback was not applied'}."
+    elif result["result"] == "not_ready":
+        text = (
+            f"Rolled {name} back to version {version}, not ready after {timeout} s: "
+            f"{_state_words(after)}."
+        )
+    else:
+        text = (
+            f"Outcome unknown: {result['error']}. Read it with "
+            f"`hops deployment versions {name}`."
+        )
+    _finish(ctx, result, text)
+
+
+# endregion

@@ -41,6 +41,23 @@ scalar serving path. `create` requires the model name as the positional and the
 deployment name via `--name`; recreate over a stale deployment with
 `hops deployment delete <name> --yes --force` first (there is no TTY in a job/terminal).
 
+## Change a deployment's environment variables
+
+```bash
+hops deployment env <name>                                       # KEY=VALUE lines; --json for an object
+hops deployment set-env <name> KEY=VALUE ... [--unset KEY ...]   # merged, saved as a new version
+hops deployment versions <name>                                  # versions, active one, env key names and digest
+hops deployment rollback <name> <version>                        # back to an earlier version
+hops deployment predict <name> --data '{...}' --via-api --timing --json   # {status, ms, response}
+```
+
+- `set-env` rolls a running deployment to the new version without stopping it; the old instances serve until it is Running (`--timeout`, default 300 s). A stopped one stays stopped. Nothing differs: it says "unchanged" and writes nothing. Variables Hopsworks sets (`SERVING_*`) are refused.
+- Before saving a running deployment, `set-env` checks that the project's free CPU and memory are each at least twice the deployment's limits. It refuses with the numbers when not. A key without the PROJECT scope cannot read the quota: `set-env` then refuses, and `--no-room-check` saves without the check (a rollback after a failed rollout may then lack room).
+- Hopsworks can refuse a save whose new version does not fit in the project's quota (`Project quota exceeded`, nothing saved). Right after another rollout that refusal can be HTTP 429: the old pods still hold quota for a few seconds, so retry after 15 s.
+- `--json` on `set-env` and `rollback`: `result` is `unchanged`, `applied`, `refused`, `not_ready` or `unknown`, read back from Hopsworks; `accepted` says whether Hopsworks took the write. Exit code 0 only for `unchanged` and `applied`. Values are never printed, only key names and digests.
+- `--via-api` sends the prediction through the Hopsworks API, for a machine that reaches Hopsworks but not the model serving ingress.
+- These verbs work with an API key that has only the SERVING scope; such a key cannot read the project by name, so give its id: `HOPSWORKS_PROJECT_ID=<id>`.
+
 ## Ask the user (only when state is ambiguous)
 
 - **Resources:** CPU cores, memory, GPUs for the predictor (requests vs limits).

@@ -263,6 +263,9 @@ def _apply_overrides(
     if flag_api_key:
         cfg.api_key = flag_api_key
     if flag_project:
+        # A saved or exported project id belongs to the project it was saved with.
+        if flag_project != cfg.project:
+            cfg.project_id = None
         cfg.project = flag_project
     # Hostname verification precedence: CLI flag > HOPSWORKS_HOSTNAME_VERIFICATION
     # env var > saved file value > default (off).
