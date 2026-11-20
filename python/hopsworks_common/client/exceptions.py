@@ -324,6 +324,20 @@ class TrinoException(Exception):
     """Generic Trino exception."""
 
 
+@public("hopsworks.client.exceptions.TrinoAccountPendingError")
+class TrinoAccountPendingError(TrinoException):
+    """The project member's Trino account is still being set up.
+
+    Retry after `retry_after` seconds.
+    """
+
+    def __init__(self, retry_after: int = 2) -> None:
+        self.retry_after = retry_after
+        super().__init__(
+            f"Trino access for this project is still being set up; retry in {retry_after} s"
+        )
+
+
 @public("hopsworks.client.exceptions.SupersetException")
 class SupersetException(Exception):
     """Superset refused or failed a chart or dashboard request made through its MCP service.

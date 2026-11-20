@@ -5,9 +5,11 @@ from __future__ import annotations
 from unittest import mock
 
 import click
+import pytest
 from hopsworks.cli import config, session
 from hopsworks.cli.commands import trino
 from hopsworks.cli.main import cli
+from hopsworks_common.client.exceptions import TrinoAccountPendingError
 
 
 def _connect_kwargs(catalog=None, schema=None):
@@ -42,3 +44,26 @@ def test_explicit_catalog_and_schema_win():
     kwargs = _connect_kwargs(catalog="iceberg", schema="other")
     assert kwargs["catalog"] == "iceberg"
     assert kwargs["schema"] == "other"
+
+
+def test_pending_account_is_one_clear_error_line():
+    ctx = click.Context(cli)
+    ctx.obj = {
+        "config": config.HopsConfig(host="https://h", api_key="k", project="Sales")
+    }
+    fake_project = mock.MagicMock(name="Project")
+    fake_project.name = "Sales"
+    fake_project.get_trino_api.return_value.connect.side_effect = (
+        TrinoAccountPendingError(5)
+    )
+    fake_fs = mock.MagicMock(name="FeatureStore")
+    fake_fs.name = "sales_featurestore"
+    with (
+        mock.patch.object(session, "get_project", return_value=fake_project),
+        mock.patch.object(session, "get_feature_store", return_value=fake_fs),
+        pytest.raises(click.ClickException) as exc_info,
+    ):
+        trino._connect(ctx, catalog=None, schema=None)
+    assert exc_info.value.message == (
+        "Trino access for this project is still being set up; retry in 5 s"
+    )
