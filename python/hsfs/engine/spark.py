@@ -52,7 +52,7 @@ if HAS_NUMPY:
 
 try:
     import pyspark
-    from pyspark import SparkFiles
+    from pyspark import SparkFiles, StorageLevel
     from pyspark.rdd import RDD
     from pyspark.sql import DataFrame, SparkSession, Window
     from pyspark.sql.avro.functions import from_avro, to_avro
@@ -61,16 +61,26 @@ try:
         col,
         concat,
         current_timestamp,
+        date_part,
         datediff,
         expr,
         from_json,
+        hour,
         length,
         lit,
+        minute,
         monotonically_increasing_id,
+        pandas_udf,
         regexp_replace,
         row_number,
         struct,
+        to_date,
+        transform,
+        transform_keys,
+        transform_values,
         udf,
+        unix_date,
+        unix_micros,
         unix_millis,
         when,
     )
@@ -85,6 +95,7 @@ try:
         FloatType,
         IntegerType,
         LongType,
+        MapType,
         ShortType,
         StringType,
         StructField,
@@ -117,6 +128,7 @@ from hsfs import (
     feature_view,
     training_dataset,
     training_dataset_feature,
+    training_dataset_split,
     util,
 )
 from hsfs import feature_group as fg_mod
@@ -143,6 +155,66 @@ if HAS_AVRO:
     import avro
 
 _logger = logging.getLogger(__name__)
+
+
+def _needs_hash_prep(data_type) -> bool:
+    if isinstance(data_type, (TimestampType, TimestampNTZType, LongType)):
+        return True
+    if isinstance(data_type, ArrayType):
+        return _needs_hash_prep(data_type.elementType)
+    if isinstance(data_type, MapType):
+        return _needs_hash_prep(data_type.keyType) or _needs_hash_prep(
+            data_type.valueType
+        )
+    if isinstance(data_type, StructType):
+        return any(_needs_hash_prep(field.dataType) for field in data_type.fields)
+    return False
+
+
+def _hash_prep(column, data_type):
+    """Make `column` exact in pandas: timestamps as UTC epoch micros, bigints as decimals.
+
+    Spark hands timestamps to Python as wall time in the session zone, and pandas turns a
+    bigint column holding a null into float64, which rounds values above 2^53.
+    """
+    if isinstance(data_type, TimestampType):
+        return unix_micros(column).cast(DecimalType(20, 0))
+    if isinstance(data_type, TimestampNTZType):
+        # Wall time as UTC, from zone-free parts: pandas holds it in nanoseconds, which
+        # cannot reach years such as 0001.
+        exact = DecimalType(20, 0)
+        return (
+            unix_date(to_date(column)).cast(exact) * 86_400_000_000
+            + hour(column).cast(exact) * 3_600_000_000
+            + minute(column).cast(exact) * 60_000_000
+            + date_part(lit("SECOND"), column) * 1_000_000
+        ).cast(exact)
+    if isinstance(data_type, LongType):
+        return column.cast(DecimalType(20, 0))
+    if not _needs_hash_prep(data_type):
+        return column
+    if isinstance(data_type, ArrayType):
+        return transform(column, lambda x: _hash_prep(x, data_type.elementType))
+    if isinstance(data_type, MapType):
+        if _needs_hash_prep(data_type.keyType):
+            column = transform_keys(
+                column, lambda k, _: _hash_prep(k, data_type.keyType)
+            )
+        if _needs_hash_prep(data_type.valueType):
+            column = transform_values(
+                column, lambda _, v: _hash_prep(v, data_type.valueType)
+            )
+        return column
+    return when(column.isNull(), lit(None)).otherwise(
+        struct(
+            *[
+                _hash_prep(column.getField(field.name), field.dataType).alias(
+                    field.name
+                )
+                for field in data_type.fields
+            ]
+        )
+    )
 
 
 class Engine:
@@ -1223,32 +1295,60 @@ class Engine:
                 path,
                 to_df=to_df,
             )
-        split_dataset = self._split_df(
-            query_obj, training_dataset, read_options=read_options
-        )
-        for key in split_dataset:
-            if training_dataset.coalesce:
-                split_dataset[key] = split_dataset[key].coalesce(1)
+        release, cached_splits, keep_cached = [], [], False
+        try:
+            split_dataset = self._split_df(
+                query_obj,
+                training_dataset,
+                read_options=read_options,
+                feature_view_obj=feature_view_obj,
+                release=release,
+            )
+            for key in split_dataset:
+                if training_dataset.coalesce:
+                    split_dataset[key] = split_dataset[key].coalesce(1)
 
-            split_dataset[key] = split_dataset[key].cache()
+                # Statistics and the write both read each split, and to_df hands the
+                # frames to the caller: cache so the query is read and hashed once.
+                split_dataset[key] = split_dataset[key].cache()
+                cached_splits.append(split_dataset[key])
+            # Fill the split caches from the hashed frame, then release it, so the
+            # data is held once while statistics and the write run.
+            for cached in cached_splits:
+                cached.count()
+            while release:
+                release.pop().unpersist()
 
-        split_dataset = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
-            training_dataset,
-            feature_view_obj,
-            split_dataset,
-            transformation_context=transformation_context,
-            training_dataset_version=training_dataset_version,
-        )
+            split_dataset = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
+                training_dataset,
+                feature_view_obj,
+                split_dataset,
+                transformation_context=transformation_context,
+                training_dataset_version=training_dataset_version,
+            )
 
-        return self._write_training_dataset_splits(
-            training_dataset,
-            split_dataset,
-            write_options,
-            save_mode,
-            to_df=to_df,
-        )
+            result = self._write_training_dataset_splits(
+                training_dataset,
+                split_dataset,
+                write_options,
+                save_mode,
+                to_df=to_df,
+            )
+            # The frames returned with to_df read from the split caches.
+            keep_cached = to_df
+            return result
+        finally:
+            for frame in release + ([] if keep_cached else cached_splits):
+                frame.unpersist()
 
-    def _split_df(self, query_obj, training_dataset, read_options=None):
+    def _split_df(
+        self,
+        query_obj,
+        training_dataset,
+        read_options=None,
+        feature_view_obj=None,
+        release=None,
+    ):
         if read_options is None:
             read_options = {}
         if (
@@ -1293,14 +1393,65 @@ class Engine:
                 event_time,
             )
         return self._random_split(
-            query_obj.read(read_options=read_options), training_dataset
+            query_obj.read(read_options=read_options),
+            training_dataset,
+            feature_view_obj=feature_view_obj,
+            release=release,
         )
 
-    def _random_split(self, dataset, training_dataset):
-        splits = [(split.name, split.percentage) for split in training_dataset.splits]
-        split_weights = [split[1] for split in splits]
-        split_dataset = dataset.randomSplit(split_weights, training_dataset.seed)
-        return {split[0]: split_dataset[i] for i, split in enumerate(splits)}
+    def _random_split(
+        self, dataset, training_dataset, feature_view_obj=None, release=None
+    ):
+        """Split by a keyed hash of each row, computed in Python over the hashed columns only.
+
+        With a `release` list, the frame carrying the bucket is persisted so each row is hashed
+        once, and appended to `release` for the caller to unpersist at the end of the read.
+        """
+        if training_dataset.split_method != training_dataset_split.HASH_SPLIT_METHOD:
+            # Created before split methods: keep the split it was created with.
+            frames = dataset.randomSplit(
+                [split.percentage for split in training_dataset.splits],
+                training_dataset.seed,
+            )
+            return {
+                split.name: frames[index]
+                for index, split in enumerate(training_dataset.splits)
+            }
+        split_column = f"_SPLIT_INDEX_{uuid.uuid4().hex}"
+        hashed, offline_types = [], []
+        for index, (name, declared) in enumerate(
+            training_dataset_split._split_columns(feature_view_obj, dataset.columns)
+        ):
+            data_type = dataset.schema[name].dataType
+            hashed.append(_hash_prep(col(f"`{name}`"), data_type).alias(f"c{index}"))
+            offline_types.append(declared or data_type.simpleString())
+        salt = training_dataset_split._split_salt(training_dataset)
+        named_fractions = [
+            (split.name, split.percentage) for split in training_dataset.splits
+        ]
+
+        def bucket(rows: pd.DataFrame) -> pd.Series:
+            return pd.Series(
+                training_dataset_split._split_indexes(
+                    [rows[name].tolist() for name in rows.columns],
+                    offline_types,
+                    salt,
+                    named_fractions,
+                ),
+                dtype="int32",
+            )
+
+        # Only the bucket comes back from Python, so the data columns are never converted.
+        indexed = dataset.withColumn(
+            split_column, pandas_udf(bucket, IntegerType())(struct(*hashed))
+        )
+        if release is not None:
+            indexed = indexed.persist(StorageLevel.MEMORY_ONLY)
+            release.append(indexed)
+        return {
+            split.name: indexed.filter(col(split_column) == index).drop(split_column)
+            for index, split in enumerate(training_dataset.splits)
+        }
 
     def _time_series_split(
         self, training_dataset, dataset, event_time, drop_event_time=False
