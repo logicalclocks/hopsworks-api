@@ -1,0 +1,33 @@
+# Distributed locust on the local Docker: one master and one worker per user in local/locust.conf.
+# Started by local/run.sh, which sets the variables below.
+name: locust-benchmark
+
+x-locust: &locust
+  image: ${IMAGE}
+  user: "${HOST_UID}:${HOST_GID}"
+  working_dir: /work
+  environment:
+    HOME: /tmp
+    USER: locust
+    HOPSWORKS_API_KEY_FILE: /secrets/api_key
+    LOCUST_HOPSWORKS_CONFIG: /work/local/hopsworks_config.json
+  volumes:
+    # locust_benchmark/: test code, configuration and the results/ directory.
+    - ..:/work
+    - ${API_KEY_FILE}:/secrets/api_key:ro
+
+services:
+  master:
+    <<: *locust
+    # Locust spreads users evenly over workers, and WORKERS equals `users` in local/locust.conf.
+    # Each worker therefore gets one user once all of them have connected.
+    # Setup and the HTML report happen on the master only.
+    command: --config local/locust.conf --master --expect-workers ${WORKERS} ${MASTER_ARGS:-}
+
+  worker:
+    <<: *locust
+    # Workers read locust.conf too.
+    # Their report would overwrite the master's, so it stays inside the container.
+    command: --config local/locust.conf --worker --master-host master --html /tmp/worker_report.html
+    depends_on:
+      - master
