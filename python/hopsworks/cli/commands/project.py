@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import click
-from hopsworks.cli import auth, config, output, session
+from hopsworks.cli import auth, config, egress, output, session
 
 
 @click.group("project")
@@ -115,6 +115,7 @@ def project_info(ctx: click.Context) -> None:
         ["Feature store ID", str(cfg.feature_store_id or "?")],
         ["Mode", cfg.mode()],
     ]
+    rows.append(egress.row())
     output.print_table(["FIELD", "VALUE"], rows)
 
 
