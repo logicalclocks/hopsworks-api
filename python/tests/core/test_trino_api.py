@@ -304,7 +304,8 @@ class TestTrinoApi:
         trino_api._secret_api.get_secret.assert_called_once_with(user)
 
     @pytest.mark.parametrize(
-        ("status", "code"), [(404, 160048), (401, 200003), (403, 160003), (500, 120004)]
+        ("status", "code"),
+        [(404, 160048), (401, 200003), (403, 160003), (500, 120004), (409, 540006)],
     )
     def test_get_password_other_errors_never_fall_back(self, trino_api, status, code):
         error = self._rest_error(status, code)

@@ -70,6 +70,7 @@ _logger = logging.getLogger(__name__)
 TRINO_SERVICE_NAME = "coordinator.trino.service"
 TRINO_PORT = 8443
 UNKNOWN_ROUTE_ERROR_CODE = 120004
+ACCOUNT_PENDING_ERROR_CODE = 540025
 DEFAULT_RETRY_AFTER = 2
 DEFAULT_SOURCE = "hopsworks-trino-python-client"
 DEFAULT_SQLALCHEMY_SOURCE = "hopsworks-trino-sqlalchemy"
@@ -218,7 +219,7 @@ class TrinoApi:
             return credentials["password"]
         except RestAPIError as e:
             status = e.response.status_code
-            if status == 409:
+            if status == 409 and e.error_code == ACCOUNT_PENDING_ERROR_CODE:
                 raise TrinoAccountPendingError(self._retry_after(e.response)) from e
             if not (status == 404 and e.error_code == UNKNOWN_ROUTE_ERROR_CODE):
                 raise
