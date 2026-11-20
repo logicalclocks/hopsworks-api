@@ -407,15 +407,33 @@ class Deleter:
     def _job(self, asset: Asset) -> str:
         if asset.name.endswith("-*"):
             return self._jobs_named(asset.name[:-1])
+        job = self._job_named(asset.name)
+        if job is None:
+            return "gone"
         monitoring = _MONITORING_JOB.match(asset.name)
-        if monitoring:
-            return self._monitoring_config(asset, *monitoring.groups())
+        config = (
+            self._monitoring_config(asset.name, *monitoring.groups())
+            if monitoring
+            else None
+        )
+        if config is not None:
+            # The backend refuses to delete a feature monitoring job; deleting its
+            # configuration deletes the job too.
+            return self._each(asset, [config])
         logging = _LOGGING_JOB.match(asset.name)
         if logging and asset.owned_by:
-            return self._logging_job(asset, *logging.groups())
-        return self._each(asset, [self.project.get_job_api().get_job(asset.name)])
+            return self._logging_job(asset, job, *logging.groups())
+        return self._each(asset, [job])
 
-    def _logging_job(self, asset: Asset, view: str, version: str) -> str:
+    def _job_named(self, name: str):
+        try:
+            return self.project.get_job_api().get_job(name)
+        except Exception as exc:
+            if _missing(exc):
+                return None
+            raise
+
+    def _logging_job(self, asset: Asset, job, view: str, version: str) -> str:
         # A job has no description; its feature view's says whose it is, and a job
         # left behind by a deleted view is nobody's.
         try:
@@ -427,16 +445,10 @@ class Deleter:
         mine = owner is None or _names(asset.owned_by).search(owner.description or "")
         if not mine:
             return f"kept {asset}: not created by {asset.owned_by}"
-        return self._each(
-            replace(asset, owned_by=None),
-            [self.project.get_job_api().get_job(asset.name)],
-        )
+        return self._each(replace(asset, owned_by=None), [job])
 
-    def _monitoring_config(
-        self, asset: Asset, entity: str, version: str, config: str
-    ) -> str:
-        # The backend refuses to delete a feature monitoring job; deleting its configuration
-        # deletes the job too.
+    def _monitoring_config(self, job_name: str, entity: str, version: str, config: str):
+        """The feature monitoring configuration whose job is `job_name`, or None when no feature view or group has one."""
         for getter in (self.fs.get_feature_view, self.fs.get_feature_group):
             try:
                 owner = getter(entity, int(version))
@@ -453,9 +465,9 @@ class Deleter:
                 if _missing(exc):
                     continue
                 raise
-            if found is not None:
-                return self._each(asset, [found])
-        return "gone"
+            if found is not None and getattr(found, "job_name", None) == job_name:
+                return found
+        return None
 
     def _jobs_named(self, prefix: str) -> str:
         jobs = [

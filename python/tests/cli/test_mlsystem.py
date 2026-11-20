@@ -420,7 +420,9 @@ def test_a_monitoring_job_goes_with_its_configuration():
 
     deleted = []
     config = SimpleNamespace(
-        name="calls_30d_drift", delete=lambda: deleted.append("config")
+        name="calls_30d_drift",
+        job_name="churn_example_fv_1_run_fm_calls_30d_drift",
+        delete=lambda: deleted.append("config"),
     )
 
     def view(name, version):
@@ -431,10 +433,18 @@ def test_a_monitoring_job_goes_with_its_configuration():
             )
         )
 
+    def get_job(name):
+        if name != config.job_name:
+            return None
+        return SimpleNamespace(
+            unschedule=lambda: None,
+            delete=lambda: pytest.fail("a monitoring job is never deleted directly"),
+        )
+
     fs = SimpleNamespace(get_feature_view=view, get_feature_group=view)
     project = SimpleNamespace(
         get_feature_store=lambda: fs,
-        get_job_api=lambda: pytest.fail("a monitoring job is never deleted directly"),
+        get_job_api=lambda: SimpleNamespace(get_job=get_job),
     )
     deleter = teardown.Deleter(project)
     job = teardown.Asset("job", "churn_example_fv_1_run_fm_calls_30d_drift")
@@ -444,12 +454,43 @@ def test_a_monitoring_job_goes_with_its_configuration():
     assert deleter.delete(other) == "gone"
 
 
+def test_a_job_named_like_a_monitoring_job_but_without_its_configuration_is_deleted():
+    from hopsworks.cli import teardown
+
+    deleted = []
+    job = SimpleNamespace(unschedule=lambda: None, delete=lambda: deleted.append("job"))
+    # A configuration named `check` whose job is another one does not claim this job.
+    config = SimpleNamespace(
+        name="check", job_name="demo_1_check_job", delete=pytest.fail
+    )
+    views = {}
+    fs = SimpleNamespace(
+        get_feature_view=lambda name, version: views.get((name, version)),
+        get_feature_group=lambda name, version: None,
+    )
+    project = SimpleNamespace(
+        get_feature_store=lambda: fs,
+        get_job_api=lambda: SimpleNamespace(get_job=lambda name: job),
+    )
+    deleter = teardown.Deleter(project)
+    asset = teardown.Asset("job", "demo_1_run_fm_check")
+    # No feature view or group demo v1.
+    assert deleter.delete(asset) == "deleted"
+    views[("demo", 1)] = SimpleNamespace(
+        get_feature_monitoring_configs=lambda name: config
+    )
+    assert deleter.delete(asset) == "deleted"
+    assert deleted == ["job", "job"]
+
+
 def test_a_feature_groups_monitoring_job_goes_with_its_configuration():
     from hopsworks.cli import teardown
 
     deleted = []
     config = SimpleNamespace(
-        name="amount_psi_hourly", delete=lambda: deleted.append("config")
+        name="amount_psi_hourly",
+        job_name="credit_card_transactions_1_run_fm_amount_psi_hourly",
+        delete=lambda: deleted.append("config"),
     )
     group = SimpleNamespace(get_feature_monitoring_configs=lambda name: config)
     # The feature view lookup of a group's name finds nothing and returns None.
@@ -457,7 +498,13 @@ def test_a_feature_groups_monitoring_job_goes_with_its_configuration():
         get_feature_view=lambda name, version: None,
         get_feature_group=lambda name, version: group,
     )
-    deleter = teardown.Deleter(SimpleNamespace(get_feature_store=lambda: fs))
+    job = SimpleNamespace(unschedule=lambda: None, delete=pytest.fail)
+    deleter = teardown.Deleter(
+        SimpleNamespace(
+            get_feature_store=lambda: fs,
+            get_job_api=lambda: SimpleNamespace(get_job=lambda name: job),
+        )
+    )
     job = teardown.Asset("job", "credit_card_transactions_1_run_fm_amount_psi_hourly")
     assert deleter.delete(job) == "deleted"
     assert deleted == ["config"]
