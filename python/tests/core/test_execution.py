@@ -16,6 +16,9 @@
 
 from unittest import mock
 
+import pytest
+from hopsworks_common.client.exceptions import JobExecutionException
+from hopsworks_common.engine.execution_engine import ExecutionEngine
 from hopsworks_common.execution import Execution
 from hsfs.core import execution
 
@@ -170,3 +173,79 @@ class TestExecutionPerTable:
         ex = Execution(id=1, state="FAILED", job=mock.Mock())
 
         assert ex.rerun_count == 0
+
+
+class TestExecutionAttemptLogs:
+    RERUN_RESPONSE = {
+        "id": 7,
+        "rerunCount": 2,
+        "stdoutPath": "/Projects/p/Logs/Python/j/7/stdout.log",
+        "stderrPath": "/Projects/p/Logs/Python/j/7/stderr.log",
+        "attempts": [
+            {
+                "attempt": 1,
+                "stdoutPath": "/Projects/p/Logs/Python/j/7/attempt-1/stdout.log",
+                "stderrPath": "/Projects/p/Logs/Python/j/7/attempt-1/stderr.log",
+            },
+            # a Spark-style attempt: no stdout file
+            {
+                "attempt": 2,
+                "stderrPath": "/Projects/p/Logs/Python/j/7/attempt-2/stderr.log",
+            },
+        ],
+    }
+
+    def _execution(self):
+        return Execution.from_response_json(self.RERUN_RESPONSE, job=mock.Mock())
+
+    def test_attempts_are_parsed_from_the_response(self):
+        ex = self._execution()
+
+        assert [a["attempt"] for a in ex.attempts] == [1, 2]
+        assert (
+            ex.attempts[0]["stdout_path"]
+            == "/Projects/p/Logs/Python/j/7/attempt-1/stdout.log"
+        )
+
+    def test_attempts_empty_when_never_rerun(self):
+        assert Execution(id=1, job=mock.Mock()).attempts == []
+
+    def test_latest_attempt_uses_the_execution_paths(self):
+        ex = self._execution()
+
+        expected = (ex.stdout_path, ex.stderr_path)
+        assert ExecutionEngine._attempt_log_paths(ex, None) == expected
+        assert ExecutionEngine._attempt_log_paths(ex, 3) == expected
+
+    def test_earlier_attempt_uses_its_own_paths(self):
+        ex = self._execution()
+
+        assert ExecutionEngine._attempt_log_paths(ex, 1) == (
+            "/Projects/p/Logs/Python/j/7/attempt-1/stdout.log",
+            "/Projects/p/Logs/Python/j/7/attempt-1/stderr.log",
+        )
+        assert ExecutionEngine._attempt_log_paths(ex, 2) == (
+            None,
+            "/Projects/p/Logs/Python/j/7/attempt-2/stderr.log",
+        )
+
+    @pytest.mark.parametrize("attempt", [0, 4])
+    def test_unknown_attempt_is_refused(self, attempt):
+        with pytest.raises(JobExecutionException, match="attempts 1 to 3"):
+            ExecutionEngine._attempt_log_paths(self._execution(), attempt)
+
+    def test_download_logs_fetches_the_chosen_attempt(self, mocker, tmp_path):
+        ex = self._execution()
+        engine = ExecutionEngine()
+        engine._dataset_api = mock.Mock()
+        engine._dataset_api.exists.return_value = True
+        engine._dataset_api.download.side_effect = lambda path, *_, **__: path
+        ex._job.name = "j"
+
+        out, err = engine._download_logs(ex, str(tmp_path), attempt=1)
+
+        assert out == "/Projects/p/Logs/Python/j/7/attempt-1/stdout.log"
+        assert err == "/Projects/p/Logs/Python/j/7/attempt-1/stderr.log"
+        assert [d.name.split("_")[0] for d in tmp_path.iterdir()] == [
+            "logs-job-j-exec-7-attempt-1"
+        ]
