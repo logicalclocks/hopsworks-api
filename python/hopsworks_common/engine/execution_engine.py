@@ -40,44 +40,65 @@ class ExecutionEngine:
         self._log = logging.getLogger(__name__)
 
     def _download_logs(
-        self, execution: Execution, path: str | None = None
+        self,
+        execution: Execution,
+        path: str | None = None,
+        attempt: int | None = None,
     ) -> tuple[str | None, str | None]:
         """Download execution logs to current directory.
 
         Parameters:
             execution: Execution to download logs for.
             path: Path to download the logs.
+            attempt: Attempt to download the logs of, counted from 1; the latest one by default.
 
         Returns:
             Downloaded stdout and stderr log path.
 
         Raises:
-            hopsworks.client.exceptions.JobExecutionException: If path is provided but does not exist.
+            hopsworks.client.exceptions.JobExecutionException: If path is provided but does not exist, or the execution has no such attempt.
         """
         if path is not None and not os.path.exists(path):
             raise JobExecutionException(f"Path {path} does not exist")
         if path is None:
             path = os.getcwd()
 
-        job_logs_dir = f"logs-job-{execution.job_name}-exec-{str(execution.id)}_{str(uuid.uuid4())[:16]}"
+        stdout_path, stderr_path = self._attempt_log_paths(execution, attempt)
+
+        attempt_suffix = f"-attempt-{attempt}" if attempt is not None else ""
+        job_logs_dir = f"logs-job-{execution.job_name}-exec-{str(execution.id)}{attempt_suffix}_{str(uuid.uuid4())[:16]}"
         download_log_dir = os.path.join(path, job_logs_dir)
 
         if not os.path.exists(download_log_dir):
             os.mkdir(download_log_dir)
 
         out_path = None
-        if execution.stdout_path is not None and self._dataset_api.exists(
-            execution.stdout_path
-        ):
-            out_path = self._download_log(execution.stdout_path, download_log_dir)
+        if stdout_path is not None and self._dataset_api.exists(stdout_path):
+            out_path = self._download_log(stdout_path, download_log_dir)
 
         err_path = None
-        if execution.stderr_path is not None and self._dataset_api.exists(
-            execution.stderr_path
-        ):
-            err_path = self._download_log(execution.stderr_path, download_log_dir)
+        if stderr_path is not None and self._dataset_api.exists(stderr_path):
+            err_path = self._download_log(stderr_path, download_log_dir)
 
         return out_path, err_path
+
+    @staticmethod
+    def _attempt_log_paths(
+        execution: Execution, attempt: int | None
+    ) -> tuple[str | None, str | None]:
+        """Stdout and stderr path of one attempt of an execution.
+
+        The execution's own paths are the latest attempt's, numbered `rerun_count + 1`; a re-run moves the earlier ones aside and the backend lists them in `attempts`.
+        """
+        latest = execution.rerun_count + 1
+        if attempt is None or attempt == latest:
+            return execution.stdout_path, execution.stderr_path
+        for earlier in execution.attempts:
+            if earlier.get("attempt") == attempt:
+                return earlier.get("stdout_path"), earlier.get("stderr_path")
+        raise JobExecutionException(
+            f"Execution {execution.id} has no attempt {attempt}; it has attempts 1 to {latest}."
+        )
 
     def _download_log(self, path, download_log_dir):
         max_num_retries = 12
