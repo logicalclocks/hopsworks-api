@@ -23,7 +23,8 @@ from unittest import mock
 import pandas as pd
 import pyarrow as pa
 import pytest
-from hopsworks_common.client.exceptions import FeatureStoreException
+import requests
+from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hsfs.core.delta_engine import DeltaEngine
 from hsfs.feature_group_commit import FeatureGroupCommit
 
@@ -91,6 +92,7 @@ def _patch_apis(
         raise FeatureStoreException("no lb")
 
     var_api._get_loadbalancer_external_domain.side_effect = _lb_side_effect
+    var_api._get_loadbalancer_external_port.return_value = None
     mocker.patch("hsfs.core.variable_api.VariableApi", return_value=var_api)
 
     # project_api mock
@@ -113,6 +115,40 @@ def _patch_client(
     client._get_certs_folder.return_value = certs
     mocker.patch("hopsworks_common.client._get_instance", return_value=client)
     return client
+
+
+def _patch_variables(mocker, client, variables: dict, port_error=None):
+    """Answer GET /variables/{name} from `variables` through the real VariableApi.
+
+    A name missing from `variables` gets the backend's 404 VARIABLE_NOT_FOUND answer;
+    `port_error`, if set, is raised for loadbalancer_external_port_namenode instead.
+    """
+
+    def _send_request(method, path_params, *args, **kwargs):
+        name = path_params[1]
+        if port_error is not None and name == "loadbalancer_external_port_namenode":
+            raise port_error
+        if name in variables:
+            return {"successMessage": variables[name]}
+        raise _rest_api_error(mocker, RestAPIError.STATUS_CODE_NOT_FOUND, 100050)
+
+    client._send_request.side_effect = _send_request
+    proj_api = mocker.Mock()
+    proj_api._get_user_info.return_value = {"username": "user1"}
+    mocker.patch("hopsworks_common.core.project_api.ProjectApi", return_value=proj_api)
+    mocker.patch.dict(os.environ)
+
+
+def _rest_api_error(mocker, status_code: int, error_code: int = 0) -> RestAPIError:
+    response = mocker.Mock(status_code=status_code)
+    response.json.return_value = {"errorCode": error_code, "errorMsg": "error"}
+    return RestAPIError("url", response)
+
+
+_LB_DOMAINS = {
+    "loadbalancer_external_domain_namenode": "nn.lb.example.com",
+    "loadbalancer_external_domain_datanode": "dn.lb.example.com",
+}
 
 
 def _force_missing_delta_spark(monkeypatch):
@@ -308,6 +344,74 @@ class TestDeltaEngine:
 
         # Assert
         assert loc == "hdfs://nn.lb.example.com:8020/projects/p1"
+
+    def test_get_delta_rs_location_external_port_variable_wins(self, mocker):
+        # Arrange
+        client = _patch_client(mocker, is_external=True)
+        _patch_variables(
+            mocker,
+            client,
+            {**_LB_DOMAINS, "loadbalancer_external_port_namenode": "9020"},
+        )
+        fg = _make_fg("hopsfs://nn:8020/projects/p1")
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        # Act
+        loc = engine._get_delta_rs_location()
+
+        # Assert
+        assert loc == "hdfs://nn.lb.example.com:9020/projects/p1"
+
+    def test_get_delta_rs_location_external_port_variable_missing(self, mocker):
+        # Arrange
+        client = _patch_client(mocker, is_external=True)
+        _patch_variables(mocker, client, _LB_DOMAINS)
+        fg = _make_fg("hopsfs://nn:8020/projects/p1")
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        # Act
+        loc = engine._get_delta_rs_location()
+
+        # Assert
+        assert loc == "hdfs://nn.lb.example.com:8020/projects/p1"
+        client._send_request.assert_any_call(
+            "GET", ["variables", "loadbalancer_external_port_namenode"]
+        )
+
+    @pytest.mark.parametrize(
+        "status_code",
+        [
+            RestAPIError.STATUS_CODE_UNAUTHORIZED,
+            RestAPIError.STATUS_CODE_INTERNAL_SERVER_ERROR,
+        ],
+    )
+    def test_get_delta_rs_location_external_port_variable_error_raises(
+        self, mocker, status_code
+    ):
+        # Arrange
+        client = _patch_client(mocker, is_external=True)
+        error = _rest_api_error(mocker, status_code)
+        _patch_variables(mocker, client, _LB_DOMAINS, port_error=error)
+        fg = _make_fg("hopsfs://nn:8020/projects/p1")
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        # Act & Assert
+        with pytest.raises(RestAPIError) as e:
+            engine._get_delta_rs_location()
+        assert e.value is error
+
+    def test_get_delta_rs_location_external_port_variable_timeout_raises(self, mocker):
+        # Arrange
+        client = _patch_client(mocker, is_external=True)
+        error = requests.exceptions.ReadTimeout("timed out")
+        _patch_variables(mocker, client, _LB_DOMAINS, port_error=error)
+        fg = _make_fg("hopsfs://nn:8020/projects/p1")
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        # Act & Assert
+        with pytest.raises(requests.exceptions.Timeout) as e:
+            engine._get_delta_rs_location()
+        assert e.value is error
 
     def test_get_delta_rs_location_external_error(self, mocker):
         # Arrange
