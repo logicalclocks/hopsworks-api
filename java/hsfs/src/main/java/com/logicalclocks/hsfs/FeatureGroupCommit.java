@@ -60,4 +60,7 @@ public class FeatureGroupCommit extends RestDto<FeatureGroupCommit> {
   @Getter
   @Setter
   private Long tableSize; // in bytes
+  @Getter
+  @Setter
+  private Integer executionId; // the Hopsworks job execution that wrote the commit, sent with it
 }
