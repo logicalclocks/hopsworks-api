@@ -37,7 +37,7 @@ tracing.py   env-gated OTel setup + per-framework OpenInference instrumentation
 
 Not a wrapper that owns a hidden app, not a `serve(fn)` function. Consequences:
 
-- Runs anywhere a FastAPI app runs — `uvicorn module:agent_app`, the existing KServe/Knative deployment path — with no special launcher.
+- Runs anywhere a FastAPI app runs: `uvicorn module:agent_app` or the existing KServe/Knative deployment path. A deployment starts the script through `hopsworks_agents.run`, which serves the script's one `AgentApp` when the script returns without serving.
 - Authors add custom routes, middleware, and dependencies the normal FastAPI way; the SDK's routes coexist.
 - The protocol routes (`/.well-known/hopsworks-agent.json`, `/v1/run` for AG-UI runs, `/v1/chat`, `/health`) and CORS are registered in `__init__`; CORS defaults on because the in-browser chat panel calls the agent cross-origin through the ingress and authors invariably forget it.
 

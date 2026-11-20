@@ -162,6 +162,8 @@ terminal = [
 # packages imports lazily and works on the core dependencies alone.
 agents = [
     "fastapi>=0.100",
+    # hopsworks_agents.run serves an AgentApp the entry script did not serve itself.
+    "uvicorn",
     "pydantic>=2.11.2",
     # The wire protocol: AgentApp speaks AG-UI, built from the reference types.
     # Pinned to a minor version so an upstream change to the protocol fails our
