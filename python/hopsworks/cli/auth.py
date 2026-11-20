@@ -161,8 +161,9 @@ def login_serving(
     ``get_model_serving`` checks the Models dataset, which needs DATASET_VIEW.
     The serving endpoints themselves take SERVING. This connects without a
     project, then sets it from its id: read by name when the key may, else
-    ``project_id`` (``HOPSWORKS_PROJECT_ID``, or the saved config of the same
-    project). No certificates are downloaded; serving is REST only.
+    ``project_id`` (``HOPSWORKS_PROJECT_ID``, or the saved config, only for
+    the host and project it was set with: ``config.load``). No certificates
+    are downloaded; serving is REST only.
 
     Args:
         host: Hopsworks host; ``https://`` prefix and trailing paths tolerated.
@@ -206,7 +207,10 @@ def login_serving(
         # generic missing-scope advice to this one.
         raise click.ClickException(
             f"This API key cannot read project '{project}' by name (it has no "
-            "PROJECT scope). Give the project's id: HOPSWORKS_PROJECT_ID=<id>."
+            "PROJECT scope). Give the project's id: HOPSWORKS_PROJECT_ID=<id>. "
+            "A saved or exported id holds only for the host and project it was "
+            "set with; --host, --project or their environment variables naming "
+            "another drop it."
         )
     _client._project_name = project
     _client._project_id = str(project_id)

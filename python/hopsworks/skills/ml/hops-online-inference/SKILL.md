@@ -51,10 +51,9 @@ hops deployment rollback <name> <version>                        # back to an ea
 hops deployment predict <name> --data '{...}' --via-api --timing --json   # {status, ms, response}
 ```
 
-- `set-env` rolls a running deployment to the new version without stopping it; the old instances serve until it is Running (`--timeout`, default 300 s). A stopped one stays stopped. Nothing differs: it says "unchanged" and writes nothing. Variables Hopsworks sets (`SERVING_*`) are refused.
-- Before saving a running deployment, `set-env` checks that the project's free CPU and memory are each at least twice the deployment's limits. It refuses with the numbers when not. A key without the PROJECT scope cannot read the quota: `set-env` then refuses, and `--no-room-check` saves without the check (a rollback after a failed rollout may then lack room).
+- `set-env` rolls a running deployment to the new version without stopping it; the old instances serve until it is Running. `--timeout` (default 300 s, 120 s for `rollback`) bounds the whole command, every request included. A stopped one stays stopped. Nothing differs: it says "unchanged" and writes nothing. Variables Hopsworks sets (`SERVING_*`) are refused.
 - Hopsworks can refuse a save whose new version does not fit in the project's quota (`Project quota exceeded`, nothing saved). Right after another rollout that refusal can be HTTP 429: the old pods still hold quota for a few seconds, so retry after 15 s.
-- `--json` on `set-env` and `rollback`: `result` is `unchanged`, `applied`, `refused`, `not_ready` or `unknown`, read back from Hopsworks; `accepted` says whether Hopsworks took the write. Exit code 0 only for `unchanged` and `applied`. Values are never printed, only key names and digests.
+- `--json` on `set-env` and `rollback`: `result` is `unchanged`, `applied`, `refused`, `not_ready` or `unknown`. `refused`: nothing changed (the write was never sent, or Hopsworks answered it with an error). `unknown`: the write was sent and its outcome is not known; it may still apply, so read `hops deployment versions <name>` before writing again. `accepted` is true once a read shows the target. Exit code 0 only for `unchanged` and `applied`. Values are never printed, only key names and digests.
 - `--via-api` sends the prediction through the Hopsworks API, for a machine that reaches Hopsworks but not the model serving ingress.
 - These verbs work with an API key that has only the SERVING scope; such a key cannot read the project by name, so give its id: `HOPSWORKS_PROJECT_ID=<id>`.
 

@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -568,7 +569,9 @@ def deployment_predict(
         if output.JSON_MODE:
             from hopsworks.cli.main import _explain_rest_error  # noqa: PLC0415
 
-            error = _explain_rest_error(exc) or str(exc).splitlines()[0]
+            error = (
+                _explain_rest_error(exc) or (str(exc).splitlines() or [repr(exc)])[0]
+            )
             output.print_json(
                 {"status": status, "ms": ms, "response": body, "error": error}
             )
@@ -590,6 +593,10 @@ def deployment_predict(
         click.echo(f"status {status} in {ms} ms", err=True)
 
 
+# A prediction through Hopsworks that has not answered by then has stalled.
+_VIA_API_SECONDS = 60
+
+
 def _predict_via_api(deployment: Any, payload: Any) -> Any:
     """POST the body to the deployment through the Hopsworks API, which forwards it to the model."""
     from hopsworks_common import client  # noqa: PLC0415
@@ -603,6 +610,7 @@ def _predict_via_api(deployment: Any, payload: Any) -> Any:
         path,
         headers={"content-type": "application/json"},
         data=json.dumps(payload),
+        deadline=time.monotonic() + _VIA_API_SECONDS,
     )
 
 
@@ -843,6 +851,9 @@ _AT_REST = ("Stopped", "Created", "Creating")
 # The SDK refuses a save in these states before it writes anything.
 _BUSY = ("Starting", "Stopping", "Updating")
 _POLL_SECONDS = 5
+# The end of --timeout kept for the read after the write, so a write that
+# stalls still leaves time to read what it did.
+_READ_RESERVE_SECONDS = 10
 
 
 def _reserved_env_vars() -> tuple[str, ...]:
@@ -863,6 +874,12 @@ def _env_digest(env: dict[str, str] | None) -> str:
 def _version_env(version: Any) -> dict[str, str]:
     pairs = getattr(version, "predictor_env_vars", None) or []
     return dict(p.split("=", 1) if "=" in p else (p, "") for p in pairs)
+
+
+def _budget(timeout: int) -> tuple[float, float]:
+    """The command's deadline, and the earlier one its login, reads and write run under."""
+    deadline = time.monotonic() + timeout
+    return deadline - min(_READ_RESERVE_SECONDS, timeout / 2), deadline
 
 
 def _live(ms: Any, name: str) -> dict[str, Any]:
@@ -898,84 +915,88 @@ def _public(live: dict[str, Any] | None) -> dict[str, Any] | None:
     return {k: v for k, v in live.items() if k not in ("deployment", "versions")}
 
 
+def _rolled(live: dict[str, Any], prior_revision: str | None) -> bool:
+    return live["status"] in _READY and live["revision"] != prior_revision
+
+
 def _wait_ready(
-    ms: Any, name: str, prior_revision: str | None, timeout: int
+    ms: Any,
+    name: str,
+    prior_revision: str | None,
+    live: dict[str, Any],
+    until: float,
 ) -> dict[str, Any]:
-    """Poll until a new rollout is ready (a revision other than the prior one) or failed, at most ``timeout`` seconds."""
-    deadline = time.monotonic() + timeout
-    while True:
+    """Poll from ``live`` until a new rollout is ready (a revision other than the prior one) or failed, or ``until`` passes."""
+    while not _rolled(live, prior_revision) and live["status"] != "Failed":
+        remaining = until - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(_POLL_SECONDS, remaining))
         live = _live(ms, name)
-        if live["status"] in _READY and live["revision"] != prior_revision:
-            return live
-        if live["status"] == "Failed" or time.monotonic() >= deadline:
-            return live
-        time.sleep(min(_POLL_SECONDS, max(0.0, deadline - time.monotonic())))
+    return live
 
 
-def _need(deployment: Any) -> tuple[float, float]:
-    """CPU cores and memory MB one rollout of the deployment adds: its components' limits per instance."""
-    cpu = memory = 0.0
-    for component in (deployment.predictor, getattr(deployment, "transformer", None)):
-        if component is None or component.resources is None:
-            continue
-        limits = component.resources.limits
-        scaling = getattr(component, "scaling_configuration", None)
-        instances = max(1, getattr(scaling, "min_instances", None) or 0)
-        cpu += (limits.cores or 0) * instances
-        memory += (limits.memory or 0) * instances
-    return cpu, memory
+def _never_connected(exc: BaseException) -> bool:
+    """Whether a transport error came before any byte of the request could reach the server."""
+    import requests  # noqa: PLC0415
+    import urllib3  # noqa: PLC0415
 
-
-def _room(deployment: Any) -> dict[str, Any]:
-    """The project's free compute against twice the deployment's need.
-
-    Twice: the new version's instances start beside the serving ones, and a
-    rollback after a failed rollout needs that room again.
-    """
-    from hopsworks_common import client  # noqa: PLC0415
-
-    need_cpu, need_memory = _need(deployment)
-    _client = client._get_instance()
-    quota = _client._send_request(
-        "GET", ["project", _client._project_id, "kube", "quota"]
+    if isinstance(exc, requests.exceptions.ConnectTimeout):
+        return True
+    if not isinstance(exc, requests.exceptions.ConnectionError):
+        return False
+    reason = exc.args[0] if exc.args else None
+    return isinstance(
+        getattr(reason, "reason", reason), urllib3.exceptions.NewConnectionError
     )
-    room: dict[str, Any] = {
-        "checked": True,
-        "method": quota.get("method") or "NONE",
-        "need": {"cpu": need_cpu, "memory_mb": need_memory},
-        "free": {},
-        "limit": {},
-        "ok": True,
-    }
-    if room["method"] == "NONE":
-        return room
-    for key, field, scale in (
-        ("cpu", "cpu", 1),
-        ("memory_mb", "memory", 1024**2),
-    ):
-        limit = quota.get(field) or {}
-        if limit.get("limit") is None:
-            continue
-        free = limit.get("available")
-        if free is None:
-            free = limit["limit"] - (limit.get("used") or 0)
-        room["free"][key] = round(free / scale, 3)
-        room["limit"][key] = round(limit["limit"] / scale, 3)
-        if room["free"][key] < 2 * room["need"][key]:
-            room["ok"] = False
-    return room
 
 
-def _room_words(room: dict[str, Any]) -> str:
-    parts = []
-    for key, unit in (("cpu", " CPU"), ("memory_mb", " MB")):
-        if key in room["free"]:
-            parts.append(
-                f"needs {room['need'][key]:g}{unit} twice over "
-                f"({2 * room['need'][key]:g}), {room['free'][key]:g} of "
-                f"{room['limit'][key]:g} free"
+@contextlib.contextmanager
+def _watched_write(is_write: Any):
+    """Record what became of the write request sent inside the block.
+
+    The outcome is ``not_sent`` (no write request left this process, or it
+    never connected), ``rejected`` (Hopsworks answered with an error of its
+    own: an error code in the body), ``sent`` (the request went out and no
+    answer from Hopsworks says what became of it: a reset, a timeout, a
+    proxy's error page) or ``ok`` (a 2xx answer).
+    """
+    import requests  # noqa: PLC0415
+    from hopsworks_common import client  # noqa: PLC0415
+    from hopsworks_common.client import base  # noqa: PLC0415
+    from hopsworks_common.client.exceptions import RestAPIError  # noqa: PLC0415
+
+    _client = client._get_instance()
+    send = _client._send_request
+    seen = {"outcome": "not_sent"}
+
+    def watched(method: str, path_params: list, *args: Any, **kwargs: Any) -> Any:
+        if not is_write(method, [str(p) for p in path_params]):
+            return send(method, path_params, *args, **kwargs)
+        deadline = base._request_deadline.get()
+        if deadline is not None and time.monotonic() >= deadline:
+            raise requests.exceptions.Timeout(
+                "the time ran out before the write was sent"
             )
-    return "; ".join(parts)
+        seen["outcome"] = "sent"
+        try:
+            response = send(method, path_params, *args, **kwargs)
+        except RestAPIError as exc:
+            if getattr(exc, "error_code", None) not in (None, ""):
+                seen["outcome"] = "rejected"
+            raise
+        except Exception as exc:
+            if _never_connected(exc):
+                seen["outcome"] = "not_sent"
+            raise
+        seen["outcome"] = "ok"
+        return response
+
+    _client._send_request = watched
+    try:
+        yield seen
+    finally:
+        del _client._send_request
 
 
 def _finish(ctx: click.Context, result: dict[str, Any], text: str) -> None:
@@ -996,62 +1017,110 @@ def _apply_write(
     name: str,
     before: dict[str, Any],
     write: Any,
+    is_write: Any,
     is_target: Any,
-    timeout: int,
+    budget: tuple[float, float],
     result: dict[str, Any],
 ) -> dict[str, Any]:
-    """Run a save or rollback, wait for it, and judge it from a fresh read only.
+    """Run a save or rollback, wait for it, and judge it from what Hopsworks answered and a fresh read.
 
-    ``accepted`` is whether Hopsworks took the write, read back from the
-    versions rather than from the call: an error after the request was sent
-    (a reset, a timeout, a failed status poll) can follow a write that was
-    applied. ``None`` means the read could not tell.
+    ``accepted`` is True once a read shows the target. A write is
+    ``refused`` (``accepted`` False) only when it was never sent or
+    Hopsworks answered it with an error. A write that was sent and not
+    answered (a reset, a timeout) and is not seen in the read is ``unknown``
+    (``accepted`` None): Hopsworks may still be applying it.
     """
-    result["phase"] = "save"
-    try:
-        # The SDK prints progress to stdout, which carries the --json payload.
-        with contextlib.redirect_stdout(sys.stderr):
-            write()
-    except Exception as exc:  # noqa: BLE001 - judged from the read below
-        from hopsworks.cli.main import _explain_rest_error  # noqa: PLC0415
+    from hopsworks_common.client.base import request_deadline  # noqa: PLC0415
 
-        response = getattr(exc, "response", None)
-        result["http_status"] = getattr(response, "status_code", None)
-        result["error"] = (_explain_rest_error(exc) or str(exc).splitlines()[0])[:500]
+    work_end, deadline = budget
+    result["phase"] = "save"
+    with _watched_write(is_write) as seen:
+        try:
+            # The SDK prints progress to stdout, which carries the --json payload.
+            with request_deadline(work_end), contextlib.redirect_stdout(sys.stderr):
+                write()
+        except Exception as exc:  # noqa: BLE001 - judged below
+            from hopsworks.cli.main import _explain_rest_error  # noqa: PLC0415
+
+            response = getattr(exc, "response", None)
+            result["http_status"] = getattr(response, "status_code", None)
+            result["error"] = (
+                _explain_rest_error(exc) or (str(exc).splitlines() or [repr(exc)])[0]
+            )[:500]
+    result["write"] = seen["outcome"]
+    if seen["outcome"] == "sent" and result["http_status"] is not None:
+        result["error"] = (
+            f"HTTP {result['http_status']} without an answer from Hopsworks "
+            "(no error code: a proxy or gateway page)"
+        )
+    proven_not_applied = seen["outcome"] in ("not_sent", "rejected")
 
     result["phase"] = "read"
-    try:
-        after = _live(ms, name)
-    except Exception as exc:  # noqa: BLE001
-        result.update(result="unknown", accepted=None, after=None)
-        result["error"] = result.get("error") or f"read failed: {exc}"
-        return result
-    if is_target(after):
-        result["accepted"] = True
-    elif after["version"] == before["version"] and after["latest"] == before["latest"]:
-        result["accepted"] = False
-    else:
-        result.update(result="unknown", accepted=None, after=_public(after))
-        return result
-    if not result["accepted"]:
-        result.update(result="refused", after=_public(after))
-        return result
-
-    if before["status"] not in _AT_REST:
-        result["phase"] = "wait"
+    with request_deadline(deadline):
         try:
-            after = _wait_ready(ms, name, before["revision"], timeout)
+            after = _live(ms, name)
         except Exception as exc:  # noqa: BLE001
-            result.update(result="unknown", after=_public(after))
-            result["error"] = f"read failed: {exc}"
+            result["after"] = None
+            if proven_not_applied:
+                result.update(result="refused", accepted=False)
+            else:
+                result.update(result="unknown", accepted=None)
+                result["error"] = result.get("error") or f"read failed: {exc}"
             return result
-    ready = before["status"] in _AT_REST or (
-        after["status"] in _READY and after["revision"] != before["revision"]
-    )
+        result["after"] = _public(after)
+        if not is_target(after):
+            if proven_not_applied:
+                result.update(result="refused", accepted=False)
+            else:
+                result.update(result="unknown", accepted=None)
+                result["error"] = (
+                    result.get("error")
+                    or "the write was sent, the read does not show it"
+                )
+            return result
+        result["accepted"] = True
+
+        if before["status"] not in _AT_REST:
+            result["phase"] = "wait"
+            try:
+                after = _wait_ready(ms, name, before["revision"], after, work_end)
+            except Exception as exc:  # noqa: BLE001
+                result["result"] = "unknown"
+                result["error"] = f"read failed: {exc}"
+                return result
+    ready = before["status"] in _AT_REST or _rolled(after, before["revision"])
     result["after"] = _public(after)
     result["result"] = "applied" if is_target(after) and ready else "not_ready"
     result["phase"] = "done" if result["result"] == "applied" else "wait"
     return result
+
+
+def _read_before(
+    ctx: click.Context, name: str, work_end: float, result: dict[str, Any]
+) -> tuple[Any, dict[str, Any]]:
+    """Log in and read the deployment as it is before the write, within the command's time."""
+    from hopsworks_common.client.base import request_deadline  # noqa: PLC0415
+
+    with request_deadline(work_end):
+        ms = session.get_model_serving(ctx)
+        result["phase"] = "read"
+        try:
+            before = _live(ms, name)
+        except click.ClickException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise click.ClickException(
+                f"Could not read deployment '{name}': {exc}"
+            ) from exc
+    result["before"] = _public(before)
+    return ms, before
+
+
+def _unknown_words(name: str, result: dict[str, Any]) -> str:
+    return (
+        f"Outcome unknown: {result['error']}. Hopsworks may still apply it. "
+        f"Read it with `hops deployment versions {name}`."
+    )
 
 
 def _state_words(live: dict[str, Any] | None) -> str:
@@ -1061,6 +1130,13 @@ def _state_words(live: dict[str, Any] | None) -> str:
     if live.get("reason") and live["status"] not in _READY:
         words += f" ({live['reason']})"
     return words
+
+
+_TIMEOUT_HELP = (
+    "Seconds the whole command may take: login, reads, the write and the wait "
+    "for Running. Every request is cut off when it runs out; the last "
+    f"{_READ_RESERVE_SECONDS} s are kept for reading the outcome."
+)
 
 
 @deployment_group.command("env")
@@ -1105,18 +1181,10 @@ def _parse_assignments(pairs: tuple[str, ...]) -> dict[str, str]:
 )
 @click.option(
     "--timeout",
-    type=click.IntRange(min=0),
+    type=click.IntRange(min=1),
     default=300,
     show_default=True,
-    help="Seconds to wait for a running deployment's new version to be Running.",
-)
-@click.option(
-    "--no-room-check",
-    "no_room_check",
-    is_flag=True,
-    help="Save without first checking that the project's free compute is at "
-    "least twice the deployment's need (needed when the key cannot read the "
-    "project's quota).",
+    help=_TIMEOUT_HELP,
 )
 @click.pass_context
 def deployment_set_env(
@@ -1125,31 +1193,30 @@ def deployment_set_env(
     assignments: tuple[str, ...],
     unset: tuple[str, ...],
     timeout: int,
-    no_room_check: bool,
 ) -> None:
     """Set or remove predictor environment variables, saved as a new version.
 
     The given variables are merged into the current ones. Nothing differs:
     "unchanged", nothing is written. A running deployment rolls to the new
     version without stopping; the old instances serve until it is Running.
-    A stopped one is saved and stays stopped. Before saving a running
-    deployment, the project's free CPU and memory must each be at least twice
-    what the deployment needs, so a rollback after a failed rollout has room.
+    A stopped one is saved and stays stopped. Hopsworks refuses a version
+    that does not fit in the project's quota; the refusal is passed on.
     Undo with `hops deployment rollback NAME <previous version>`.
 
-    With --json: {name, result, accepted, phase, set, unset, before, after,
-    room, http_status, error}. result is unchanged, applied, refused,
-    not_ready or unknown; accepted is whether Hopsworks took the save, read
-    back from the versions. Values are never printed, only key names and
-    digests.
+    With --json: {name, result, accepted, write, phase, set, unset, before,
+    after, http_status, error}. result is unchanged, applied, refused,
+    not_ready or unknown. refused means nothing was saved: the save was never
+    sent or Hopsworks answered it with an error. unknown means the save was
+    sent and its outcome is not known; it may still be applied. accepted is
+    True once a read shows the new version. Values are never printed, only
+    key names and digests.
 
     Args:
         ctx: Click context.
         name: Deployment name.
         assignments: KEY=VALUE pairs to set.
         unset: Keys to remove.
-        timeout: Seconds to wait for Running.
-        no_room_check: Skip the room check.
+        timeout: Seconds the command may take.
     """
     sets = _parse_assignments(assignments)
     if not sets and not unset:
@@ -1164,30 +1231,21 @@ def deployment_set_env(
             "deployment and cannot be changed."
         )
 
+    budget = _budget(timeout)
     result: dict[str, Any] = {
         "name": name,
         "result": None,
         "accepted": False,
+        "write": "not_sent",
         "phase": "login",
         "set": sorted(sets),
         "unset": sorted(unset),
         "before": None,
         "after": None,
-        "room": None,
         "http_status": None,
         "error": None,
     }
-    ms = session.get_model_serving(ctx)
-    result["phase"] = "read"
-    try:
-        before = _live(ms, name)
-    except click.ClickException:
-        raise
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(
-            f"Could not read deployment '{name}': {exc}"
-        ) from exc
-    result["before"] = _public(before)
+    ms, before = _read_before(ctx, name, budget[0], result)
     deployment = before["deployment"]
     current = dict(deployment.env_vars or {})
     merged = {**current, **sets}
@@ -1209,62 +1267,31 @@ def deployment_set_env(
         )
         return
 
-    if before["status"] in _AT_REST:
-        result["room"] = {"checked": False, "reason": "not running"}
-    elif no_room_check:
-        result["room"] = {"checked": False, "reason": "--no-room-check"}
-    else:
-        result["phase"] = "room"
-        why = None
-        try:
-            result["room"] = _room(deployment)
-        except Exception as exc:  # noqa: BLE001
-            from hopsworks.cli import auth  # noqa: PLC0415
-
-            why = (
-                "this API key cannot read the project's quota (it needs the "
-                "PROJECT scope)"
-                if auth.is_scope_refusal(exc)
-                else f"the quota read failed: {str(exc).splitlines()[0]}"
-            )
-        # Reported outside the handler, so the CLI adds no advice of its own.
-        if why is not None:
-            result.update(result="refused", error=f"room unknown: {why}")
-            _finish(
-                ctx,
-                result,
-                f"Refused, nothing saved: {why}, so the room check cannot run. "
-                "Use a key with the PROJECT scope, or pass --no-room-check to "
-                "save without the check (a rollback after a failed rollout may "
-                "then lack room).",
-            )
-            return
-        if not result["room"]["ok"]:
-            result.update(result="refused", error="no room")
-            _finish(
-                ctx,
-                result,
-                f"Refused, nothing saved: no room to roll {name}: "
-                f"{_room_words(result['room'])}. Free compute in the project or "
-                "raise its quota.",
-            )
-            return
-
     def write() -> None:
         deployment.env_vars = merged
-        deployment.save(await_update=0, new_version=True)
+        # On a save the SDK uploads a file in the working directory named like
+        # the stored script (a bare basename) in place of that script. This
+        # save changes the variables only, so it runs from an empty directory.
+        cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as empty:
+            os.chdir(empty)
+            try:
+                deployment.save(await_update=0, new_version=True)
+            finally:
+                os.chdir(cwd)
 
     _apply_write(
         ms,
         name,
         before,
         write,
+        lambda method, path: method == "PUT" and path[-1:] == ["serving"],
         lambda live: (
             live["version"] is not None
             and live["version"] > before["latest"]
             and live["digest"] == result["target_digest"]
         ),
-        timeout,
+        budget,
         result,
     )
     after = result["after"]
@@ -1282,10 +1309,7 @@ def deployment_set_env(
             f"{before['version']}`."
         )
     else:
-        text = (
-            f"Outcome unknown: {result['error']}. Read it with "
-            f"`hops deployment versions {name}`."
-        )
+        text = _unknown_words(name, result)
     _finish(ctx, result, text)
 
 
@@ -1341,10 +1365,10 @@ def deployment_versions(ctx: click.Context, name: str) -> None:
 @click.argument("version", type=int)
 @click.option(
     "--timeout",
-    type=click.IntRange(min=0),
+    type=click.IntRange(min=1),
     default=120,
     show_default=True,
-    help="Seconds to wait for a running deployment to be Running on the version.",
+    help=_TIMEOUT_HELP,
 )
 @click.pass_context
 def deployment_rollback(
@@ -1360,12 +1384,14 @@ def deployment_rollback(
         ctx: Click context.
         name: Deployment name.
         version: The version to activate.
-        timeout: Seconds to wait for Running.
+        timeout: Seconds the command may take.
     """
+    budget = _budget(timeout)
     result: dict[str, Any] = {
         "name": name,
         "result": None,
         "accepted": False,
+        "write": "not_sent",
         "phase": "login",
         "version": version,
         "before": None,
@@ -1373,17 +1399,7 @@ def deployment_rollback(
         "http_status": None,
         "error": None,
     }
-    ms = session.get_model_serving(ctx)
-    result["phase"] = "read"
-    try:
-        before = _live(ms, name)
-    except click.ClickException:
-        raise
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(
-            f"Could not read deployment '{name}': {exc}"
-        ) from exc
-    result["before"] = _public(before)
+    ms, before = _read_before(ctx, name, budget[0], result)
     if before["version"] == version:
         result.update(result="unchanged", phase="done")
         _finish(ctx, result, f"Unchanged: version {version} of {name} is active.")
@@ -1409,8 +1425,9 @@ def deployment_rollback(
         name,
         before,
         lambda: deployment.rollback(version, await_update=0),
+        lambda method, path: method == "POST" and path[-1:] == ["rollback"],
         lambda live: live["version"] == version,
-        timeout,
+        budget,
         result,
     )
     after = result["after"]
@@ -1424,10 +1441,7 @@ def deployment_rollback(
             f"{_state_words(after)}."
         )
     else:
-        text = (
-            f"Outcome unknown: {result['error']}. Read it with "
-            f"`hops deployment versions {name}`."
-        )
+        text = _unknown_words(name, result)
     _finish(ctx, result, text)
 
 

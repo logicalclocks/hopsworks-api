@@ -462,6 +462,39 @@ class TestBaseClient:
 
         assert send.call_count == 2
 
+    def test_request_deadline_cuts_off_a_stalled_server(self):
+        """A server that accepts the connection and never answers: the block's deadline ends the wait."""
+        import socket
+        import time
+
+        from hopsworks_common.client.base import request_deadline
+
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(8)
+        accepted = []
+        threading.Thread(
+            target=lambda: accepted.append(listener.accept()), daemon=True
+        ).start()
+        client = self._init_test_client()
+        client._session.trust_env = False
+        client._base_url = f"https://127.0.0.1:{listener.getsockname()[1]}"
+        try:
+            started = time.monotonic()
+            with request_deadline(started + 5), request_deadline(started + 1):
+                with pytest.raises(requests.exceptions.RequestException):
+                    client._send_request("GET", ["variables", "versions"])
+                assert accepted
+                assert time.monotonic() - started < 3
+                started = time.monotonic()
+                with pytest.raises(requests.exceptions.Timeout):
+                    client._send_request("GET", ["variables", "versions"])
+                assert time.monotonic() - started < 0.5
+        finally:
+            listener.close()
+            for connection, _ in accepted:
+                connection.close()
+
     def _init_test_client(self):
         client = Client()
         client._connected = True

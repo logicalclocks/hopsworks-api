@@ -202,7 +202,7 @@ hops deployment delete <name> --yes
 **Tips**
 - sklearn serving image uses pinned versions — train with `scikit-learn==1.3.2` to match.
 - Deployment names must be alphanumeric only.
-- `set-env` refuses a running deployment when the project's free compute is under twice its limits; a key that cannot read the quota needs `--no-room-check`. The deployment verbs work with a SERVING-only key when `HOPSWORKS_PROJECT_ID` is set.
+- `set-env` and `rollback`: `refused` means nothing changed; `unknown` means the write was sent and may still apply, so read `hops deployment versions <name>` before trying again. The deployment verbs work with a SERVING-only key when `HOPSWORKS_PROJECT_ID` is set.
 - Artifact layout at inference time: predictor script at `/mnt/artifacts/`, model at `/mnt/models/`.
 
 ## Jobs

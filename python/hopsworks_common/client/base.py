@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import contextvars
 import hashlib
 import logging
 import os
@@ -45,6 +46,29 @@ _logger = logging.getLogger(__name__)
 
 urllib3.disable_warnings(urllib3.exceptions.SecurityWarning)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+
+_request_deadline: contextvars.ContextVar[float | None] = contextvars.ContextVar(
+    "hopsworks_request_deadline", default=None
+)
+
+
+@contextlib.contextmanager
+def request_deadline(deadline: float):
+    """Bound every request sent inside the block by a monotonic deadline.
+
+    A request that names its own `deadline` keeps the earlier of the two; a nested block can only shorten it.
+    The calls the SDK makes on the caller's behalf (reads, saves, polls) get the same bound without a parameter of their own.
+
+    Parameters:
+        deadline: Monotonic time (`time.monotonic()`) after which no request starts and no socket wait continues.
+    """
+    outer = _request_deadline.get()
+    token = _request_deadline.set(deadline if outer is None else min(outer, deadline))
+    try:
+        yield
+    finally:
+        _request_deadline.reset(token)
 
 
 @also_available_as(
@@ -155,6 +179,7 @@ class Client:
                 Without it a stalled connection blocks the caller indefinitely, so pass one wherever the caller has its own deadline to honour.
             deadline: Monotonic time after which no request, token refresh or rate-limit retry starts.
                 Each socket wait is clipped to the time left, so a response can finish after it; a successful one is returned.
+                An enclosing `request_deadline` block applies when it is earlier.
 
         Returns:
             Response json
@@ -162,6 +187,9 @@ class Client:
         Raises:
             RestAPIError: Raised when request wasn't correctly received, understood or accepted
         """
+        ambient = _request_deadline.get()
+        if ambient is not None:
+            deadline = ambient if deadline is None else min(deadline, ambient)
         f_url = furl.furl(self._base_url)
         if with_base_path_params:
             base_path_params = ["hopsworks-api", "api"]
