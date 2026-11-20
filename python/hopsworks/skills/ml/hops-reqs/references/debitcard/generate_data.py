@@ -15,10 +15,9 @@ import argparse
 import gc
 import time
 
+import hopsworks
 import numpy as np
 import synth
-
-import hopsworks
 from hsfs.feature import Feature
 
 DEFAULT_ROWS = 1_000_000
@@ -279,13 +278,13 @@ FEATURE_GROUPS = {
 }
 
 
-def insert_in_batches(fs, name: str, generate, total: int, batch_size: int):
+def insert_in_batches(fs, system: str, name: str, generate, total: int, batch_size: int):
     """Create `name` offline and insert `total` rows in batches, waiting for each to land."""
     config = FEATURE_GROUPS[name]
     fg = fs.get_or_create_feature_group(
         name=name,
         version=1,
-        description=config["description"],
+        description=f"{system}: {config['description']}",
         primary_key=config["primary_key"],
         event_time=config["event_time"],
         features=config["features"],
@@ -317,6 +316,9 @@ def main():
         "--fraud-rate", type=float, default=0.05, help="fraction of cards with a fraud scheme"
     )
     parser.add_argument("--generate-only", action="store_true")
+    # Every asset's description starts with the system's slug, which is how deleting the
+    # system with its assets tells its own from another's.
+    parser.add_argument("--system", default="debitcard-example", help="the system's slug")
     args = parser.parse_args()
 
     tables = args.tables.split(",") if args.tables else TABLES
@@ -384,7 +386,7 @@ def main():
             if table in ("card_authorisations", "card_authorisation_signals")
             else counts[table]
         )
-        insert_in_batches(fs, table, generators[table], counts[table], batch)
+        insert_in_batches(fs, args.system, table, generators[table], counts[table], batch)
 
 
 if __name__ == "__main__":

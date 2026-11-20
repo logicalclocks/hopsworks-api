@@ -1,0 +1,7 @@
+# Installed into <slug>-app-env, a clone of torch-inference-pipeline (which ships
+# torch, FastAPI and uvicorn): XGBoost at the version training used, scikit-learn for
+# its classifier wrapper, and NVIDIA's structured-data-models (KumoTabular), which is
+# not on PyPI, from its repository at the commit kumo.py is written against.
+xgboost==3.2.0
+scikit-learn==1.8.0
+structured-data-models @ git+https://github.com/NVIDIA/structured-data-models.git@5d663369ff8ead4a78c910dbb8483d558e46627b

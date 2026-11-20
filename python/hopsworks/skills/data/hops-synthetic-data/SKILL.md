@@ -41,6 +41,11 @@ hops job history <slug>-events              # the live writer has a RUNNING exec
   dependency plus noise; the target's positive rate follows
   `requirements.targets.prevalence`. No column is a function of the target the
   real world would not have at prediction time.
+- **Rates in closed form.** Derive every rate from the story before running anything: a
+  population held near N with a weekly hazard h needs about N·h arrivals a week, the share
+  that leaves within d days is 1 − (1 − h)^(d/7), and a mix of groups with different
+  hazards averages them by their shares. Generate once in memory to check, and scale a rate
+  by the ratio of target to measured; never search a grid of values.
 - **Polars, in a Python job in `python-feature-pipeline`.** The columns and the
   relational steps that shape the story (joins between entities and events,
   window aggregates) are Polars; the base ships it, so the generator runs there
