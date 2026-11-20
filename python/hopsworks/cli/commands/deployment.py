@@ -1133,9 +1133,11 @@ def _state_words(live: dict[str, Any] | None) -> str:
 
 
 _TIMEOUT_HELP = (
-    "Seconds the whole command may take: login, reads, the write and the wait "
-    "for Running. Every request is cut off when it runs out; the last "
-    f"{_READ_RESERVE_SECONDS} s are kept for reading the outcome."
+    "Seconds for login, reads, the write and the wait for Running. No request "
+    "starts after it, each socket wait is clipped to the time left, and a "
+    "response body still arriving then is cut off; the last "
+    f"{_READ_RESERVE_SECONDS} s are kept for reading the outcome. A server "
+    "that trickles its status line or headers is bounded per socket read only."
 )
 
 

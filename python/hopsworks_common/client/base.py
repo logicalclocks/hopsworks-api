@@ -22,8 +22,10 @@ import contextvars
 import hashlib
 import logging
 import os
+import socket
 import struct
 import tempfile
+import threading
 import time
 
 import furl
@@ -178,7 +180,8 @@ class Client:
             timeout: How long to wait for the connection and for each block of the response, in seconds, passed straight through to `requests`.
                 Without it a stalled connection blocks the caller indefinitely, so pass one wherever the caller has its own deadline to honour.
             deadline: Monotonic time after which no request, token refresh or rate-limit retry starts.
-                Each socket wait is clipped to the time left, so a response can finish after it; a successful one is returned.
+                Each socket wait is clipped to the time left, and a body still arriving at the deadline is cut off with `Timeout`.
+                The wait for the status line and headers is bounded per socket read only.
                 An enclosing `request_deadline` block applies when it is earlier.
 
         Returns:
@@ -217,12 +220,14 @@ class Client:
         if deadline is not None:
             retry_deadline = min(retry_deadline, deadline)
         rate_limited = False
+        # Under a deadline the body is read here, so its reading is bounded too.
+        streamed = stream or deadline is not None
         while True:
             prepped = self._session.prepare_request(request)
             response = self._session.send(
                 prepped,
                 verify=self._verify,
-                stream=stream,
+                stream=streamed,
                 timeout=self._deadline_timeout(timeout, deadline),
             )
 
@@ -230,7 +235,7 @@ class Client:
                 # refresh token and retry request - only on hopsworks
                 refreshed = self._retry_token_expired(
                     request,
-                    stream,
+                    streamed,
                     self.TOKEN_EXPIRED_RETRY_INTERVAL,
                     1,
                     timeout,
@@ -250,6 +255,8 @@ class Client:
                 break
             rate_limited = True
 
+        if deadline is not None and not stream:
+            self._read_within(response, deadline)
         if (
             deadline is not None
             and time.monotonic() >= deadline
@@ -266,6 +273,63 @@ class Client:
         if len(response.content) == 0:
             return None
         return response.json()
+
+    @staticmethod
+    def _read_within(response, deadline: float) -> None:
+        """Read the response body before the monotonic deadline, or close the response and raise `Timeout`.
+
+        A socket timeout bounds each wait for the next bytes, not the whole body: a server that sends one byte a second never trips it.
+        So each read is clipped to the time left, and at the deadline a timer shuts the socket down, which ends a read blocked inside a TLS record too.
+        """
+        raw = response.raw
+        if raw is None or response._content_consumed:
+            return
+        connection = getattr(raw, "connection", None) or getattr(
+            raw, "_connection", None
+        )
+        sock = getattr(connection, "sock", None)
+        read = getattr(raw, "read1", None) or raw.read
+
+        def cut() -> None:
+            with contextlib.suppress(OSError):
+                sock.shutdown(socket.SHUT_RDWR)
+
+        watchdog = None
+        if sock is not None:
+            watchdog = threading.Timer(max(0.0, deadline - time.monotonic()), cut)
+            watchdog.daemon = True
+            watchdog.start()
+        chunks = []
+        try:
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise requests.exceptions.Timeout(
+                        "HTTP response still arriving at its deadline"
+                    )
+                if sock is not None:
+                    sock.settimeout(remaining)
+                try:
+                    chunk = read(65536, decode_content=True)
+                except Exception as e:
+                    if time.monotonic() >= deadline:
+                        raise requests.exceptions.Timeout(
+                            "HTTP response still arriving at its deadline"
+                        ) from e
+                    if isinstance(e, urllib3.exceptions.ReadTimeoutError):
+                        raise requests.exceptions.ReadTimeout(e) from e
+                    raise requests.exceptions.ConnectionError(e) from e
+                if not chunk:
+                    break
+                chunks.append(chunk)
+        except BaseException:
+            response.close()
+            raise
+        finally:
+            if watchdog is not None:
+                watchdog.cancel()
+        response._content = b"".join(chunks)
+        response._content_consumed = True
 
     @staticmethod
     def _deadline_timeout(timeout, deadline):

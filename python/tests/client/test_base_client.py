@@ -495,6 +495,52 @@ class TestBaseClient:
             for connection, _ in accepted:
                 connection.close()
 
+    def test_request_deadline_cuts_off_a_trickling_body(self, tmp_path):
+        """Headers and the first body bytes at once, then one byte a second: the deadline still ends the read."""
+        import socket
+        import ssl
+        import time
+
+        from hopsworks_common.client.base import request_deadline
+
+        from tests.cli.serving_server import tls_context
+
+        context = tls_context(tmp_path)
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(8)
+        stop = threading.Event()
+
+        def serve():
+            raw, _ = listener.accept()
+            with context.wrap_socket(raw, server_side=True) as conn:
+                conn.recv(65536)
+                conn.sendall(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+                    b"Content-Length: 1000\r\n\r\n[1,"
+                )
+                while not stop.wait(1):
+                    try:
+                        conn.sendall(b" ")
+                    except (OSError, ssl.SSLError):
+                        return
+
+        threading.Thread(target=serve, daemon=True).start()
+        client = self._init_test_client()
+        client._session.trust_env = False
+        client._base_url = f"https://127.0.0.1:{listener.getsockname()[1]}"
+        try:
+            started = time.monotonic()
+            with (
+                request_deadline(started + 2),
+                pytest.raises(requests.exceptions.Timeout, match="still arriving"),
+            ):
+                client._send_request("GET", ["variables", "versions"])
+            assert time.monotonic() - started < 3
+        finally:
+            stop.set()
+            listener.close()
+
     def _init_test_client(self):
         client = Client()
         client._connected = True

@@ -307,7 +307,11 @@ class CutProxy(_Server):
       forward the request only ``seconds`` later;
     - ``("delay", seconds, status)``: the same, but answer the client with
       an HTML error page of that status first, as a gateway that gave up does;
-    - ``"stall"``: keep the client's connection open and never answer.
+    - ``"stall"``: keep the client's connection open and never answer;
+    - ``"trickle"``: forward, then send the answer's status line, headers and
+      first 8 body bytes at once and the rest one byte a second;
+    - ``("trickle", seconds)``: the same with a 200 answer the proxy makes
+      up, forwarding the request only ``seconds`` later.
     ``cuts`` lists every (method, path, action) it applied; ``forwarded`` is
     set once a delayed request reached the upstream.
     """
@@ -379,6 +383,11 @@ class _ProxyHandler(_Handler):
             self.end_headers()
             self.wfile.write(page)
             return
+        if action == "trickle" or (
+            isinstance(action, tuple) and action[0] == "trickle"
+        ):
+            self._trickle(method, body, action)
+            return
         status, headers, data = proxy.send_upstream(
             method, self.path, self.headers, body
         )
@@ -393,6 +402,37 @@ class _ProxyHandler(_Handler):
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
+
+    def _trickle(self, method: str, body: bytes, action) -> None:
+        """Answer with a body that starts at once and then arrives one byte a second, until the client hangs up."""
+        proxy = self.server
+        if action == "trickle":
+            status, _, data = proxy.send_upstream(method, self.path, self.headers, body)
+        else:
+            status, data = 200, b'{"id": 7, "status": "Running"}' + b" " * 4096
+            seconds, headers, target = action[1], dict(self.headers), self.path
+
+            def later():
+                time.sleep(seconds)
+                proxy.send_upstream(method, target, headers, body)
+                proxy.forwarded.set()
+
+            threading.Thread(target=later, daemon=True).start()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data[:8])
+        self.wfile.flush()
+        self.close_connection = True
+        for i in range(8, len(data)):
+            if proxy.release.wait(1):
+                return
+            try:
+                self.wfile.write(data[i : i + 1])
+                self.wfile.flush()
+            except OSError:
+                return
 
     def _cut_off(self) -> None:
         """Close the client's connection with no answer, as a reset proxy or a dropped link does."""

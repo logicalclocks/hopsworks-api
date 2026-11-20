@@ -455,3 +455,61 @@ def test_an_exported_id_holds_for_the_project_it_was_exported_with(
         ("DELETE", "/hopsworks-api/api/project/202/serving/22")
     ]
     assert set(two_projects.projects[101]["deployments"]) == {"echo"}
+
+
+# A response that starts and then arrives one byte a second never trips a socket
+# timeout; the command's deadline must still end it.
+
+
+def test_a_trickling_rollout_read_is_cut_off_at_the_timeout(backend, proxies):
+    backend.rollout_status = "Updating"
+    saved = []
+
+    def cut(method, path):
+        if method == "PUT":
+            saved.append(path)
+        elif saved and path.endswith("/serving/7"):
+            saved.append(path)
+            return "trickle" if len(saved) > 2 else None
+        return None
+
+    proxy = proxies(backend.url, cut)
+    started = time.monotonic()
+    result, out = run_json("set-env", "echo", "A=2", "--timeout", "4", root=via(proxy))
+    assert time.monotonic() - started < 5.5
+    assert ("GET", "/hopsworks-api/api/project/119/serving/7", "trickle") in proxy.cuts
+    assert (out["result"], out["accepted"], out["phase"]) == ("unknown", True, "wait")
+    assert "still arriving" in out["error"]
+
+
+def test_a_trickling_write_answer_cut_off_at_the_deadline_is_unknown(backend, proxies):
+    """The save's answer trickles past the deadline and Hopsworks gets the save only later."""
+    proxy = proxies(backend.url, lambda m, p: ("trickle", 5) if m == "PUT" else None)
+    started = time.monotonic()
+    result, out = run_json("set-env", "echo", "A=2", "--timeout", "4", root=via(proxy))
+    assert time.monotonic() - started < 5.5
+    assert (out["result"], out["accepted"], out["write"]) == ("unknown", None, "sent")
+    assert proxy.forwarded.wait(10)
+    assert backend.deployment(119, "echo").active == 2
+
+
+def test_a_trickling_login_is_cut_off_before_anything_is_sent(backend, proxies):
+    proxy = proxies(backend.url, lambda m, p: "trickle")
+    started = time.monotonic()
+    result = run("set-env", "echo", "A=2", "--timeout", "3", root=via(proxy))
+    assert time.monotonic() - started < 4.5
+    assert result.exit_code == 1
+    assert ("GET", "/hopsworks-api/api/variables/versions", "trickle") in proxy.cuts
+    assert backend.writes() == []
+
+
+def test_a_trickling_via_api_answer_ends_at_its_bound(backend, proxies, monkeypatch):
+    monkeypatch.setattr(deployment_cmd, "_VIA_API_SECONDS", 2)
+    proxy = proxies(backend.url, lambda m, p: "trickle" if "inference" in p else None)
+    started = time.monotonic()
+    result, out = run_json(
+        "predict", "echo", "--data", "{}", "--via-api", "--timing", root=via(proxy)
+    )
+    assert time.monotonic() - started < 3.5
+    assert result.exit_code == 1
+    assert out["status"] is None and out["ms"] < 3000
