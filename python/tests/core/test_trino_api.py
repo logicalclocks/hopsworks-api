@@ -18,7 +18,12 @@ import os
 from unittest.mock import Mock
 
 import pytest
-from hopsworks_common.client.exceptions import TrinoException
+import requests
+from hopsworks_common.client.exceptions import (
+    RestAPIError,
+    TrinoAccountPendingError,
+    TrinoException,
+)
 from hopsworks_common.core.trino_api import (
     DEFAULT_SOURCE,
     DEFAULT_SQLALCHEMY_SOURCE,
@@ -81,7 +86,18 @@ class TestTrinoApi:
             return_value=mock_project,
         )
 
-        return TrinoApi(project=mock_project)
+        mock_client = Mock(_project_id=119)
+        mock_client._send_request.return_value = {
+            "user": "test_project__test_user",
+            "password": "test_password",
+        }
+        mocker.patch(
+            "hopsworks_common.core.trino_api.client._get_instance",
+            return_value=mock_client,
+        )
+        api = TrinoApi(project=mock_project)
+        api._mock_client = mock_client
+        return api
 
     def test_init_with_project(self, mocker, mock_project):
         """Test TrinoApi initialization with an explicit project."""
@@ -246,13 +262,66 @@ class TestTrinoApi:
 
         # Assert
         assert password == "test_password"
+        trino_api._mock_client._send_request.assert_called_once_with(
+            "GET", ["project", 119, "trino", "credentials"]
+        )
+        trino_api._secret_api.get_secret.assert_not_called()
+
+    @staticmethod
+    def _rest_error(status, error_code, headers=None):
+        response = requests.Response()
+        response.status_code = status
+        response.headers.update(headers or {})
+        response._content = (
+            b'{"errorCode": %d, "errorMsg": "x", "usrMsg": "y"}' % error_code
+        )
+        return RestAPIError("http://x", response)
+
+    def test_get_password_pending_raises_once_with_retry_after(self, trino_api):
+        send = trino_api._mock_client._send_request
+        send.side_effect = self._rest_error(409, 540025, {"Retry-After": "7"})
+
+        with pytest.raises(
+            TrinoAccountPendingError,
+            match=r"Trino access for this project is still being set up; retry in 7 s",
+        ) as exc_info:
+            trino_api._get_password("test_project__test_user")
+
+        assert exc_info.value.retry_after == 7
+        assert send.call_count == 1
+        trino_api._secret_api.get_secret.assert_not_called()
+
+    def test_get_password_pending_default_retry_after(self, trino_api):
+        trino_api._mock_client._send_request.side_effect = self._rest_error(409, 540025)
+        with pytest.raises(TrinoAccountPendingError, match="retry in 2 s"):
+            trino_api._get_password("test_project__test_user")
+
+    def test_get_password_old_server_falls_back_to_secret(self, trino_api):
+        user = "test_project__test_user"
+        trino_api._mock_client._send_request.side_effect = self._rest_error(404, 120004)
+
+        assert trino_api._get_password(user) == "test_password"
         trino_api._secret_api.get_secret.assert_called_once_with(user)
+
+    @pytest.mark.parametrize(
+        ("status", "code"), [(404, 160048), (401, 200003), (403, 160003), (500, 120004)]
+    )
+    def test_get_password_other_errors_never_fall_back(self, trino_api, status, code):
+        error = self._rest_error(status, code)
+        trino_api._mock_client._send_request.side_effect = error
+
+        with pytest.raises(RestAPIError) as exc_info:
+            trino_api._get_password("test_project__test_user")
+
+        assert exc_info.value is error
+        trino_api._secret_api.get_secret.assert_not_called()
 
     def test_get_password_secret_not_found(self, mocker, trino_api):
         """Test retrieving password when secret does not exist."""
         # Arrange
         user = "test_project__test_user"
         trino_api._secret_api.get_secret.return_value = None
+        trino_api._mock_client._send_request.side_effect = self._rest_error(404, 120004)
 
         # Act & Assert
         with pytest.raises(
@@ -279,7 +348,7 @@ class TestTrinoApi:
         mocker.patch(
             "hopsworks_common.core.trino_api.client._is_external", return_value=False
         )
-        mock_client = Mock()
+        mock_client = trino_api._mock_client
         mocker.patch(
             "hopsworks_common.core.trino_api.client._get_instance",
             return_value=mock_client,
@@ -320,7 +389,7 @@ class TestTrinoApi:
         trino_api._variable_api._get_loadbalancer_external_domain.return_value = (
             "trino.example.com"
         )
-        mock_client = Mock()
+        mock_client = trino_api._mock_client
         mocker.patch(
             "hopsworks_common.core.trino_api.client._get_instance",
             return_value=mock_client,
@@ -362,7 +431,7 @@ class TestTrinoApi:
         trino_api._variable_api._get_loadbalancer_external_domain.return_value = (
             "trino.example.com"
         )
-        mock_client = Mock()
+        mock_client = trino_api._mock_client
         mocker.patch(
             "hopsworks_common.core.trino_api.client._get_instance",
             return_value=mock_client,
@@ -405,7 +474,7 @@ class TestTrinoApi:
         mocker.patch(
             "hopsworks_common.core.trino_api.client._is_external", return_value=False
         )
-        mock_client = Mock()
+        mock_client = trino_api._mock_client
         mocker.patch(
             "hopsworks_common.core.trino_api.client._get_instance",
             return_value=mock_client,
@@ -451,7 +520,7 @@ class TestTrinoApi:
         trino_api._variable_api._get_loadbalancer_external_domain.return_value = (
             "trino.example.com"
         )
-        mock_client = Mock()
+        mock_client = trino_api._mock_client
         mocker.patch(
             "hopsworks_common.core.trino_api.client._get_instance",
             return_value=mock_client,
@@ -490,7 +559,7 @@ class TestTrinoApi:
         trino_api._variable_api._get_loadbalancer_external_domain.return_value = (
             "trino.example.com"
         )
-        mock_client = Mock()
+        mock_client = trino_api._mock_client
         mocker.patch(
             "hopsworks_common.core.trino_api.client._get_instance",
             return_value=mock_client,
@@ -530,7 +599,7 @@ class TestTrinoApi:
         mocker.patch(
             "hopsworks_common.core.trino_api.client._is_external", return_value=False
         )
-        mock_client = Mock()
+        mock_client = trino_api._mock_client
         mock_client._get_ca_chain_path.return_value = "/tmp/ca.pem"
         mocker.patch(
             "hopsworks_common.core.trino_api.client._get_instance",
@@ -543,7 +612,8 @@ class TestTrinoApi:
         trino_api.connect(catalog="iceberg")
         trino_api.connect(extra_credential=[("custom", "x")])
 
-        mock_client._send_request.assert_not_called()
+        for call in mock_client._send_request.call_args_list:
+            assert call.args == ("GET", ["project", 119, "trino", "credentials"])
         assert "extra_credential" not in mock_trino_connect.call_args_list[0].kwargs
         assert mock_trino_connect.call_args_list[1].kwargs["extra_credential"] == [
             ("custom", "x")

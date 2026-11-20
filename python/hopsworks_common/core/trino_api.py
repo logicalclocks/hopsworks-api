@@ -27,7 +27,11 @@ from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
 from hopsworks_common import client, usage
-from hopsworks_common.client.exceptions import TrinoException
+from hopsworks_common.client.exceptions import (
+    RestAPIError,
+    TrinoAccountPendingError,
+    TrinoException,
+)
 from hopsworks_common.core import project_api, secret_api
 from hopsworks_common.core.constants import HAS_TRINO
 from hopsworks_common.core.variable_api import VariableApi
@@ -65,6 +69,8 @@ _logger = logging.getLogger(__name__)
 
 TRINO_SERVICE_NAME = "coordinator.trino.service"
 TRINO_PORT = 8443
+UNKNOWN_ROUTE_ERROR_CODE = 120004
+DEFAULT_RETRY_AFTER = 2
 DEFAULT_SOURCE = "hopsworks-trino-python-client"
 DEFAULT_SQLALCHEMY_SOURCE = "hopsworks-trino-sqlalchemy"
 HTTPS = "https"
@@ -187,7 +193,10 @@ class TrinoApi:
         return TRINO_PORT
 
     def _get_password(self, user: str) -> str:
-        """Retrieve the password for the given user from secrets storage.
+        """Retrieve the password for the given user.
+
+        Asks the project's Trino credentials endpoint first. A server without the endpoint
+        (404 with error code 120004) is read through the user's secret as before.
 
         Parameters:
             user: The username for which to retrieve the password.
@@ -196,9 +205,23 @@ class TrinoApi:
             The password for the given user.
 
         Raises:
+            hopsworks_common.client.exceptions.TrinoAccountPendingError:
+                If the Trino account of the project member is still being set up.
             hopsworks_common.client.exceptions.TrinoException:
                 If the password cannot be retrieved.
         """
+        _client = client._get_instance()
+        try:
+            credentials = _client._send_request(
+                "GET", ["project", _client._project_id, "trino", "credentials"]
+            )
+            return credentials["password"]
+        except RestAPIError as e:
+            status = e.response.status_code
+            if status == 409:
+                raise TrinoAccountPendingError(self._retry_after(e.response)) from e
+            if not (status == 404 and e.error_code == UNKNOWN_ROUTE_ERROR_CODE):
+                raise
         secret = self._secret_api.get_secret(user)
         if secret is None:
             raise TrinoException(
@@ -206,6 +229,13 @@ class TrinoApi:
                 "Ensure that the secret exists and is accessible."
             )
         return secret.value
+
+    @staticmethod
+    def _retry_after(response) -> int:
+        try:
+            return int(response.headers.get("Retry-After"))
+        except (TypeError, ValueError):
+            return DEFAULT_RETRY_AFTER
 
     @public
     @usage._method_logger

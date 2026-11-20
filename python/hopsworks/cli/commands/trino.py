@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 import click
 from hopsworks.cli import output, session
+from hopsworks_common.client.exceptions import TrinoAccountPendingError
 
 
 if TYPE_CHECKING:
@@ -63,6 +64,8 @@ def _connect(ctx: click.Context, catalog: str | None, schema: str | None) -> Any
     verify = cfg.hostname_verification if cfg.hostname_verification_explicit else True
     try:
         return api.connect(catalog=cat, schema=sch, verify=verify)
+    except TrinoAccountPendingError as exc:
+        raise click.ClickException(str(exc)) from exc
     except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
         raise click.ClickException(f"Trino connect failed: {exc}") from exc
 
@@ -323,6 +326,8 @@ def trino_info(ctx: click.Context) -> None:
         host = api.get_host()
         port = api.get_port()
         user, _ = api.get_basic_auth()
+    except TrinoAccountPendingError as exc:
+        raise click.ClickException(str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Trino info failed: {exc}") from exc
     payload = {"host": host, "port": port, "user": user}
