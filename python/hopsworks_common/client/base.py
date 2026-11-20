@@ -30,7 +30,10 @@ import time
 
 import furl
 import requests
+import requests.adapters
 import urllib3
+import urllib3.connection
+import urllib3.connectionpool
 from cryptography.hazmat.primitives.serialization import (
     Encoding,
     NoEncryption,
@@ -71,6 +74,66 @@ def request_deadline(deadline: float):
         yield
     finally:
         _request_deadline.reset(token)
+
+
+# The sockets of the request running under a deadline, for its timer to shut down.
+_watched_sockets: contextvars.ContextVar[list | None] = contextvars.ContextVar(
+    "hopsworks_watched_sockets", default=None
+)
+
+
+def _watch(sock) -> None:
+    sockets = _watched_sockets.get()
+    if sock is not None and sockets is not None:
+        sockets.append(sock)
+
+
+class _WatchedConnection:
+    """Registers the connection's socket as it connects, and again on each request over a kept-alive one."""
+
+    def _new_conn(self):
+        sock = super()._new_conn()
+        _watch(sock)
+        return sock
+
+    def request(self, *args, **kwargs):
+        _watch(self.sock)
+        return super().request(*args, **kwargs)
+
+
+class _WatchedHTTPConnection(_WatchedConnection, urllib3.connection.HTTPConnection):
+    pass
+
+
+class _WatchedHTTPSConnection(_WatchedConnection, urllib3.connection.HTTPSConnection):
+    pass
+
+
+class _WatchedHTTPConnectionPool(urllib3.connectionpool.HTTPConnectionPool):
+    ConnectionCls = _WatchedHTTPConnection
+
+
+class _WatchedHTTPSConnectionPool(urllib3.connectionpool.HTTPSConnectionPool):
+    ConnectionCls = _WatchedHTTPSConnection
+
+
+_WATCHED_POOLS = {
+    "http": _WatchedHTTPConnectionPool,
+    "https": _WatchedHTTPSConnectionPool,
+}
+
+
+class _WatchedAdapter(requests.adapters.HTTPAdapter):
+    """A requests adapter whose connections register their sockets with the request running under a deadline."""
+
+    def init_poolmanager(self, *args, **kwargs):
+        super().init_poolmanager(*args, **kwargs)
+        self.poolmanager.pool_classes_by_scheme = _WATCHED_POOLS
+
+    def proxy_manager_for(self, proxy, **proxy_kwargs):
+        manager = super().proxy_manager_for(proxy, **proxy_kwargs)
+        manager.pool_classes_by_scheme = _WATCHED_POOLS
+        return manager
 
 
 @also_available_as(
@@ -180,8 +243,8 @@ class Client:
             timeout: How long to wait for the connection and for each block of the response, in seconds, passed straight through to `requests`.
                 Without it a stalled connection blocks the caller indefinitely, so pass one wherever the caller has its own deadline to honour.
             deadline: Monotonic time after which no request, token refresh or rate-limit retry starts.
-                Each socket wait is clipped to the time left, and a body still arriving at the deadline is cut off with `Timeout`.
-                The wait for the status line and headers is bounded per socket read only.
+                Each socket wait is clipped to the time left, and at the deadline the request's sockets are shut down, whatever phase it is in (connect, status and headers, body, rate-limit and token retries): it raises `Timeout`.
+                With `stream`, the caller's reading of the returned body is not bounded.
                 An enclosing `request_deadline` block applies when it is earlier.
 
         Returns:
@@ -219,15 +282,77 @@ class Client:
         retry_deadline = time.monotonic() + self.RATE_LIMITED_RETRY_BUDGET_SECONDS
         if deadline is not None:
             retry_deadline = min(retry_deadline, deadline)
+        if deadline is None:
+            return self._exchange(
+                request, url, stream, timeout, None, replayable, retry_deadline
+            )
+        return self._exchange_within(
+            request, url, stream, timeout, deadline, replayable, retry_deadline
+        )
+
+    def _exchange_within(
+        self, request, url, stream, timeout, deadline, replayable, retry_deadline
+    ):
+        """Run `_exchange` with every socket it opens or reuses shut down at the deadline.
+
+        A socket timeout bounds each wait for the next bytes, not a status line, headers or body that arrive one byte a second.
+        The connections register their sockets as they connect or are reused (`_WatchedAdapter`), so the timer cuts the request in any phase:
+        connect, status and headers, a body read for the result, a rate-limit check or a token retry.
+        With `stream=True` the caller's own reading of the body comes after this returns and is not bounded.
+        """
+        self._watch_session()
+        sockets = []
+        fired = threading.Event()
+
+        def cut() -> None:
+            fired.set()
+            for sock in list(sockets):
+                with contextlib.suppress(OSError):
+                    sock.shutdown(socket.SHUT_RDWR)
+
+        timer = threading.Timer(max(0.0, deadline - time.monotonic()), cut)
+        timer.daemon = True
+        token = _watched_sockets.set(sockets)
+        timer.start()
+        try:
+            result = self._exchange(
+                request, url, stream, timeout, deadline, replayable, retry_deadline
+            )
+        except Exception as e:
+            if fired.is_set():
+                raise requests.exceptions.Timeout(
+                    "HTTP request still running at its deadline"
+                ) from e
+            raise
+        finally:
+            timer.cancel()
+            _watched_sockets.reset(token)
+        if fired.is_set():
+            # The cut may have ended a body early without an error.
+            if stream:
+                result.close()
+            raise requests.exceptions.Timeout(
+                "HTTP request still running at its deadline"
+            )
+        return result
+
+    def _watch_session(self) -> None:
+        for prefix in ("https://", "http://"):
+            adapter = self._session.adapters.get(prefix)
+            if type(adapter) is requests.adapters.HTTPAdapter:
+                self._session.mount(prefix, _WatchedAdapter())
+                adapter.close()
+
+    def _exchange(
+        self, request, url, stream, timeout, deadline, replayable, retry_deadline
+    ):
         rate_limited = False
-        # Under a deadline the body is read here, so its reading is bounded too.
-        streamed = stream or deadline is not None
         while True:
             prepped = self._session.prepare_request(request)
             response = self._session.send(
                 prepped,
                 verify=self._verify,
-                stream=streamed,
+                stream=stream,
                 timeout=self._deadline_timeout(timeout, deadline),
             )
 
@@ -235,7 +360,7 @@ class Client:
                 # refresh token and retry request - only on hopsworks
                 refreshed = self._retry_token_expired(
                     request,
-                    streamed,
+                    stream,
                     self.TOKEN_EXPIRED_RETRY_INTERVAL,
                     1,
                     timeout,
@@ -255,8 +380,6 @@ class Client:
                 break
             rate_limited = True
 
-        if deadline is not None and not stream:
-            self._read_within(response, deadline)
         if (
             deadline is not None
             and time.monotonic() >= deadline
@@ -273,63 +396,6 @@ class Client:
         if len(response.content) == 0:
             return None
         return response.json()
-
-    @staticmethod
-    def _read_within(response, deadline: float) -> None:
-        """Read the response body before the monotonic deadline, or close the response and raise `Timeout`.
-
-        A socket timeout bounds each wait for the next bytes, not the whole body: a server that sends one byte a second never trips it.
-        So each read is clipped to the time left, and at the deadline a timer shuts the socket down, which ends a read blocked inside a TLS record too.
-        """
-        raw = response.raw
-        if raw is None or response._content_consumed:
-            return
-        connection = getattr(raw, "connection", None) or getattr(
-            raw, "_connection", None
-        )
-        sock = getattr(connection, "sock", None)
-        read = getattr(raw, "read1", None) or raw.read
-
-        def cut() -> None:
-            with contextlib.suppress(OSError):
-                sock.shutdown(socket.SHUT_RDWR)
-
-        watchdog = None
-        if sock is not None:
-            watchdog = threading.Timer(max(0.0, deadline - time.monotonic()), cut)
-            watchdog.daemon = True
-            watchdog.start()
-        chunks = []
-        try:
-            while True:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise requests.exceptions.Timeout(
-                        "HTTP response still arriving at its deadline"
-                    )
-                if sock is not None:
-                    sock.settimeout(remaining)
-                try:
-                    chunk = read(65536, decode_content=True)
-                except Exception as e:
-                    if time.monotonic() >= deadline:
-                        raise requests.exceptions.Timeout(
-                            "HTTP response still arriving at its deadline"
-                        ) from e
-                    if isinstance(e, urllib3.exceptions.ReadTimeoutError):
-                        raise requests.exceptions.ReadTimeout(e) from e
-                    raise requests.exceptions.ConnectionError(e) from e
-                if not chunk:
-                    break
-                chunks.append(chunk)
-        except BaseException:
-            response.close()
-            raise
-        finally:
-            if watchdog is not None:
-                watchdog.cancel()
-        response._content = b"".join(chunks)
-        response._content_consumed = True
 
     @staticmethod
     def _deadline_timeout(timeout, deadline):

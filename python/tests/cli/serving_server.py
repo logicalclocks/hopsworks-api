@@ -312,6 +312,10 @@ class CutProxy(_Server):
       first 8 body bytes at once and the rest one byte a second;
     - ``("trickle", seconds)``: the same with a 200 answer the proxy makes
       up, forwarding the request only ``seconds`` later.
+    - ``"trickle_head"``: forward, then send the first 12 bytes of the
+      status line at once and the rest of the answer one byte a second;
+    - ``"trickle_429"``: answer 429 with ``Retry-After: 1`` and a body that
+      starts at once and then arrives one byte a second, without forwarding.
     ``cuts`` lists every (method, path, action) it applied; ``forwarded`` is
     set once a delayed request reached the upstream.
     """
@@ -383,8 +387,10 @@ class _ProxyHandler(_Handler):
             self.end_headers()
             self.wfile.write(page)
             return
-        if action == "trickle" or (
-            isinstance(action, tuple) and action[0] == "trickle"
+        if (action if isinstance(action, str) else (action or ("",))[0]) in (
+            "trickle",
+            "trickle_head",
+            "trickle_429",
         ):
             self._trickle(method, body, action)
             return
@@ -404,12 +410,15 @@ class _ProxyHandler(_Handler):
         self.wfile.write(data)
 
     def _trickle(self, method: str, body: bytes, action) -> None:
-        """Answer with a body that starts at once and then arrives one byte a second, until the client hangs up."""
+        """Answer with bytes that start at once and then arrive one byte a second, until the client hangs up."""
         proxy = self.server
-        if action == "trickle":
-            status, _, data = proxy.send_upstream(method, self.path, self.headers, body)
-        else:
-            status, data = 200, b'{"id": 7, "status": "Running"}' + b" " * 4096
+        kind = action if isinstance(action, str) else action[0]
+        extra = []
+        if kind == "trickle_429":
+            status, data = 429, b'{"errorCode": 120015, "usrMsg": "Too many requests"}'
+            extra = [("Retry-After", "1")]
+        elif isinstance(action, tuple):
+            status, data = 200, b'{"id": 7, "status": "Running"}'
             seconds, headers, target = action[1], dict(self.headers), self.path
 
             def later():
@@ -418,18 +427,26 @@ class _ProxyHandler(_Handler):
                 proxy.forwarded.set()
 
             threading.Thread(target=later, daemon=True).start()
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data[:8])
-        self.wfile.flush()
+        else:
+            status, _, data = proxy.send_upstream(method, self.path, self.headers, body)
+        data += b" " * 4096
+        head = [f"HTTP/1.1 {status} {http.client.responses.get(status, '')}"]
+        head += [f"{k}: {v}" for k, v in [("Content-Type", "application/json"), *extra]]
+        head += [f"Content-Length: {len(data)}", "Connection: close", "", ""]
+        raw = "\r\n".join(head).encode() + data
+        # trickle_head: only the first bytes of the status line at once.
+        at_once = 12 if kind == "trickle_head" else len(raw) - len(data) + 8
         self.close_connection = True
-        for i in range(8, len(data)):
+        try:
+            self.wfile.write(raw[:at_once])
+            self.wfile.flush()
+        except OSError:
+            return
+        for i in range(at_once, len(raw)):
             if proxy.release.wait(1):
                 return
             try:
-                self.wfile.write(data[i : i + 1])
+                self.wfile.write(raw[i : i + 1])
                 self.wfile.flush()
             except OSError:
                 return
