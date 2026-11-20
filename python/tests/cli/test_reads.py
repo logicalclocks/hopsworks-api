@@ -217,6 +217,58 @@ def test_fv_list_hits_rest_endpoint(mock_project):
     assert "fraud_fv" in result.output
 
 
+def test_fv_preview_reads_the_preview_endpoint(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fs.id = 7
+    fv = mock.MagicMock()
+    fv.name, fv.version = "fraud_fv", 2
+    fs.get_feature_view.return_value = fv
+    payload = {
+        "items": [
+            {
+                "row": [
+                    {"columnName": "id", "columnValue": "1"},
+                    {"columnName": "amount", "columnValue": "9.5"},
+                ]
+            }
+        ]
+    }
+    with (
+        mock.patch(
+            "hopsworks_common.core.rest._project_path",
+            side_effect=lambda *tail: ["project", 1, *tail],
+        ),
+        mock.patch(
+            "hopsworks_common.core.rest._send_request", return_value=payload
+        ) as send,
+    ):
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "fv",
+                "preview",
+                "fraud_fv",
+                "--limit",
+                "5",
+                "--td-version",
+                "3",
+            ],
+        )
+    assert result.exit_code == 0, result.output
+    assert send.call_args.args[1][-7:] == [
+        "featurestores",
+        7,
+        "featureview",
+        "fraud_fv",
+        "version",
+        2,
+        "preview",
+    ]
+    assert send.call_args.kwargs["query_params"] == {"limit": 5, "td_version": 3}
+    assert json.loads(result.output) == [{"id": "1", "amount": "9.5"}]
+
+
 def test_fv_info(mock_project):
     fs = mock_project.get_feature_store.return_value
     fv = mock.MagicMock()
