@@ -200,9 +200,8 @@ from datetime import datetime
 from airflow import DAG
 from hopsworks.airflow.operators import HopsworksLaunchOperator
 
-# Project-scoped Hopsworks API key. The operators / sensors below pick this up
-# via the same env-var fallback that jobs / notebooks / terminal use. Re-key
-# the DAG (regenerate from the UI) to rotate.
+# No API key in the file: Hopsworks keeps a project-scoped key per DAG in an
+# Airflow Variable, and the operators / sensors read it at task runtime.
 
 with DAG(
     dag_id="p_<project>_<id>__feature_pipeline",

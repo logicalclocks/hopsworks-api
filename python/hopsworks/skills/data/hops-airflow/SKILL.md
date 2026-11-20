@@ -37,6 +37,8 @@ Ray, or a feature pipeline), then write a DAG that launches them in order.
 - **Do not put an API key in the DAG file.** Each DAG gets a project-scoped
   Hopsworks API key stored as an Airflow Variable and read by the hook at task
   runtime, so the file carries no secret and is safe to inspect and commit.
+  A hand-written file gets its key within three minutes of the upload; a run
+  triggered before that fails with "no Hopsworks credentials".
 - A launch and its sensor are two tasks: `HopsworksLaunchOperator` returns once
   the job is *started*, and `HopsworksJobSuccessSensor` is what waits for it to
   finish. Chaining launches without the sensor gives you a race, not a pipeline.
