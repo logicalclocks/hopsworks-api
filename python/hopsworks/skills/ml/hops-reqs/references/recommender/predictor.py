@@ -33,17 +33,24 @@ reason, prod_name, ..., image_url}], "retrieved", "already_bought",
 
 from __future__ import annotations
 
+import asyncio
 import glob
 import json
 import math
 import os
 import re
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 
 import numpy as np
 import pandas as pd
 
+# Requests served at once per replica. A request spends most of its time waiting on
+# the online store and the vector index, so threads overlap those waits; KServe runs a
+# blocking predict on its event loop, one request at a time.
+WORKERS = int(os.environ.get("RECS_WORKERS", "8"))
 RETRIEVED = 100
 SESSION_RETRIEVED = 50
 SESSION = timedelta(days=1)
@@ -195,7 +202,9 @@ class Predict:
         with open(os.path.join(query_dir, "customer_vocab.json"), encoding="utf-8") as f:
             self.customer_vocab = json.load(f)
         self.torch = torch
-        self.rng = np.random.default_rng()
+        # numpy Generators are not thread-safe: one per worker thread.
+        self._local = threading.local()
+        self.pool = ThreadPoolExecutor(WORKERS, thread_name_prefix="recommend")
 
         self.customers = fs.get_feature_view("customers", version=1)
         self.articles = fs.get_feature_view("articles", version=1)
@@ -325,7 +334,21 @@ class Predict:
             "timings_ms": timings,
         }
 
-    def predict(self, inputs):
+    @property
+    def rng(self) -> np.random.Generator:
+        """This worker thread's random generator."""
+        rng = getattr(self._local, "rng", None)
+        if rng is None:
+            rng = self._local.rng = np.random.default_rng()
+        return rng
+
+    async def predict(self, inputs):
+        """KServe awaits this; the blocking work runs on the worker pool so requests overlap."""
+        return await asyncio.get_running_loop().run_in_executor(
+            self.pool, self.predict_blocking, inputs
+        )
+
+    def predict_blocking(self, inputs):
         """KServe hands over the request's instances; each is one customer."""
         if isinstance(inputs, dict):
             inputs = inputs.get("instances", [inputs])

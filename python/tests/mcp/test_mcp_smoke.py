@@ -33,6 +33,23 @@ pytest.importorskip("fastmcp")
 
 # The command-executing tools, gated behind enable_shell_tools.
 _SHELL_TOOLS = {"start_session", "add_input", "get_output"}
+_SEMANTIC_LAYER_TOOLS = (
+    "list_semantic_projects",
+    "list_metrics",
+    "list_saved_queries",
+    "list_exports",
+    "list_query_history",
+    "get_dimensions",
+    "get_entities",
+    "get_dimension_values",
+    "query_metrics",
+    "query_saved_query",
+    "get_metrics_compiled_sql",
+    "get_semantic_project_tags",
+    "validate_semantic_project",
+    "compile_semantic_project",
+    "create_dashboard_from_metrics",
+)
 
 
 def test_mcp_server_registers_tools():
@@ -41,7 +58,7 @@ def test_mcp_server_registers_tools():
 
     tools = asyncio.run(mcp.get_tools())
     assert len(tools) >= 15, f"expected the MCP tools to register, got {len(tools)}"
-    for expected in ("login", "use_project", "create_project"):
+    for expected in ("login", "use_project", "create_project", *_SEMANTIC_LAYER_TOOLS):
         assert expected in tools, f"MCP tool '{expected}' is missing"
     # Security: shell tools must not be on the default surface.
     assert not (_SHELL_TOOLS & set(tools)), (
@@ -71,3 +88,25 @@ def test_network_bind_without_auth_is_refused():
     )
     assert result.exit_code != 0
     assert "Refusing to bind" in result.output
+
+
+def test_a_duplicate_tool_name_fails_the_build():
+    """A second registration under a taken name would silently replace the first tool."""
+    from hopsworks.mcp import server
+    from hopsworks.mcp.tools import FeatureGroupTools
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(server, "SemanticLayerTools", FeatureGroupTools)
+        with pytest.raises(ValueError, match="already exists"):
+            server.build_mcp()
+
+
+def test_login_opens_the_named_project(mocker):
+    """The login tool's project argument reaches hopsworks.login instead of the first project."""
+    from hopsworks.mcp.utils import auth
+
+    login = mocker.patch("hopsworks.login")
+
+    auth.login(host="h", project="sales", api_key_value="k")
+
+    assert login.call_args.kwargs["project"] == "sales"

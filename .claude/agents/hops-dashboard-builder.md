@@ -31,6 +31,28 @@ Superset is reachable only inside the cluster.
 
   Pass `--args "--delete"` or `--args "--list"` the same way.
 
+## Metrics
+
+A chart of a business metric (revenue, orders, conversion) reads that metric's governed definition when
+one exists: look in `hops semantic list` and `hops search <term> --type metric`, and load
+**hops-semantic** for its group-bys. Try the semantic connection first: `hops semantic dashboard`, or a program's `SEMANTIC_DATASETS`
+entry (hops-superset's `references/semantic_layer.md`). Only code 600014
+(`SEMANTIC_LAYER_DASHBOARDS_DISABLED`) means there is none; then build the dataset over the metric's
+SQL. Any other failure, an authentication error, a 5xx or 600015 (`SEMANTIC_LAYER_SUPERSET_ERROR`),
+ends the run with that error; never look a database up by name.
+
+- **A semantic connection:** a dashboard that shows only metrics needs no program.
+  `hops semantic dashboard <semantic project> --metrics ... [--group-by ...] --title <title>` builds it, and
+  edits it when run again with the same title; return the URL it prints. Any other chart of a metric
+  names a `SEMANTIC_DATASETS` entry as its `dataset`, reads metrics by name, and follows that file's
+  rules for charts on the semantic project's tables.
+- **No semantic connection:** build the chart's dataset from the metric query's SQL (`hops semantic
+  sql`, or `SemanticProject.sql` in the program) rather than `SELECT *` over the feature group, and
+  record it in `METRIC_DATASETS`.
+
+The docstring names the semantic project and its metrics. A metric no semantic project defines is
+computed from the feature group as before.
+
 ## Actions
 
 - **create:** fill the skeleton: the docstring (title, feature groups, charts), `TITLE`,

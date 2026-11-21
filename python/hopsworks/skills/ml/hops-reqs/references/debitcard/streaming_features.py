@@ -14,13 +14,12 @@ card one open window at a time, so the upsert per card is deterministic.
 import argparse
 import time
 
-from pyspark.sql import functions as F
-from pyspark.sql.avro.functions import from_avro
-
 import hopsworks
 from hopsworks import build_spark
 from hsfs.core import kafka_engine
 from hsfs.feature import Feature
+from pyspark.sql import functions as F
+from pyspark.sql.avro.functions import from_avro
 
 SOURCE = "card_authorisations_live"
 OUTPUT = "card_window_aggregates"
@@ -166,6 +165,9 @@ def main():
     parser.add_argument(
         "--watermark-minutes", type=int, default=15, help="how late an authorisation may arrive"
     )
+    # Every asset's description starts with the system's slug, which is how deleting the
+    # system with its assets tells its own from another's.
+    parser.add_argument("--system", default="debitcard-example", help="the system's slug")
     args = parser.parse_args()
 
     spark = build_spark("card_window_aggregates")
@@ -180,7 +182,8 @@ def main():
     fg = fs.get_or_create_feature_group(
         name=OUTPUT,
         version=1,
-        description=f"Each card's authorisations over a {args.window_minutes}-minute tumbling window, computed by "
+        description=f"{args.system}: each card's authorisations over a {args.window_minutes}-minute "
+        "tumbling window, computed by "
         "Spark Structured Streaming: velocity, amounts, declines, diversity and risk scores. Read online by the "
         "fraud deployment.",
         primary_key=["card_number"],

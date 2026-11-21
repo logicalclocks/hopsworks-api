@@ -58,8 +58,17 @@ a question you are about to ask depends on.
   when a job is submitted, on every poll of a running job (elapsed against the budget), when a run
   or attempt completes (its row), and when a phase ends (what it did, the new remaining estimate).
   Nothing else. Update `system.progress` at each of these events.
-- **Nothing runs on the laptop.** Pipelines, tests and benchmarks run as Hopsworks jobs or
-  deployments, apps as Hopsworks apps. Unit tests are the exception.
+- **The system runs as jobs; one-off programs run where they finish first.** Every program the
+  system runs again (the data, feature, training and inference pipelines, the benchmark of a
+  realtime deployment, the app) is a Hopsworks job, deployment or app, and runs as one at least
+  once during the build. A program run once for a decision or a check (EDA, a research run,
+  integration tests, a shake-out of a pipeline into a test group) runs in the Terminal when it
+  fits: no GPU, the data it holds under a third of the Terminal's memory, and
+  `hops env libraries <env> --diff` empty for the libraries it imports, `<env>` being the job's
+  environment. The Terminal's limits are its cgroup's (`cat /sys/fs/cgroup/memory.max
+  /sys/fs/cgroup/cpu.max`); `free` and `nproc` show the node's. Install a missing test tool such
+  as pytest with `uv pip install`, never a library the pipelines import, and run it with `TZ=UTC`
+  as jobs run (the Terminal's own zone is the user's). Otherwise it runs as a job.
 - **Lint before a phase is validated.** Before a phase's tests run, and before it is recorded
   `met`, run in the system directory `ruff format .` then `ruff check --fix .` (with
   `uv tool run ruff@0.15.6` when `ruff` is not installed; the rules are in `pyproject.toml`), fix by hand
@@ -256,7 +265,12 @@ pretrained detector, and the model is embedded in the app, so `infer` measures t
 latency instead of deploying. Hops Run with Kumo
 Tabular (the `run-example`) is built by `hops-reqs/references/kumo-run.md` from `kumo_run/`: `data`
 and `features` are `skipped`, `train` registers NVIDIA's pretrained in-context classifier, and
-`infer` deploys it and measures the game's decisions. Any other task outside classification, regression and forecasting,
+`infer` deploys it and measures the game's decisions. Gardening machine leasing (the
+`leasing-example`) is built by `hops-reqs/references/leasing.md` from `leasing/`: its `data` runs
+that generator, `features` is `skipped` because every feature is a model-dependent transformation
+attached to the feature view, `train` creates the feature view, trains XGBoost and registers Kumo
+Tabular (medium), and both models run in the app, so `infer` measures the app's decisions instead
+of deploying. Any other task outside classification, regression and forecasting,
 or another agent system, is captured in full and the command stops after `reqs` saying v1 builds
 none of it. Print the requirements back and ask to proceed; write `requirements.status: met` and
 `system.status: building` on yes.
@@ -347,8 +361,11 @@ instruction: <the phase instruction, or "none">
 ```
 
 On `unmet`, ask with the measured table: change the SLA, change the design (realtime to batch),
-or accept as is (`inference.status: accepted` and a `decisions` line).
+or accept as is (`inference.status: accepted` and a `decisions` line). An example system asks
+neither this nor for a larger budget mid-round: it records `accepted` with the table, and the
+summary names the gap, which is a defect of the example's reference code to fix.
 When the agent's `recommendation.detail` reports monitoring it could not build (no alert receiver, feature monitoring off on the cluster), print it with what `inference.monitoring.unavailable` records and ask once whether to create the receiver (`hops alert receiver create`) and finish it.
+An example system never asks: it leaves the gap in `unavailable` and names it in the final summary.
 
 ### app
 
@@ -362,6 +379,14 @@ the deployment for realtime; the entity, the consumers), and spawn **hops-dashbo
 `program: <slug>/dashboards/<slug>.py`) or **hops-app-builder** (`action: create`, the source under
 `<slug>/app/`) with the prompt `/hops` gives them, so the program or source is committed with the
 system. Record `app`. On no, `app: {wanted: false, status: skipped}`.
+
+When `app.wanted` is recorded and `training` is satisfied, spawn the builder in the same turn as the
+**hops-infer-agent**, not after it: the app takes as long as an inference round's jobs, and the
+two only meet at the prediction feature group or deployment the inference design names. Add to the
+builder's prompt: smoke-test the reads only once that feature group or deployment exists, polling
+`hops fg info` or `hops deployment status` meanwhile; commit only paths under `<slug>/app/` (or
+the dashboard program), never `git add -A`, since the infer agent commits in the same tree. Record
+`app` after both return. When inference ends `unmet`, the app waits with it for the user's answer.
 
 ### verify
 

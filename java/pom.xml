@@ -12,7 +12,6 @@
         <module>hsfs</module>
         <module>spark</module>
         <module>flink</module>
-        <module>beam</module>
     </modules>
 
     <properties>
@@ -310,7 +309,6 @@
                     <sourceFileExcludes>
                         <exclude>**/MainClass.java</exclude>
                         <!-- Currently this is not supported -->
-                        <exclude>**/beam/constructor/*</exclude>
                         <exclude>**/flink/constructor/*</exclude>
                     </sourceFileExcludes>
                 </configuration>
