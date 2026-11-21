@@ -39,6 +39,11 @@ Inside a Hopsworks terminal pod, authentication is automatic via JWT.
 hops project list                         # List projects
 hops project use <name>                   # Switch active project
 hops project info                         # Current project details
+hops project members list                 # Members, their role, the owner
+hops project members add <email> --role "Data scientist"  # Data owners add, set and remove
+hops project members set <email> --role "Data owner"
+hops project members remove <email> --yes # Pauses the schedules of jobs they created; --keep-schedules
+hops project members transfer <email> --yes  # Owner only, to a Data owner; the new owner pays
 ```
 
 ## Feature Groups
