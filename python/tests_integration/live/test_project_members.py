@@ -241,6 +241,13 @@ def test_the_owner_adds_sets_transfers_and_removes_a_member(live):
         moved = owner("transfer", member_email, "--yes")
         assert moved.returncode == 0, moved.stderr[-2000:]
         assert _owner(live, live["member"], project_id).lower() == member_email.lower()
+        # The owner's cached session still holds the project as it read it before the transfer.
+        after_move = owner("list")
+        assert after_move.returncode == 0, after_move.stderr[-2000:]
+        new_owner_row = next(
+            line for line in after_move.stdout.splitlines() if member_email in line
+        )
+        assert new_owner_row.rstrip().endswith("*")
         back = member("transfer", owner_email, "--yes")
         assert back.returncode == 0, back.stderr[-2000:]
         assert _owner(live, live["owner"], project_id).lower() == owner_email.lower()

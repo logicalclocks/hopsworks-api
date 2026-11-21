@@ -177,7 +177,7 @@ def members_list(ctx: click.Context) -> None:
         members = project.get_members()
     except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
         raise click.ClickException(f"Could not list members: {exc}") from exc
-    owner = (getattr(project, "owner", None) or "").casefold()
+    owner = _owner_email(project)
     rows = []
     for m in sorted(members, key=lambda m: (m.email or "").casefold()):
         name = " ".join(p for p in (m.first_name, m.last_name) if p)
@@ -190,6 +190,17 @@ def members_list(ctx: click.Context) -> None:
             ]
         )
     output.print_table(["EMAIL", "NAME", "ROLE", "OWNER"], rows)
+
+
+def _owner_email(project: Any) -> str:
+    """The project's owner read now: a cached project keeps the owner it was read with."""
+    from hopsworks_common import client  # noqa: PLC0415
+
+    try:
+        raw = client._get_instance()._send_request("GET", ["project", project.id])
+    except Exception:  # noqa: BLE001 - the list still shows without the marker
+        return ""
+    return (raw.get("owner") or "").casefold()
 
 
 @members_group.command("add")

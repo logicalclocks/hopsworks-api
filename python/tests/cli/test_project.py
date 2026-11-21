@@ -135,8 +135,13 @@ def _members_project():
     return project
 
 
-def _members(args, project, input=None):
-    with mock.patch.object(session, "get_project", return_value=project):
+def _members(args, project, input=None, owner="Owner@example.com"):
+    fake_client = mock.Mock()
+    fake_client._send_request.return_value = {"owner": owner}
+    with (
+        mock.patch.object(session, "get_project", return_value=project),
+        mock.patch("hopsworks_common.client._get_instance", return_value=fake_client),
+    ):
         return CliRunner().invoke(cli, ["project", "members", *args], input=input)
 
 
@@ -147,6 +152,18 @@ def test_members_list_sorts_by_email_and_marks_the_owner(authed_config):
     rows = [line.split() for line in result.output.splitlines()[2:] if line]
     assert rows[0] == ["owner@example.com", "Ann", "Owner", "Data", "owner", "*"]
     assert rows[1] == ["zed@example.com", "Zed", "Data", "scientist"]
+
+
+def test_members_list_marks_the_owner_read_now_not_the_cached_one(authed_config):
+    project = _members_project()
+    project.owner = "owner@example.com"
+
+    result = _members(["list"], project, owner="zed@example.com")
+
+    assert result.exit_code == 0, result.output
+    rows = [line.split() for line in result.output.splitlines()[2:] if line]
+    assert rows[0][-1] != "*"
+    assert rows[1][-1] == "*"
 
 
 def test_members_add_passes_email_and_role(authed_config):
