@@ -12,6 +12,7 @@ from unittest import mock
 from click.testing import CliRunner
 from hopsworks.cli import auth, config, session
 from hopsworks.cli.main import cli
+from hopsworks_common.client.exceptions import RestAPIError
 from hopsworks_common.core import project_api
 
 
@@ -339,14 +340,32 @@ def test_members_list_shows_pending_invites_after_members(authed_config):
     ]
 
 
+def _rest_error(status: int, usr_msg: str = "") -> RestAPIError:
+    response = mock.MagicMock(status_code=status)
+    response.json.return_value = {"errorCode": 1, "usrMsg": usr_msg}
+    return RestAPIError("project/1/projectMembers/invites", response)
+
+
 def test_members_list_without_invite_access_still_lists_members(authed_config):
     project = _members_project()
-    project.get_invites.side_effect = RuntimeError("403")
+    project.get_invites.side_effect = _rest_error(403)
 
     result = _members(["list"], project)
 
     assert result.exit_code == 0, result.output
     assert "zed@example.com" in result.output
+    assert "invites unavailable" not in result.output
+
+
+def test_members_list_says_invites_unavailable_when_hopsworks_fails(authed_config):
+    project = _members_project()
+    project.get_invites.side_effect = _rest_error(500, "database down")
+
+    result = _members(["list"], project)
+
+    assert result.exit_code == 0, result.output
+    assert "zed@example.com" in result.output
+    assert "invites unavailable: HTTP 500 database down" in result.output
 
 
 def test_members_invite_passes_email_and_role(authed_config):

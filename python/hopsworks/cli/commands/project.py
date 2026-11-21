@@ -6,6 +6,7 @@ from typing import Any
 
 import click
 from hopsworks.cli import auth, config, output, session
+from hopsworks_common.client.exceptions import RestAPIError
 
 
 @click.group("project")
@@ -189,7 +190,8 @@ def members_list(ctx: click.Context) -> None:
                 "*" if owner and (m.email or "").casefold() == owner else "",
             ]
         )
-    for invite in _invites_of(project):
+    invites, unavailable = _invites_of(project)
+    for invite in invites:
         rows.append(
             [
                 invite.get("email") or "?",
@@ -199,15 +201,27 @@ def members_list(ctx: click.Context) -> None:
             ]
         )
     output.print_table(["EMAIL", "NAME", "ROLE", "OWNER"], rows)
+    if unavailable:
+        click.echo(f"invites unavailable: {unavailable}", err=True)
 
 
-def _invites_of(project: Any) -> list[dict]:
-    """Pending invites, or none when the caller may not read them (an Observer)."""
+def _invites_of(project: Any) -> tuple[list[dict], str | None]:
+    """Pending invites and why they could not be read, if so.
+
+    A 403 means the caller may not read invites (an Observer): no invites, no
+    reason. Any other failure is returned as the reason, so a backend outage
+    never reads as "nothing pending".
+    """
     try:
         invites = project.get_invites()
-    except Exception:  # noqa: BLE001 - the member list still shows
-        return []
-    return sorted(invites or [], key=lambda i: (i.get("email") or "").casefold())
+    except RestAPIError as exc:
+        status = getattr(exc.response, "status_code", None)
+        if status == RestAPIError.STATUS_CODE_FORBIDDEN:
+            return [], None
+        return [], f"HTTP {status} {exc.user_message or ''}".strip()
+    except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
+        return [], str(exc) or type(exc).__name__
+    return sorted(invites or [], key=lambda i: (i.get("email") or "").casefold()), None
 
 
 def _day(value: Any) -> str:
@@ -375,7 +389,7 @@ def _is_invited(project: Any, email: str) -> bool:
     """Whether the address has a pending invite and no membership: an invite exists only for an address with no account."""
     return any(
         (i.get("email") or "").casefold() == email.casefold()
-        for i in _invites_of(project)
+        for i in _invites_of(project)[0]
     )
 
 
