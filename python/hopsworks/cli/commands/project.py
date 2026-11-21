@@ -215,7 +215,11 @@ def _day(value: Any) -> str:
     import datetime  # noqa: PLC0415
 
     if isinstance(value, (int, float)):
-        return datetime.datetime.fromtimestamp(value / 1000, datetime.timezone.utc).date().isoformat()
+        return (
+            datetime.datetime.fromtimestamp(value / 1000, datetime.timezone.utc)
+            .date()
+            .isoformat()
+        )
     return str(value or "?")[:10]
 
 

@@ -318,7 +318,11 @@ def test_members_transfer_refused_shows_hopsworks_reason(authed_config):
 def test_members_list_shows_pending_invites_after_members(authed_config):
     project = _members_project()
     project.get_invites.return_value = [
-        {"email": "dana@example.com", "role": "Data scientist", "expires": 1767225600000}
+        {
+            "email": "dana@example.com",
+            "role": "Data scientist",
+            "expires": 1767225600000,
+        }
     ]
 
     result = _members(["list"], project)
@@ -353,11 +357,15 @@ def test_members_invite_passes_email_and_role(authed_config):
         "expires": "2026-12-05T10:00:00Z",
     }
 
-    result = _members(["invite", "dana@example.com", "--role", "data scientist"], project)
+    result = _members(
+        ["invite", "dana@example.com", "--role", "data scientist"], project
+    )
 
     assert result.exit_code == 0, result.output
     project.invite_member.assert_called_once_with("dana@example.com", "data scientist")
-    assert "Invited dana@example.com as Data scientist, until 2026-12-05" in result.output
+    assert (
+        "Invited dana@example.com as Data scientist, until 2026-12-05" in result.output
+    )
 
 
 def test_members_invite_refused_shows_hopsworks_reason(authed_config):
@@ -367,12 +375,17 @@ def test_members_invite_refused_shows_hopsworks_reason(authed_config):
     result = _members(["invite", "zed@example.com", "--role", "Observer"], project)
 
     assert result.exit_code == 1
-    assert "Could not invite 'zed@example.com': A user with this email exists" in result.output
+    assert (
+        "Could not invite 'zed@example.com': A user with this email exists"
+        in result.output
+    )
 
 
 def test_members_remove_of_an_invited_address_cancels_the_invite(authed_config):
     project = _members_project()
-    project.get_invites.return_value = [{"email": "Dana@example.com", "role": "Observer"}]
+    project.get_invites.return_value = [
+        {"email": "Dana@example.com", "role": "Observer"}
+    ]
 
     result = _members(["remove", "dana@example.com"], project)
 
