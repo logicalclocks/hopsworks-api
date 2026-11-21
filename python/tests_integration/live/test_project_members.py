@@ -13,7 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-r"""Live check: `hops project members` add, set, transfer, list and remove, as in a sandbox.
+r"""Live check: `hops project members` add, set, transfer, list, remove and invite, as in a sandbox.
 
 Not part of the unit suite (`pytest tests`). Run from the python directory:
 
@@ -25,8 +25,9 @@ The owner's user must be able to create a project. The test creates one and runs
 processes with the project chosen by the environment and the session cache on. The owner adds the
 member as a Data scientist, whose own add is refused with Hopsworks' reason; the owner makes them a
 Data owner and the owner, and they hand it back. The member then makes a scheduled job, the owner
-removes them, and the schedule reads paused. The project is deleted at the end, waited for until it
-answers 404. A missing environment variable or an unreachable cluster fails the run: there is no skip.
+removes them, and the schedule reads paused. A second test invites an address with no account, lists
+it pending, is refused for an existing user's address, and cancels the invite with remove. Each project
+is deleted at the end, waited for until it answers 404. A missing environment variable or an unreachable cluster fails the run: there is no skip.
 """
 
 import os
@@ -170,6 +171,33 @@ def _scheduled_job(live, key_file, project_id, backing):
     return job
 
 
+def _create_project(live, name):
+    r = _rest(
+        live,
+        live["owner"],
+        "POST",
+        "/project",
+        json={
+            "projectName": name,
+            "description": "",
+            "services": ["JOBS", "FEATURESTORE"],
+            "projectTeam": [],
+        },
+    )
+    assert r.status_code in (200, 201), f"create: {r.status_code} {r.text[:300]}"
+    r = _rest(live, live["owner"], "GET", f"/project/getProjectInfo/{name}")
+    assert r.ok, f"read: {r.status_code} {r.text[:300]}"
+    return r.json()["projectId"]
+
+
+def _invited(live, project_id):
+    r = _rest(
+        live, live["owner"], "GET", f"/project/{project_id}/projectMembers/invites"
+    )
+    assert r.ok, f"invites: {r.status_code} {r.text[:300]}"
+    return {i["email"]: i["role"] for i in r.json()}
+
+
 def _delete_and_wait(live, project_id):
     r = _rest(live, live["owner"], "POST", f"/project/{project_id}/delete")
     assert r.status_code in (200, 202, 204, 404), (
@@ -270,6 +298,42 @@ def test_the_owner_adds_sets_transfers_and_removes_a_member(live):
         )
         assert r.ok, f"schedule read: {r.status_code} {r.text[:300]}"
         assert r.json().get("enabled") is False
+    finally:
+        if project_id is not None:
+            _delete_and_wait(live, project_id)
+
+
+def test_the_owner_invites_lists_and_cancels_an_address(live):
+    name = f"hpi{int(time.time())}"
+    address = f"hops-invite-{int(time.time())}@example.com"
+    member_email = _rest(live, live["member"], "GET", "/users/profile").json()["email"]
+    project_id = None
+    try:
+        project_id = _create_project(live, name)
+
+        def owner(*args):
+            return _hops(
+                live, live["owner"], name, project_id, "project", "members", *args
+            )
+
+        invited = owner("invite", address, "--role", "data scientist")
+        assert invited.returncode == 0, invited.stderr[-2000:]
+        assert f"Invited {address} as Data scientist, until " in invited.stderr
+        assert _invited(live, project_id) == {address: "Data scientist"}
+
+        listed = owner("list")
+        assert listed.returncode == 0, listed.stderr[-2000:]
+        row = next(line for line in listed.stdout.splitlines() if address in line)
+        assert "Data scientist (invited, until " in row
+
+        refused = owner("invite", member_email, "--role", "Observer")
+        assert refused.returncode == 1, refused.stdout[-2000:]
+        assert f"Could not invite '{member_email}': " in refused.stderr
+
+        cancelled = owner("remove", address)
+        assert cancelled.returncode == 0, cancelled.stderr[-2000:]
+        assert f"Cancelled the invite of {address}" in cancelled.stderr
+        assert _invited(live, project_id) == {}
     finally:
         if project_id is not None:
             _delete_and_wait(live, project_id)
