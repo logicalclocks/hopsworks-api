@@ -88,6 +88,7 @@ class DeploymentVersion:
         triton_image_tag: str | None = None,
         tracing: DeploymentTracingConfig | dict | None = None,
         feature_logging: DeploymentLoggingConfig | dict | None = None,
+        loading_strategy: str | None = None,
         **kwargs: Any,
     ) -> None:
         self._version = version
@@ -130,6 +131,7 @@ class DeploymentVersion:
         self._vllm_variant = vllm_variant
         self._vllm_image_tag = vllm_image_tag
         self._triton_image_tag = triton_image_tag
+        self._loading_strategy = loading_strategy
         self._tracing = util._get_obj_from_json(tracing, DeploymentTracingConfig)
         self._feature_logging = util._get_obj_from_json(
             feature_logging, DeploymentLoggingConfig
@@ -188,6 +190,7 @@ class DeploymentVersion:
             "vllmVariant": self._vllm_variant,
             "vllmImageTag": self._vllm_image_tag,
             "tritonImageTag": self._triton_image_tag,
+            "loadingStrategy": self._loading_strategy,
             "tracing": self._tracing.to_dict() if self._tracing else None,
             "featureLogging": (
                 self._feature_logging.to_dict() if self._feature_logging else None
@@ -397,6 +400,15 @@ class DeploymentVersion:
     def triton_image_tag(self) -> str | None:
         """Triton Inference Server image tag of a Triton deployment."""
         return self._triton_image_tag
+
+    @public
+    @property
+    def loading_strategy(self) -> str | None:
+        """How the model server of this version reads the model files; see [`Predictor.loading_strategy`][hsml.predictor.Predictor.loading_strategy].
+
+        `None` for a version without a model.
+        """
+        return self._loading_strategy
 
     @public
     @property

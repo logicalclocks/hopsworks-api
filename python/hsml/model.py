@@ -393,6 +393,7 @@ class Model:
         knative_mode: bool | None = None,
         tracing: DeploymentTracingConfig | dict | None = None,
         triton_image_tag: str | None = None,
+        loading_strategy: str | None = None,
     ) -> deployment.Deployment:
         """Deploy the model.
 
@@ -488,6 +489,14 @@ class Model:
                 On an update, `None` means "unchanged": the deployment keeps its current tag, so moving it to the cluster default takes naming that tag explicitly.
                 A deployment also keeps its tag after an admin stops advertising it.
                 Ignored for non-Triton model servers.
+            loading_strategy: How the model server reads the model files.
+                `'MOUNT'` mounts them read-only from HopsFS and the model server reads them in place; every model server accepts it, and vLLM reads each safetensors file whole into memory before loading it, unless its configuration file sets `safetensors_load_strategy`.
+                `'RUNAI_STREAMER'` mounts them the same way and vLLM loads them with the Run:ai Model Streamer, which can load faster when the deployment requests several GPUs; only vLLM accepts it, on GPUs, for a model with safetensors weights at the top of its files and not with the vLLM-Omni variant.
+                `'DOWNLOAD'` copies them to the local disk of the pod before the model server starts; every model server accepts it.
+                The two mount strategies need the HopsFS CSI driver on the cluster.
+                `None` lets Hopsworks choose on a new deployment: `'RUNAI_STREAMER'` for a vLLM deployment that requests GPUs, with the HopsFS CSI driver and a model the streamer can load, `'DOWNLOAD'` otherwise.
+                On an update, `None` keeps the deployment's current strategy.
+                The values are also available as `PREDICTOR.LOADING_STRATEGY_*` constants in `hsml.constants`; see [`Predictor.loading_strategy`][hsml.predictor.Predictor.loading_strategy].
 
         Returns:
             The deployment metadata object of a new or existing deployment.
@@ -523,6 +532,7 @@ class Model:
             knative_mode=knative_mode,
             tracing=tracing,
             triton_image_tag=triton_image_tag,
+            loading_strategy=loading_strategy,
         )
 
         return predictor.deploy()

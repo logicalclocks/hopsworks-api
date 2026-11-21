@@ -288,6 +288,13 @@ DEFAULT_MEMORY_MB = 1024
     "Omit to let the backend decide (vLLM deployments default to Standard, others to Knative mode). "
     "On an update, omitting it keeps the deployment's current mode.",
 )
+@click.option(
+    "--loading-strategy",
+    type=click.Choice(["MOUNT", "RUNAI_STREAMER", "DOWNLOAD"], case_sensitive=False),
+    help="How the model server reads the model files: MOUNT (read in place from HopsFS), "
+    "RUNAI_STREAMER (vLLM only, not vLLM-Omni, safetensors weights, streamed from HopsFS, can load faster with several GPUs) or DOWNLOAD (copied to the pod's disk). "
+    "The mount strategies need the HopsFS CSI driver. Omit to let Hopsworks choose.",
+)
 @click.option("--description", default="", help="Deployment description.")
 @click.option(
     "--passed-feature",
@@ -323,6 +330,7 @@ def deployment_create(
     environment: str | None,
     serving_tool: str | None,
     knative_mode: bool | None,
+    loading_strategy: str | None,
     description: str,
     passed_features: tuple[str, ...],
     no_default_predictor: bool,
@@ -345,6 +353,7 @@ def deployment_create(
         environment: Inference environment name.
         serving_tool: ``KSERVE`` or ``DEFAULT``.
         knative_mode: KServe Knative (True) vs Standard (False) mode; None lets the backend decide.
+        loading_strategy: How the model server reads the model files; None lets the backend decide.
         description: Deployment description.
         passed_features: Features clients send with each request.
         no_default_predictor: Disable the default predictor.
@@ -391,6 +400,7 @@ def deployment_create(
             passed_features=list(passed_features) or None,
             default_predictor=False if no_default_predictor else None,
             knative_mode=knative_mode,
+            loading_strategy=loading_strategy.upper() if loading_strategy else None,
             resources=_resources(cores, memory),
         )
     except Exception as exc:  # noqa: BLE001

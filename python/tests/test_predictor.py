@@ -1754,6 +1754,251 @@ class TestPredictor:
         assert p.vllm_variant == "VLLM_OMNI"
         assert p.vllm_image_tag == "v0.14.0"
 
+    # Loading strategy
+
+    def test_loading_strategy_round_trip_vllm(self, mocker, backend_fixtures):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p_json = backend_fixtures["predictor"][
+            "get_deployment_vllm_kserve_vllm_variant"
+        ]["response"]
+
+        # Act
+        p = predictor.Predictor.from_response_json(copy.deepcopy(p_json))
+        serialized = p.to_dict()
+        p2 = predictor.Predictor.from_response_json(serialized)
+
+        # Assert
+        assert p.loading_strategy == PREDICTOR.LOADING_STRATEGY_RUNAI_STREAMER
+        assert (
+            serialized["loadingStrategy"] == PREDICTOR.LOADING_STRATEGY_RUNAI_STREAMER
+        )
+        assert p2.loading_strategy == p.loading_strategy
+
+    def test_loading_strategy_round_trip_triton(self, mocker, backend_fixtures):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p_json = backend_fixtures["predictor"]["get_deployment_triton_kserve"][
+            "response"
+        ]
+
+        # Act
+        p = predictor.Predictor.from_response_json(copy.deepcopy(p_json))
+        serialized = p.to_dict()
+        p2 = predictor.Predictor.from_response_json(serialized)
+
+        # Assert
+        assert p.loading_strategy == PREDICTOR.LOADING_STRATEGY_MOUNT
+        assert serialized["loadingStrategy"] == PREDICTOR.LOADING_STRATEGY_MOUNT
+        assert p2.loading_strategy == p.loading_strategy
+
+    def test_loading_strategy_absent_from_response_is_none(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p_json = backend_fixtures["predictor"][
+            "get_deployment_vllm_kserve_omni_variant"
+        ]["response"]
+
+        # Act
+        p = predictor.Predictor.from_response_json(copy.deepcopy(p_json))
+
+        # Assert
+        assert p.loading_strategy is None
+
+    def test_loading_strategy_defaults_to_none_and_is_always_sent(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        from hsml.llm.predictor import Predictor as LLMPredictor
+
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+        )
+        llm = LLMPredictor(name="my_llm")
+
+        # Act + Assert
+        # None asks the backend to choose on create and to keep the stored value on update.
+        for pred in (p, llm):
+            assert pred.loading_strategy is None
+            serialized = pred.to_dict()
+            assert "loadingStrategy" in serialized
+            assert serialized["loadingStrategy"] is None
+
+    @pytest.mark.parametrize(
+        "model_server, loading_strategy",
+        [
+            (PREDICTOR.MODEL_SERVER_PYTHON, PREDICTOR.LOADING_STRATEGY_MOUNT),
+            (PREDICTOR.MODEL_SERVER_PYTHON, PREDICTOR.LOADING_STRATEGY_DOWNLOAD),
+            (
+                PREDICTOR.MODEL_SERVER_TF_SERVING,
+                PREDICTOR.LOADING_STRATEGY_MOUNT,
+            ),
+            (PREDICTOR.MODEL_SERVER_TRITON, PREDICTOR.LOADING_STRATEGY_MOUNT),
+            (PREDICTOR.MODEL_SERVER_TRITON, PREDICTOR.LOADING_STRATEGY_DOWNLOAD),
+            (PREDICTOR.MODEL_SERVER_VLLM, PREDICTOR.LOADING_STRATEGY_RUNAI_STREAMER),
+            (PREDICTOR.MODEL_SERVER_VLLM, PREDICTOR.LOADING_STRATEGY_MOUNT),
+            (PREDICTOR.MODEL_SERVER_VLLM, PREDICTOR.LOADING_STRATEGY_DOWNLOAD),
+        ],
+    )
+    def test_loading_strategy_accepted(self, mocker, model_server, loading_strategy):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+
+        # Act
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=model_server,
+            loading_strategy=loading_strategy,
+        )
+
+        # Assert
+        assert p.loading_strategy == loading_strategy
+        assert p.to_dict()["loadingStrategy"] == loading_strategy
+
+    def test_loading_strategy_invalid_value_raises(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+
+        # Act + Assert
+        with pytest.raises(ValueError) as e_info:
+            predictor.Predictor(
+                name="my_model",
+                model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+                loading_strategy="STREAM",
+            )
+
+        assert "Loading strategy 'STREAM' is not valid" in str(e_info.value)
+        assert "DOWNLOAD, MOUNT, RUNAI_STREAMER" in str(e_info.value)
+
+    @pytest.mark.parametrize(
+        "model_server",
+        [
+            PREDICTOR.MODEL_SERVER_PYTHON,
+            PREDICTOR.MODEL_SERVER_TF_SERVING,
+            PREDICTOR.MODEL_SERVER_TRITON,
+        ],
+    )
+    def test_loading_strategy_runai_streamer_on_non_vllm_raises(
+        self, mocker, model_server
+    ):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+
+        # Act + Assert
+        with pytest.raises(ValueError) as e_info:
+            predictor.Predictor(
+                name="my_model",
+                model_server=model_server,
+                loading_strategy=PREDICTOR.LOADING_STRATEGY_RUNAI_STREAMER,
+            )
+
+        assert "is not supported by the" in str(e_info.value)
+        assert "'DOWNLOAD, MOUNT'" in str(e_info.value)
+
+    def test_loading_strategy_without_model_server_checks_only_the_value(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+
+        # Act
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=None,
+            loading_strategy=PREDICTOR.LOADING_STRATEGY_RUNAI_STREAMER,
+        )
+
+        # Assert
+        assert p.loading_strategy == PREDICTOR.LOADING_STRATEGY_RUNAI_STREAMER
+
+    def test_loading_strategy_setter_validates(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        from hsml.llm.predictor import Predictor as LLMPredictor
+
+        p = LLMPredictor(name="my_llm")
+
+        # Act
+        p.loading_strategy = PREDICTOR.LOADING_STRATEGY_RUNAI_STREAMER
+
+        # Assert
+        assert p.loading_strategy == PREDICTOR.LOADING_STRATEGY_RUNAI_STREAMER
+        p.loading_strategy = PREDICTOR.LOADING_STRATEGY_MOUNT
+        assert p.loading_strategy == PREDICTOR.LOADING_STRATEGY_MOUNT
+        with pytest.raises(ValueError, match="not valid"):
+            p.loading_strategy = "INVALID"
+        assert p.loading_strategy == PREDICTOR.LOADING_STRATEGY_MOUNT
+        p.loading_strategy = None
+        assert p.loading_strategy is None
+
+    @pytest.mark.parametrize(
+        "model_class, script_file, loading_strategy",
+        [
+            ("hsml.llm.model", None, PREDICTOR.LOADING_STRATEGY_RUNAI_STREAMER),
+            ("hsml.triton.model", None, PREDICTOR.LOADING_STRATEGY_MOUNT),
+            ("hsml.sklearn.model", "predictor.py", PREDICTOR.LOADING_STRATEGY_DOWNLOAD),
+        ],
+    )
+    def test_for_model_propagates_loading_strategy(
+        self, mocker, model_class, script_file, loading_strategy
+    ):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        import importlib
+
+        model_module = importlib.import_module(model_class)
+        model = model_module.Model(id=1, name="my_model", version=1)
+
+        # Act
+        p = predictor.Predictor.for_model(
+            model,
+            name="my_model",
+            script_file=script_file,
+            loading_strategy=loading_strategy,
+        )
+
+        # Assert
+        assert p.loading_strategy == loading_strategy
+        assert p.to_dict()["loadingStrategy"] == loading_strategy
+
+    def test_for_model_rejects_loading_strategy_unsupported_by_the_model_server(
+        self, mocker
+    ):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        from hsml.triton.model import Model as TritonModel
+
+        model = TritonModel(id=1, name="my_triton", version=1)
+
+        # Act + Assert
+        with pytest.raises(ValueError, match="not supported"):
+            predictor.Predictor.for_model(
+                model,
+                name="my_triton",
+                loading_strategy=PREDICTOR.LOADING_STRATEGY_RUNAI_STREAMER,
+            )
+
+    def test_update_from_response_json_preserves_loading_strategy(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p_json = backend_fixtures["predictor"][
+            "get_deployment_vllm_kserve_vllm_variant"
+        ]["response"]
+
+        p = predictor.Predictor.from_response_json(copy.deepcopy(p_json))
+        p.loading_strategy = PREDICTOR.LOADING_STRATEGY_DOWNLOAD
+
+        # Act
+        p.update_from_response_json(copy.deepcopy(p_json))
+
+        # Assert the refreshed object carries the backend's effective value
+        assert p.loading_strategy == PREDICTOR.LOADING_STRATEGY_RUNAI_STREAMER
+
     # Triton
 
     def test_triton_image_tag_round_trip(self, mocker, backend_fixtures):
