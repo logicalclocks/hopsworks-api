@@ -56,6 +56,20 @@ public class TrainingDatasetBundle {
     this.hasSplit = true;
   }
 
+  /**
+   * Releases the Spark cache of an in-memory training dataset. The splits of an in-memory read are cached so
+   * every split comes from one hash pass; call this once the datasets, including any label projection from
+   * {@link #getDataset(String, Boolean)}, are no longer read.
+   */
+  public void unpersist() {
+    if (datasetSplits != null) {
+      datasetSplits.values().forEach(Dataset::unpersist);
+    }
+    if (dataset != null) {
+      dataset.unpersist();
+    }
+  }
+
   @JsonIgnore
   public List<Dataset<Row>> getDataset(Boolean splitLabels) {
     if (inMemory) {

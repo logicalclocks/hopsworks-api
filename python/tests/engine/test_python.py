@@ -17,6 +17,7 @@ import decimal
 import json
 import logging
 import os
+import types
 from datetime import date, datetime, timedelta, timezone
 
 import hopsworks_common
@@ -32,6 +33,7 @@ from hsfs import (
     feature_view,
     storage_connector,
     training_dataset,
+    training_dataset_split,
     util,
 )
 from hsfs.client import exceptions
@@ -2496,9 +2498,212 @@ class TestPython:
         assert result is transformed_splits
         assert mock_fit_and_transform.call_args[0][2] is raw_splits
 
+    def test_random_split_reads_large_bigints_exactly(self, mocker):
+        # The Query Service read turns an integer column holding a null into
+        # float64, which rounds values above 2^53. The hash uses the stored
+        # values; the splits are what the plain read returns.
+        # Arrange
+        import pyarrow.flight as flight
+        from hsfs.constructor.fs_query import FsQuery
+        from hsfs.core import arrow_flight_client
+
+        big = [None if i % 5 == 0 else 2**53 + 1 + 2 * i for i in range(60)]
+        table = pa.table(
+            {
+                "k": pa.array(range(60), pa.int64()),
+                "big": pa.array(big, pa.int64()),
+                "arr": pa.array([[b, None] for b in big], pa.list_(pa.int64())),
+            }
+        )
+
+        class Server(flight.FlightServerBase):
+            def get_flight_info(self, context, descriptor):
+                return flight.FlightInfo(
+                    table.schema,
+                    descriptor,
+                    [flight.FlightEndpoint(b"t", [self.location])],
+                    table.num_rows,
+                    -1,
+                )
+
+            def do_get(self, context, ticket):
+                return flight.RecordBatchStream(table)
+
+        server = Server("grpc://127.0.0.1:0")
+        server.location = f"grpc://127.0.0.1:{server.port}"
+        afs = arrow_flight_client.ArrowFlightClient.__new__(
+            arrow_flight_client.ArrowFlightClient
+        )
+        afs._connection = flight.connect(server.location)
+        afs._server_version = None
+        afs.timeout = afs.health_check_timeout = 10
+        mocker.patch.object(arrow_flight_client, "_get_instance", return_value=afs)
+        mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine._fit_and_transform",
+            side_effect=lambda td, fv, splits, **kwargs: splits,
+        )
+        python_engine = python.Engine()
+        fs_query = FsQuery(
+            query="q",
+            on_demand_feature_groups=None,
+            hudi_cached_feature_groups=None,
+            hqs_payload="q",
+        )
+        query_obj = mocker.Mock()
+        query_obj.read.side_effect = lambda read_options, dataframe_type: (
+            python_engine._sql_offline(
+                fs_query,
+                dataframe_type,
+                arrow_flight_config=(read_options or {}).get("arrow_flight_config"),
+            )
+        )
+        view = types.SimpleNamespace(
+            features=[
+                TrainingDatasetFeature(name="big", type="bigint"),
+                TrainingDatasetFeature(name="arr", type="array<bigint>"),
+            ]
+        )
+        td = self._hash_split_td()
+
+        # Act
+        try:
+            result = python_engine._get_training_data(td, view, query_obj, {}, "numpy")
+        finally:
+            server.shutdown()
+
+        # Assert
+        indexes = training_dataset_split._split_indexes(
+            [big, [[b, None] for b in big]],
+            ["bigint", "array<bigint>"],
+            training_dataset_split._split_salt(td),
+            [(split.name, split.percentage) for split in td.splits],
+        )
+        assert {name: set(df["k"]) for name, df in result.items()} == {
+            split.name: {k for k in range(60) if indexes[k] == i}
+            for i, split in enumerate(td.splits)
+        }
+        plain = table.to_pandas()
+        for split_df in result.values():
+            assert training_dataset_split.EXACT_COLUMNS_ATTR not in split_df.attrs
+            assert split_df.dtypes.equals(plain.dtypes)
+            expected = plain.loc[split_df.index]
+            assert split_df["big"].equals(expected["big"])
+            assert repr(split_df["arr"].tolist()) == repr(expected["arr"].tolist())
+            features, labels = python_engine._split_labels(split_df, ["big"], "numpy")
+            assert labels.dtype == np.float64
+            np.testing.assert_array_equal(labels[:, 0], expected["big"].to_numpy())
+
+    @staticmethod
+    def _hash_split_td(seed=42, version=1):
+        return training_dataset.TrainingDataset(
+            name="test",
+            version=version,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={"train": 0.6, "validation": 0.2, "test": 0.2},
+            train_split="train",
+            seed=seed,
+            id=10,
+            split_method="hash",
+        )
+
+    @staticmethod
+    def _hash_split_rows(n=2000):
+        # Duplicate primary key: rows sharing an id differ in the joined feature.
+        base = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        return [
+            {
+                "id": i // 2,
+                "joined": i * 0.5,
+                "tags": [i % 3, i % 5],
+                "info": {"a": i % 7, "b": f"v{i}"},
+                "ts": base + timedelta(minutes=i),
+            }
+            for i in range(n)
+        ]
+
+    @staticmethod
+    def _split_keys(result, polars_frame=False):
+        keys = {}
+        for name, split_df in result.items():
+            if polars_frame:
+                split_df = split_df.to_pandas()
+            keys[name] = set(zip(split_df["id"], split_df["joined"], strict=True))
+        return keys
+
+    @staticmethod
+    def _assert_split_sizes(keys, n, tolerance=0.04):
+        assert sum(len(v) for v in keys.values()) == n
+        for name, fraction in {"train": 0.6, "validation": 0.2, "test": 0.2}.items():
+            assert abs(len(keys[name]) / n - fraction) < tolerance
+
+    @pytest.mark.parametrize(
+        "frame",
+        [
+            "pandas",
+            pytest.param("polars", marks=pytest.mark.skipif(not HAS_POLARS, reason="Polars is not installed.")),
+        ],
+    )
+    def test_random_split_ignores_the_split_list_order(self, mocker, frame):
+        # The server returns the persisted splits in another order than the creation:
+        # the rows per split name stay the same.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        python_engine = python.Engine()
+        data = {"k": list(range(500))}
+        results = []
+        for order in (["train", "validation", "test"], ["test", "train", "validation"]):
+            td = training_dataset.TrainingDataset(
+                name="test",
+                version=1,
+                data_format="CSV",
+                featurestore_id=99,
+                splits={
+                    name: {"train": 0.6, "validation": 0.2, "test": 0.2}[name]
+                    for name in order
+                },
+                seed=42,
+                id=10,
+                split_method="hash",
+            )
+            df = pl.DataFrame(data) if frame == "polars" else pd.DataFrame(data)
+
+            # Act
+            results.append(python_engine._random_split(df, td))
+
+        # Assert
+        for name in ("train", "validation", "test"):
+            assert sorted(results[0][name]["k"]) == sorted(results[1][name]["k"])
+        assert all(len(result[name]) > 0 for result in results for name in result)
+
+    def test_random_split_without_split_method_keeps_the_legacy_split(self, mocker):
+        # A training dataset created before split methods reads the rows it was created with:
+        # the split of the release before split methods, written out here.
+        # Arrange
+        import random
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={"train": 0.7, "test": 0.3},
+            seed=7,
+        )
+        df = pd.DataFrame({"k": range(50)})
+        groups = [0] * 35 + [1] * 15
+        random.Random(7).shuffle(groups)
+
+        # Act
+        result = python.Engine()._random_split(df, td)
+
+        # Assert
+        assert list(result["train"]["k"]) == [k for k in range(50) if groups[k] == 0]
+        assert list(result["test"]["k"]) == [k for k in range(50) if groups[k] == 1]
+
     def test_random_split_is_reproducible_with_seed(self, mocker):
-        # A user-provided seed must make the random split reproducible across
-        # runs (the documented `seed` contract that the Spark engine honors).
+        # Same rows and seed give the same split, whatever the read order.
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
         python_engine = python.Engine()
@@ -2512,15 +2717,263 @@ class TestPython:
             train_split="train",
             seed=123,
             id=10,
+            split_method="hash",
         )
 
         # Act
         first = python_engine._random_split(df.copy(), td)
-        second = python_engine._random_split(df.copy(), td)
+        second = python_engine._random_split(
+            df.sample(frac=1, random_state=1).reset_index(drop=True), td
+        )
 
         # Assert
         for name in ("train", "test"):
-            assert first[name]["col"].tolist() == second[name]["col"].tolist()
+            assert sorted(first[name]["col"]) == sorted(second[name]["col"])
+
+    def test_random_split_ignores_row_order(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        python_engine = python.Engine()
+        df = pd.DataFrame({"col": range(20)})
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={"train": 0.8, "test": 0.2},
+            train_split="train",
+            seed=42,
+            id=10,
+            split_method="hash",
+        )
+
+        # Act
+        first = python_engine._random_split(df.copy(), td)
+        reversed_df = df.iloc[::-1].reset_index(drop=True)
+        second = python_engine._random_split(reversed_df, td)
+
+        # Assert
+        assert sorted(first["test"]["col"]) == sorted(second["test"]["col"])
+
+    def test_random_split_reordered_reads_pandas(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        python_engine = python.Engine()
+        rows = self._hash_split_rows()
+        td = self._hash_split_td()
+
+        # Act
+        first = python_engine._random_split(pd.DataFrame(rows), td)
+        second = python_engine._random_split(pd.DataFrame(rows[::-1]), td)
+
+        # Assert
+        assert self._split_keys(first) == self._split_keys(second)
+        self._assert_split_sizes(self._split_keys(first), len(rows))
+
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
+    def test_random_split_reordered_reads_polars(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        python_engine = python.Engine()
+        rows = self._hash_split_rows()
+        td = self._hash_split_td()
+
+        # Act
+        first = python_engine._random_split(pl.DataFrame(rows), td)
+        second = python_engine._random_split(pl.DataFrame(rows[::-1]), td)
+
+        # Assert
+        first_keys = self._split_keys(first, polars_frame=True)
+        assert first_keys == self._split_keys(second, polars_frame=True)
+        self._assert_split_sizes(first_keys, len(rows))
+
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
+    def test_random_split_pandas_and_polars_agree(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        python_engine = python.Engine()
+        rows = self._hash_split_rows()
+        td = self._hash_split_td()
+
+        # Act
+        pandas_result = python_engine._random_split(pd.DataFrame(rows), td)
+        polars_result = python_engine._random_split(pl.DataFrame(rows), td)
+
+        # Assert
+        assert self._split_keys(pandas_result) == self._split_keys(
+            polars_result, polars_frame=True
+        )
+
+    @staticmethod
+    def _null_split_rows(n=2000):
+        # Nulls in int, float, date and timestamp columns; "row" is the key.
+        base = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        return [
+            {
+                "row": i,
+                "id": None if i % 7 == 0 else i // 2,
+                "amount": None if i % 5 == 0 else i * 0.25,
+                "ratio": None if i % 6 == 0 else i * 0.1,
+                "day": None if i % 3 == 0 else date(2024, 1, 1) + timedelta(days=i),
+                "ts": None if i % 4 == 0 else base + timedelta(minutes=i),
+                "label": i % 2,
+            }
+            for i in range(n)
+        ]
+
+    @staticmethod
+    def _null_split_view():
+        return types.SimpleNamespace(
+            features=[
+                TrainingDatasetFeature(name="row", type="bigint"),
+                TrainingDatasetFeature(name="id", type="bigint"),
+                TrainingDatasetFeature(name="amount", type="double"),
+                # pandas and polars hand a float feature over as float64.
+                TrainingDatasetFeature(name="ratio", type="float"),
+                TrainingDatasetFeature(name="day", type="date"),
+                TrainingDatasetFeature(name="ts", type="timestamp"),
+                TrainingDatasetFeature(name="label", type="bigint", label=True),
+                TrainingDatasetFeature(
+                    name="helper", type="string", inference_helper_column=True
+                ),
+            ]
+        )
+
+    @staticmethod
+    def _null_split_pandas(rows):
+        df = pd.DataFrame(rows)
+        # pandas reads a nullable bigint as float64 and may read a date as a timestamp.
+        assert df["id"].dtype == np.float64
+        df["day"] = pd.to_datetime(df["day"])
+        return df
+
+    @staticmethod
+    def _row_keys(result, polars_frame=False):
+        return {
+            name: set((split_df.to_pandas() if polars_frame else split_df)["row"])
+            for name, split_df in result.items()
+        }
+
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
+    def test_random_split_pandas_and_polars_agree_with_nulls(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        python_engine = python.Engine()
+        rows = self._null_split_rows()
+        td = self._hash_split_td()
+        view = self._null_split_view()
+
+        # Act
+        pandas_result = python_engine._random_split(
+            self._null_split_pandas(rows), td, view
+        )
+        polars_result = python_engine._random_split(pl.DataFrame(rows), td, view)
+        reordered = python_engine._random_split(
+            self._null_split_pandas(rows[::-1]), td, view
+        )
+
+        # Assert
+        assert self._row_keys(pandas_result) == self._row_keys(
+            polars_result, polars_frame=True
+        )
+        assert self._row_keys(pandas_result) == self._row_keys(reordered)
+
+    def test_random_split_ignores_columns_outside_the_view(self, mocker):
+        # primary_key=True and event_time=True add columns the view does not
+        # declare; they must not change the split.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        python_engine = python.Engine()
+        rows = self._null_split_rows()
+        td = self._hash_split_td()
+        view = self._null_split_view()
+        plain = self._null_split_pandas(rows)
+        extended = plain.copy()
+        extended["fg_pk"] = range(len(rows))
+        extended["fg_event_time"] = pd.Timestamp("2024-06-01")
+        extended["helper"] = "x"
+
+        # Act
+        first = python_engine._random_split(plain, td, view)
+        second = python_engine._random_split(extended, td, view)
+
+        # Assert
+        assert self._row_keys(first) == self._row_keys(second)
+
+    def test_random_split_rejects_value_outside_declared_type(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        python_engine = python.Engine()
+        df = pd.DataFrame({"id": [1.0, 3.5]})
+        view = types.SimpleNamespace(
+            features=[TrainingDatasetFeature(name="id", type="bigint")]
+        )
+
+        # Act / Assert
+        with pytest.raises(ValueError, match="bigint"):
+            python_engine._random_split(df, self._hash_split_td(), view)
+
+    def test_random_split_tiny_dataset_is_stable(self, mocker):
+        # Fractions are approximate: a split may be empty, but always the same one.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        python_engine = python.Engine()
+        df = pd.DataFrame({"col": [1, 2, 3]})
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={"train": 0.8, "validation": 0.1, "test": 0.1},
+            seed=42,
+            id=10,
+            split_method="hash",
+        )
+
+        # Act
+        reads = [
+            python_engine._random_split(frame, td)
+            for frame in (df, df.iloc[::-1], df.iloc[[1, 2, 0]])
+        ]
+
+        # Assert
+        keys = [
+            {name: sorted(split_df["col"]) for name, split_df in read.items()}
+            for read in reads
+        ]
+        assert keys[0] == keys[1] == keys[2]
+        assert sum(len(v) for v in keys[0].values()) == 3
+
+    def test_random_split_seed_none_is_salted_by_id_and_version(self, mocker):
+        # Versions created before seeds were generated have none stored.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        python_engine = python.Engine()
+        rows = self._hash_split_rows()
+
+        # Act
+        first = python_engine._random_split(
+            pd.DataFrame(rows), self._hash_split_td(seed=None)
+        )
+        second = python_engine._random_split(
+            pd.DataFrame(rows[::-1]), self._hash_split_td(seed=None)
+        )
+        other_version = python_engine._random_split(
+            pd.DataFrame(rows), self._hash_split_td(seed=None, version=2)
+        )
+
+        # Assert
+        assert self._split_keys(first) == self._split_keys(second)
+        assert self._split_keys(first) != self._split_keys(other_version)
 
     def test_random_split_depends_on_seed(self, mocker):
         # Different seeds must yield different splits, proving the seed is
@@ -3026,8 +3479,7 @@ class TestPython:
 
         python_engine = python.Engine()
 
-        d = {"col1": [1, 2], "col2": [3, 4]}
-        df = pd.DataFrame(data=d)
+        df = pd.DataFrame({"col1": range(100), "col2": range(100, 200)})
 
         td = training_dataset.TrainingDataset(
             name="test",
@@ -3055,8 +3507,7 @@ class TestPython:
 
         python_engine = python.Engine()
 
-        d = {"col1": [1, 2] * 10, "col2": [3, 4] * 10}
-        df = pd.DataFrame(data=d)
+        df = pd.DataFrame({"col1": range(100), "col2": range(100, 200)})
 
         td = training_dataset.TrainingDataset(
             name="test",
@@ -3083,8 +3534,7 @@ class TestPython:
 
         python_engine = python.Engine()
 
-        d = {"col1": [1, 2] * 10, "col2": [3, 4] * 10}
-        df = pd.DataFrame(data=d)
+        df = pd.DataFrame({"col1": range(100), "col2": range(100, 200)})
 
         td = training_dataset.TrainingDataset(
             name="test",

@@ -78,6 +78,7 @@ class TrainingDatasetBase:
         test_start=None,
         test_end=None,
         seed=None,
+        split_method=None,
         created=None,
         creator=None,
         features=None,
@@ -108,6 +109,7 @@ class TrainingDatasetBase:
         self._test_end = test_end
         self._coalesce = coalesce
         self._seed = seed
+        self._split_method = split_method
         self._location = location
         self._train_split = train_split
         self._missing_mandatory_tags = missing_mandatory_tags or []
@@ -258,6 +260,7 @@ class TrainingDatasetBase:
             "trainingDatasetType": self._training_dataset_type,
             "splits": self._splits,
             "seed": self._seed,
+            "splitMethod": self._split_method,
             "statisticsConfig": self._statistics_config,
             "trainSplit": self._train_split,
             "eventStartTime": self._start_time,
@@ -421,6 +424,15 @@ class TrainingDatasetBase:
     @seed.setter
     def seed(self, seed: int | None):
         self._seed = seed
+
+    @property
+    def split_method(self) -> str | None:
+        """How random splits assign rows: `"hash"`, or None for a training dataset created before split methods."""
+        return self._split_method
+
+    @split_method.setter
+    def split_method(self, split_method: str | None):
+        self._split_method = split_method
 
     @property
     def statistics_config(self):
@@ -589,6 +601,7 @@ class TrainingDataset(TrainingDatasetBase):
         test_start=None,
         test_end=None,
         seed=None,
+        split_method=None,
         created=None,
         creator=None,
         features=None,
@@ -629,6 +642,7 @@ class TrainingDataset(TrainingDatasetBase):
             test_start=test_start,
             test_end=test_end,
             seed=seed,
+            split_method=split_method,
             created=created,
             creator=creator,
             features=features,
@@ -1013,6 +1027,7 @@ class TrainingDataset(TrainingDatasetBase):
             "features": self._features,
             "splits": self._splits,
             "seed": self._seed,
+            "splitMethod": self._split_method,
             "queryDTO": self._querydto.to_dict() if self._querydto else None,
             "statisticsConfig": self._statistics_config,
             "trainSplit": self._train_split,
