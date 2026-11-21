@@ -167,7 +167,7 @@ def members_group() -> None:
 @members_group.command("list")
 @click.pass_context
 def members_list(ctx: click.Context) -> None:
-    """Show the members of the active project, their role and the owner.
+    """List the members of the active project: role and owner.
 
     Args:
         ctx: Click context carrying the resolved ``HopsConfig``.
