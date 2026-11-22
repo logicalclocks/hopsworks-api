@@ -47,10 +47,14 @@ class Execution:
         href=None,
         job=None,
         rerun_count=None,
+        resources=None,
+        resources_id=None,
         **kwargs,
     ):
         self._id = id
         self._rerun_count = rerun_count
+        self._resources = resources
+        self._resources_id = resources_id
         self._final_status = final_status
         self._state = state
         self._submission_time = submission_time
@@ -70,15 +74,34 @@ class Execution:
 
     @classmethod
     def from_response_json(cls, json_dict, job):
-        json_decamelized = humps.decamelize(json_dict)
+        json_decamelized = cls._decamelize(json_dict)
         if "count" not in json_decamelized:
             return cls(**json_decamelized, job=job)
         if json_decamelized["count"] == 0:
             return []
         return [cls(**execution, job=job) for execution in json_decamelized["items"]]
 
-    def update_from_response_json(self, json_dict):
+    @staticmethod
+    def _decamelize(json_dict):
+        """Decamelize a response, keeping `resources` as sent.
+
+        The keys of `resources` are names of the job configuration (`resourceConfig`, `spark.executor.memory`), which is what `Job.run` takes back.
+        """
         json_decamelized = humps.decamelize(json_dict)
+        if isinstance(json_dict, dict):
+            if "resources" in json_dict:
+                json_decamelized["resources"] = json_dict["resources"]
+            for sent, item in zip(
+                json_dict.get("items") or [],
+                json_decamelized.get("items") or [],
+                strict=False,
+            ):
+                if isinstance(sent, dict) and "resources" in sent:
+                    item["resources"] = sent["resources"]
+        return json_decamelized
+
+    def update_from_response_json(self, json_dict):
+        json_decamelized = self._decamelize(json_dict)
         # The response carries no job; re-initialising without it would detach the
         # execution from the job it belongs to.
         self.__init__(**{**json_decamelized, "job": self._job})
@@ -179,6 +202,16 @@ class Execution:
     def rerun_count(self) -> int:
         """How many times this execution was re-run in place after failing."""
         return self._rerun_count or 0
+
+    @public
+    @property
+    def resources(self) -> dict | None:
+        """The resources given for this execution alone, as a partial job configuration.
+
+        Only the fields that were set when the execution was started; every other field was the job's.
+        `None` for an execution that ran with the job's resources.
+        """
+        return self._resources
 
     @public
     @property
