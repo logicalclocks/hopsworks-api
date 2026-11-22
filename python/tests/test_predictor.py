@@ -1807,6 +1807,44 @@ class TestPredictor:
         # Assert
         assert p.loading_strategy is None
 
+    def test_loading_strategy_this_client_does_not_know_is_read_as_it_is(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange: a newer backend's strategy
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p_json = copy.deepcopy(
+            backend_fixtures["predictor"]["get_deployment_vllm_kserve_vllm_variant"][
+                "response"
+            ]
+        )
+        p_json["loadingStrategy"] = "STREAM_V2"
+
+        # Act
+        p = predictor.Predictor.from_response_json(copy.deepcopy(p_json))
+        p.update_from_response_json(copy.deepcopy(p_json))
+
+        # Assert
+        assert p.loading_strategy == "STREAM_V2"
+
+    def test_loading_strategy_this_client_does_not_know_is_refused_when_set(
+        self, mocker
+    ):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+
+        # Act and assert
+        with pytest.raises(
+            ValueError, match="Loading strategy 'STREAM_V2' is not valid"
+        ):
+            predictor.Predictor(
+                name="my_llm",
+                model_server=PREDICTOR.MODEL_SERVER_VLLM,
+                model_name="my_llm",
+                model_version=1,
+                model_framework=MODEL.FRAMEWORK_LLM,
+                loading_strategy="STREAM_V2",
+            )
+
     def test_loading_strategy_defaults_to_none_and_is_always_sent(self, mocker):
         # Arrange
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)

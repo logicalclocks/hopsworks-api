@@ -513,7 +513,10 @@ class Predictor(DeployableComponent):
 
     @classmethod
     def from_json(cls, json_decamelized):
-        predictor = Predictor(**cls.extract_fields_from_json(json_decamelized))
+        fields = cls.extract_fields_from_json(json_decamelized)
+        predictor = Predictor(**{**fields, "loading_strategy": None})
+        # The backend's strategy as it is: a newer backend can have one this client does not know.
+        predictor._loading_strategy = fields["loading_strategy"]
         predictor._set_state(PredictorState.from_response_json(json_decamelized))
         return predictor
 
@@ -637,7 +640,10 @@ class Predictor(DeployableComponent):
 
     def update_from_response_json(self, json_dict):
         json_decamelized = _decamelize_servings(json_dict)
-        self.__init__(**self.extract_fields_from_json(json_decamelized))
+        fields = self.extract_fields_from_json(json_decamelized)
+        self.__init__(**{**fields, "loading_strategy": None})
+        # The backend's strategy as it is, as in from_json
+        self._loading_strategy = fields["loading_strategy"]
         self._set_state(PredictorState.from_response_json(json_decamelized))
         return self
 
