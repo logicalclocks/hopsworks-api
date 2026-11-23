@@ -124,6 +124,19 @@ class Query:
                 sql_query = self._query_constructor_api._construct_query(self, hqs=True)
             else:
                 fs_query = self._query_constructor_api._construct_query(self)
+
+                if fs_query.pushdown_query is not None:
+                    engine_instance = engine._get_instance()
+                    if engine_instance._is_source_pushdown_supported():
+                        return (
+                            engine_instance._register_pushdown_query(fs_query),
+                            online_conn,
+                        )
+                    _logger.debug(
+                        "The query can be pushed down to its source, but the current engine "
+                        "cannot execute it. Reading each feature group separately instead."
+                    )
+
                 sql_query = self._to_string(fs_query, online)
                 # Register on demand feature groups as temporary tables
                 if isinstance(self._left_feature_group, fg_mod.SpineGroup):
