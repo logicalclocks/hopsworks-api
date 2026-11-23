@@ -108,6 +108,26 @@ class TestExecution:
 
         assert ex.app_url == "https://myhost:443/hopsworks-api/pythonapp/proj/my_app/"
 
+    def test_stop_waits_for_the_logs_by_default(self):
+        job = mock.Mock()
+        job.name = "my_job"
+        ex = Execution(id=5, job=job)
+        ex._execution_api = mock.Mock()
+
+        ex.stop()
+
+        ex._execution_api._stop.assert_called_once_with("my_job", 5, force=False)
+
+    def test_stop_with_force_gives_up_the_logs(self):
+        job = mock.Mock()
+        job.name = "my_job"
+        ex = Execution(id=5, job=job)
+        ex._execution_api = mock.Mock()
+
+        ex.stop(force=True)
+
+        ex._execution_api._stop.assert_called_once_with("my_job", 5, force=True)
+
 
 class TestExecutionPerTable:
     def test_stop_table_delegates_to_api(self, mocker):

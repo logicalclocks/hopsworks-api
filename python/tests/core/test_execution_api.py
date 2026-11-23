@@ -129,6 +129,29 @@ class TestExecutionApiPerTable:
         )
         return client_mock
 
+    def test_stop_puts_stopped_state(self, mock_client):
+        ExecutionApi()._stop("my_job", 5)
+
+        args, kwargs = mock_client._send_request.call_args
+        assert args[0] == "PUT"
+        assert kwargs["path_params"] == [
+            "project",
+            42,
+            "jobs",
+            "my_job",
+            "executions",
+            5,
+            "status",
+        ]
+        assert json.loads(kwargs["data"]) == {"state": "stopped"}
+        assert kwargs["headers"] == {"Content-Type": "application/json"}
+
+    def test_stop_with_force_puts_force_stopped_state(self, mock_client):
+        ExecutionApi()._stop("my_job", 5, force=True)
+
+        _, kwargs = mock_client._send_request.call_args
+        assert json.loads(kwargs["data"]) == {"state": "force_stopped"}
+
     def test_stop_table_puts_table_status(self, mock_client):
         ExecutionApi()._stop_table("my_job", 5, 2)
 

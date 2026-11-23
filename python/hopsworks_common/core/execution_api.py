@@ -141,7 +141,7 @@ class ExecutionApi:
         ]
         return _client._send_request("POST", path_params)
 
-    def _stop(self, job_name: str, id: int) -> None:
+    def _stop(self, job_name: str, id: int, force: bool = False) -> None:
         _client = client._get_instance()
         path_params = [
             "project",
@@ -155,7 +155,7 @@ class ExecutionApi:
         _client._send_request(
             "PUT",
             path_params=path_params,
-            data={"state": "stopped"},
+            data=json.dumps({"state": "force_stopped" if force else "stopped"}),
             headers={"Content-Type": "application/json"},
         )
 

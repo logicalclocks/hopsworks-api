@@ -71,3 +71,25 @@ def test_logs_download_into_the_given_dir_not_the_working_directory(
     assert done.exit_code == 0, done.output
     assert calls == [str(logs)] and logs.is_dir()
     assert "working directory" not in done.output
+
+
+def test_stop_force_stops_the_latest_execution_only_when_asked(monkeypatch):
+    stops = []
+    older = SimpleNamespace(id=6, stop=lambda force=False: stops.append((6, force)))
+    latest = SimpleNamespace(id=7, stop=lambda force=False: stops.append((7, force)))
+    job = SimpleNamespace(get_executions=lambda: [older, latest])
+    monkeypatch.setattr(
+        session,
+        "get_project",
+        lambda ctx: SimpleNamespace(
+            get_job_api=lambda: SimpleNamespace(get_job=lambda name: job)
+        ),
+    )
+
+    done = CliRunner().invoke(cli, ["job", "stop", "churn-train"])
+    assert done.exit_code == 0, done.output
+    forced = CliRunner().invoke(cli, ["job", "stop", "churn-train", "--force"])
+    assert forced.exit_code == 0, forced.output
+
+    assert stops == [(7, False), (7, True)]
+    assert "Force-stopped execution 7" in forced.output
