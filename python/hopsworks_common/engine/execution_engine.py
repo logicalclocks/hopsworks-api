@@ -56,13 +56,18 @@ class ExecutionEngine:
             Downloaded stdout and stderr log path.
 
         Raises:
-            hopsworks.client.exceptions.JobExecutionException: If path is provided but does not exist, or the execution has no such attempt.
+            hopsworks.client.exceptions.JobExecutionException: If path is provided but does not exist, the execution has no such attempt, or an earlier attempt left no log files.
         """
         if path is not None and not os.path.exists(path):
             raise JobExecutionException(f"Path {path} does not exist")
         if path is None:
             path = os.getcwd()
 
+        if attempt is not None:
+            # Attempt numbers only mean something against the current rerun_count: on an
+            # object fetched before a re-run, the latest-attempt paths belong to another
+            # attempt and the earlier ones are not listed yet.
+            execution = self._execution_api._get(execution._job, execution.id)
         stdout_path, stderr_path = self._attempt_log_paths(execution, attempt)
 
         attempt_suffix = f"-attempt-{attempt}" if attempt is not None else ""
@@ -79,6 +84,15 @@ class ExecutionEngine:
         err_path = None
         if stderr_path is not None and self._dataset_api.exists(stderr_path):
             err_path = self._download_log(stderr_path, download_log_dir)
+
+        earlier_attempt = attempt is not None and attempt <= execution.rerun_count
+        if earlier_attempt and out_path is None and err_path is None:
+            # Nothing more will be written for an attempt that is over, so this is not
+            # "not there yet": say so instead of returning two Nones.
+            raise JobExecutionException(
+                f"No log files were kept for attempt {attempt} of execution {execution.id} "
+                f"(looked for stdout at {stdout_path} and stderr at {stderr_path})."
+            )
 
         return out_path, err_path
 

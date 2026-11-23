@@ -188,7 +188,8 @@ class Execution:
         """Log files of the attempts before the current one, oldest first.
 
         Each re-run sets the previous attempt's log files aside.
-        An entry has the keys `attempt` (counted from 1), `stdout_path` and `stderr_path`; a path is missing when the job type does not write that file.
+        An entry has the keys `attempt` (counted from 1), `logs_path` (the attempt's directory), `stdout_path` and `stderr_path`; a path is missing when that attempt did not leave the file.
+        The list is as of when this object was fetched.
         Empty for an execution that was never re-run.
         """
         return self._attempts or []
@@ -244,6 +245,7 @@ class Execution:
 
         By default the logs of the latest attempt are downloaded.
         For an execution that was re-run, pass `attempt` to get the logs of an earlier attempt.
+        The attempt is resolved against the execution's current state in Hopsworks, not this object's, so it is safe to use on an object fetched before a re-run.
 
         Example: Downloading and printing the logs
             ```python
@@ -273,7 +275,7 @@ class Execution:
             stderr: Path to downloaded log for stderr.
 
         Raises:
-            hopsworks.client.exceptions.JobExecutionException: If `path` does not exist or the execution has no such attempt.
+            hopsworks.client.exceptions.JobExecutionException: If `path` does not exist, the execution has no such attempt, or an earlier attempt left no log files.
         """
         return self._execution_engine._download_logs(self, path, attempt)
 
