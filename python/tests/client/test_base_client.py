@@ -30,6 +30,93 @@ from tests.util import changes_environ
 
 
 class TestBaseClient:
+    @pytest.mark.parametrize("status", [429, 401])
+    def test_request_deadline_includes_http_and_retries(self, mocker, status):
+        client = self._init_test_client()
+        client._base_url = "https://example.test"
+        now = [0]
+        mocker.patch(
+            "hopsworks_common.client.base.time.monotonic", side_effect=lambda: now[0]
+        )
+        mocker.patch(
+            "hopsworks_common.client.base.time.sleep",
+            side_effect=lambda seconds: now.__setitem__(0, now[0] + seconds),
+        )
+        mocker.patch.dict(os.environ, {Client.REST_ENDPOINT: "True"})
+        mocker.patch.object(client, "_read_jwt", return_value="new-token")
+        client.TOKEN_EXPIRED_RETRY_INTERVAL = 1
+        response = (
+            self._rate_limited_response(mocker, retry_after="1")
+            if status == 429
+            else self._ok_response()
+        )
+        response.status_code = status
+        response.raw = mocker.Mock()
+
+        def send(*args, **kwargs):
+            budget = kwargs["timeout"].total
+            assert 0 < budget <= 2 - now[0]
+            now[0] += budget
+            return response
+
+        mocked_send = mocker.patch("requests.sessions.Session.send", side_effect=send)
+        with pytest.raises(requests.exceptions.Timeout):
+            client._send_request("POST", ["commands", "custom"], timeout=60, deadline=2)
+
+        assert now[0] == 2
+        mocked_send.assert_called_once()
+
+    def test_success_completed_at_the_deadline_is_returned(self, mocker):
+        client = self._init_test_client()
+        client._base_url = "https://example.test"
+        now = [0]
+        mocker.patch(
+            "hopsworks_common.client.base.time.monotonic", side_effect=lambda: now[0]
+        )
+        response = self._ok_response()
+        response._content = b'{"id": 42}'
+
+        def send(*args, **kwargs):
+            now[0] += kwargs["timeout"].total
+            return response
+
+        mocker.patch("requests.sessions.Session.send", side_effect=send)
+
+        result = client._send_request(
+            "POST", ["commands", "custom"], timeout=60, deadline=2
+        )
+
+        assert result == {"id": 42}
+        assert now[0] == 2
+
+    def test_rate_limit_retry_uses_only_the_remaining_request_budget(self, mocker):
+        client = self._init_test_client()
+        client._base_url = "https://example.test"
+        now = [0]
+        mocker.patch(
+            "hopsworks_common.client.base.time.monotonic", side_effect=lambda: now[0]
+        )
+        mocker.patch(
+            "hopsworks_common.client.base.time.sleep",
+            side_effect=lambda seconds: now.__setitem__(0, now[0] + seconds),
+        )
+        budgets = []
+
+        def send(*args, **kwargs):
+            budgets.append(kwargs["timeout"].total)
+            now[0] += 1
+            return (
+                self._rate_limited_response(mocker, retry_after="1")
+                if len(budgets) == 1
+                else self._ok_response()
+            )
+
+        mocker.patch("requests.sessions.Session.send", side_effect=send)
+        client._send_request("GET", ["commands"], timeout=60, deadline=4)
+
+        assert budgets == [4, 2]
+        assert now[0] == 3
+
     @changes_environ
     def test_valid_token_no_retires(self, mocker):
         # Arrange

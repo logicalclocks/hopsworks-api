@@ -555,6 +555,9 @@ class FeatureView:
     ) -> None:
         """Initialise feature view to retrieve feature vector from online and offline feature store.
 
+        Calling this again replaces the clients and closes the previous SQL client.
+        Do not call it while other threads are reading feature vectors from this feature view, because their in-flight reads fail.
+
         Example:
             ```python
             # get feature store instance
@@ -1472,7 +1475,7 @@ class FeatureView:
             serving_keys, entry, "get_inference_helpers"
         )
 
-        if self._vector_server is None:
+        if not self._vector_server._serving_initialized:
             self.init_serving(external=external, init_rest_client=force_rest_client)
         return self._vector_server._get_inference_helpers(
             serving_keys, return_type, force_rest_client, force_sql_client
@@ -6770,11 +6773,8 @@ class FeatureView:
         Idempotent, and safe on a feature view that never initialised serving.
         `init_serving` can be called again afterwards.
 
-        Needed because the pools cannot be reclaimed by garbage collection: each
-        one is owned by a client that its own running task thread keeps
-        reachable. A pool holds one connection per feature group in the view, so
-        a long-lived process that initialises serving for many feature views can
-        exhaust the online store's `max_connections`.
+        Releases them now; otherwise they are released only after this feature view is garbage collected.
+        A pool holds one connection per feature group in the view, so a long-lived process that keeps many feature views alive can exhaust the online store's `max_connections`.
         """
         for server in (self.__vector_server, self.__batch_scoring_server):
             if server is not None:

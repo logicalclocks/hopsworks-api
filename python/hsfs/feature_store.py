@@ -522,15 +522,19 @@ class FeatureStore:
         Returns:
             `DataSource`. Data source object.
         """
-        return ds.DataSource(
-            storage_connector=self._storage_connector_api._get(self._id, name)
+        connector = self._storage_connector_api._get(
+            self._id, name, with_mandatory_tags=True
         )
+        if connector is not None:
+            util._check_missing_mandatory_tags(connector.missing_mandatory_tags)
+        return ds.DataSource(storage_connector=connector)
 
     @public
     @usage._method_logger
     def create_data_source(
         self,
         connector: storage_connector.StorageConnector,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
     ) -> ds.DataSource:
         """Create a new data source in the feature store from a storage connector.
 
@@ -557,12 +561,22 @@ class FeatureStore:
 
         Parameters:
             connector: Storage connector to persist and wrap as a data source.
+            tags:
+                Tags to attach to the data source as it is created, in the same request.
+                Each tag names its tag schema and carries a value that the schema validates.
+                Tags that are mandatory for data sources must be passed here, since the data source is not created without them.
 
         Returns:
             `DataSource`. Data source wrapping the created storage connector.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If `tags` are passed to a Hopsworks backend older than 5.3, which cannot store data source tags.
+                Also if an S3 data source has an endpoint, which such a backend cannot store: the request is not sent, or, when the backend's version is unknown, the data source is stored without the endpoint and targets AWS S3.
+            hopsworks.client.exceptions.RestAPIError: If a tag that is mandatory for data sources is missing from `tags`, if a tag value does not match its schema, or if the backend encounters another error when handling the request.
         """
         connector._featurestore_id = self._id
-        saved = self._storage_connector_api._create(connector)
+        saved = self._storage_connector_api._create(connector, tags)
+        connector._check_stored(saved)
         return ds.DataSource(storage_connector=saved)
 
     @public
@@ -937,6 +951,7 @@ class FeatureStore:
                 Defaults to using cluster wide configuration 'featurestore_online_tablespace' to identify tablespace for disk storage.
             sink_enabled:
                 Enable automatic ingestion from the configured data source using a sink job.
+                A SQL data source must name a table: ingesting from a SQL query is not supported.
             sink_job_conf:
                 Optional configuration describing the sink job to create when `sink_enabled` is True.
                 Accepts either a job configuration object or a dictionary.
@@ -1220,6 +1235,7 @@ class FeatureStore:
                 Defaults to using cluster wide configuration 'featurestore_online_tablespace' to identify tablespace for disk storage.
             sink_enabled:
                 Enable copying data from the configured data source to the feature group.
+                A SQL data source must name a table: ingesting from a SQL query is not supported.
             sink_job_conf:
                 Optional configuration describing the sink job to create when `sink_enabled` is True.
             sink_job:

@@ -114,6 +114,7 @@ hops datasource create sql <name> --database-type CLICKHOUSE --host H --port 812
 hops datasource create sql <name> --database-type TERADATA --host H --port 1025 --database D --user U --password - < pw.txt   # --argument logmech=LDAP for LDAP logon; a Trino catalog needs the Teradata plugin in the cluster's Trino image and `teradata` in the trino_connectors variable
 hops datasource create sql <name> --database-type SQLSERVER --host H --port 1433 --database D --user U --password - < pw.txt   # tables are database.schema.table, so pick the schema (often dbo) as the group; --argument trustServerCertificate=true for a self-signed server certificate (Spark, Trino)
 hops datasource create s3 <name> --bucket my-bucket --access-key AK --secret-key - --region eu-north-1 < secret_key.txt
+hops datasource create s3 <name> --bucket my-bucket --access-key AK --secret-key - --endpoint https://s3.example.com:9021 --path-style-access < secret_key.txt   # S3-compatible store (MinIO, Dell ECS, Ceph); needs keys, no IAM roles; region defaults to us-east-1
 hops datasource create gcs <name> --bucket my-bucket --key-path /Projects/<project>/Resources/key.json
 hops datasource create adls <name> --account-name A --generation 2 --container-name C --directory-id T --application-id APP --service-credential - < credential.txt
 hops datasource create hopsfs <name> --dataset Resources
@@ -144,6 +145,13 @@ Files a connector points at (`--key-path`, truststores, keystores, wallets) are 
 
 **Confirm before deleting.** `hops datasource delete` removes the storage connector irreversibly; confirm the exact name with the user, and never delete one that feature groups still read from unless they asked.
 
+## Tag a data source
+
+Schematized tags classify a data source (owner, source system, sensitivity) and make it findable in search.
+A tag that an admin made mandatory for data sources must be passed when the data source is created.
+`hops datasource create` cannot attach tags, so it fails while a tag is mandatory; create the data source from Python with `sc.save(tags=[...])` or `fs.create_data_source(sc, tags=[...])` instead.
+The SDK calls, mandatory tags and search are in [references/tags.md](references/tags.md).
+
 ## Provided credentials (Oracle)
 
 A data source has a credentials mode.
@@ -168,7 +176,7 @@ A mounted table a member cannot read shows `no_access` in `hops fg list`; their 
 Fetching a `PROVIDED` data source never returns credential values, only the names of your secrets and env var; the SDK reads the values from your account when it connects.
 Inside Hopsworks runtimes your credentials are also available as `HOPS_DS_<NAME>_USER`, `HOPS_DS_<NAME>_PASSWORD`, `HOPS_DS_<NAME>_WALLET_PATH` and `HOPS_DS_<NAME>_WALLET_PASSWORD`, with `HOPS_DS_<NAME>_CONNECTOR_ID` naming the data source they belong to.
 A Trino catalog on a `PROVIDED` data source is private to the member who creates it (`_<username>__<name>`), so each member creates their own with `sc.create_trino_catalog()`.
-It runs the owner's queries with their own login when they connect through `project.get_trino_api()`; other Trino clients must send the extra credentials described in the reference.
+It reads the data source with the owner's own login from every Trino client, Superset included.
 SDK equivalents, the naming rules and the access states are in [references/provided-credentials.md](references/provided-credentials.md).
 
 ## Ingest into a new feature group with DLTHub
@@ -176,6 +184,10 @@ SDK equivalents, the naming rules and the access states are in [references/provi
 DLTHub copies a source into a managed feature group for the cases mounting cannot serve: loading the online store or a vector index, or pulling from an API/SaaS/REST endpoint. Ingestion runs server-side in the `dlthub-ingestion-pipeline` environment, driven by a `SinkJobConfiguration` attached to a sink-enabled feature group. It is configuration plus a server job, not an in-process `dlt` call.
 
 The per-feature-group `sink_job` shown here is for ingesting a **single** table. When ingesting more than one table from the same connector, default to one multi-table job for all of them — see [Ingest many tables with one job](#ingest-many-tables-with-one-job) — instead of looping this pattern.
+
+A SQL source is ingested from a table: give the feature group a `DataSource` with its `database` and `table`, such as one from `get_tables()`.
+The ingestion job cannot run a SQL query, so a `DataSource` with a `query` and no `table` is rejected with HTTP 400 and error code 270136; a cluster without that check fails with HTTP 422 "A database must be specified".
+To use a query's result, mount it as an external feature group by passing `DataSource(storage_connector=..., query="SELECT ...")` to `create_external_feature_group`, or ingest the table and derive the subset in a feature pipeline.
 
 ```python
 import hopsworks

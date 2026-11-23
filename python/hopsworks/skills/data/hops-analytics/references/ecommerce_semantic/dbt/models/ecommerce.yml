@@ -1,0 +1,434 @@
+# The ecommerce semantic layer: sales of an online shop, sliced by time, region, customer group,
+# product and channel. Four feature groups written by ecommerce.py, joined through their entities:
+# an order line reaches its order, customer and product in one hop.
+#
+# How the money metrics relate, all in USD and without shipping:
+#   gross_sales - discounts - returns = revenue
+#   revenue - cost_of_goods_sold = gross_profit
+# Cancelled orders never shipped and count in no money metric. A returned order is refunded in
+# full: it counts in gross_sales, discounts and returns, not in revenue.
+semantic_models:
+  - name: order_items
+    label: Order lines
+    description: One row per product in an order, the fact table of the shop's sales.
+    model: ref('ecommerce_order_items')
+    config:
+      meta:
+        hopsworks:
+          feature_group: ecommerce_order_items
+          version: 1
+    defaults:
+      agg_time_dimension: ordered_at
+    entities:
+      - name: order_item
+        type: primary
+        expr: order_item_id
+      - name: order
+        type: foreign
+        expr: order_id
+      - name: customer
+        type: foreign
+        expr: customer_id
+      - name: product
+        type: foreign
+        expr: product_id
+    dimensions:
+      - name: ordered_at
+        label: Order date
+        type: time
+        type_params:
+          time_granularity: day
+      - name: line_status
+        label: Line status
+        description: The order's status on its line, completed, returned or cancelled; group by order__status instead.
+        type: categorical
+        expr: status
+    measures:
+      - name: gross_sales_amount
+        description: Quantity times list price.
+        agg: sum
+        expr: gross_amount
+      - name: line_discount_amount
+        agg: sum
+        expr: discount_amount
+      - name: net_sales_amount
+        description: What the customer paid for the line.
+        agg: sum
+        expr: net_amount
+      - name: cost_of_goods_amount
+        agg: sum
+        expr: cost_amount
+      - name: line_profit_amount
+        agg: sum
+        expr: profit_amount
+      - name: units
+        agg: sum
+        expr: quantity
+
+  - name: orders
+    label: Orders
+    description: One row per order.
+    model: ref('ecommerce_orders')
+    config:
+      meta:
+        hopsworks:
+          feature_group: ecommerce_orders
+          version: 1
+    defaults:
+      agg_time_dimension: ordered_at
+    entities:
+      - name: order
+        type: primary
+        expr: order_id
+      - name: customer
+        type: foreign
+        expr: customer_id
+    dimensions:
+      - name: ordered_at
+        label: Order date
+        type: time
+        type_params:
+          time_granularity: day
+      - name: status
+        label: Order status
+        description: completed, returned (refunded in full) or cancelled (never shipped).
+        type: categorical
+      - name: channel
+        label: Sales channel
+        description: Web, Mobile app or Marketplace.
+        type: categorical
+      - name: payment_method
+        label: Payment method
+        description: Card, PayPal, Apple Pay, Klarna or Bank transfer.
+        type: categorical
+      - name: promotion
+        label: Promotion
+        description: The discount the order had, black_friday, summer_sale, holiday_sale, coupon or none.
+        type: categorical
+      - name: customer_type
+        label: New or returning
+        description: new for a customer's first order, returning for every later one.
+        type: categorical
+    measures:
+      - name: order_count
+        agg: count
+        expr: order_id
+      - name: ordering_customers
+        agg: count_distinct
+        expr: customer_id
+      - name: shipping_fees
+        agg: sum
+        expr: shipping_fee
+
+  - name: customers
+    label: Customers
+    description: One row per customer, with the groups the shop reports customers by.
+    model: ref('ecommerce_customers')
+    config:
+      meta:
+        hopsworks:
+          feature_group: ecommerce_customers
+          version: 1
+    defaults:
+      agg_time_dimension: signup_ts
+    entities:
+      - name: customer
+        type: primary
+        expr: customer_id
+    dimensions:
+      - name: signup_ts
+        label: Signup date
+        type: time
+        type_params:
+          time_granularity: day
+      - name: region
+        label: Region
+        description: North America, Europe, Asia Pacific or Latin America.
+        type: categorical
+      - name: country
+        label: Country
+        type: categorical
+      - name: city
+        label: City
+        type: categorical
+      - name: segment
+        label: Customer segment
+        description: Consumer, Small Business or Enterprise.
+        type: categorical
+      - name: loyalty_tier
+        label: Loyalty tier
+        description: Bronze, Silver or Gold.
+        type: categorical
+      - name: acquisition_channel
+        label: Acquisition channel
+        description: How the customer found the shop, such as Organic search, Paid search or Social.
+        type: categorical
+      - name: signup_month
+        label: Signup cohort
+        description: The month the customer signed up, as YYYY-MM.
+        type: categorical
+    measures:
+      - name: customer_count
+        agg: count
+        expr: customer_id
+
+  - name: products
+    label: Products
+    description: The product catalog, one row per product.
+    model: ref('ecommerce_products')
+    config:
+      meta:
+        hopsworks:
+          feature_group: ecommerce_products
+          version: 1
+    defaults:
+      agg_time_dimension: launched_at
+    entities:
+      - name: product
+        type: primary
+        expr: product_id
+    dimensions:
+      - name: launched_at
+        label: Launch date
+        type: time
+        type_params:
+          time_granularity: day
+      - name: product_name
+        label: Product
+        type: categorical
+      - name: category
+        label: Category
+        description: Electronics, Home & Kitchen, Apparel, Beauty, Sports & Outdoors, Books & Media or Toys.
+        type: categorical
+      - name: subcategory
+        label: Subcategory
+        type: categorical
+      - name: brand
+        label: Brand
+        type: categorical
+      - name: price_band
+        label: Price band
+        description: budget (list price under 25 USD), mid (under 100) or premium.
+        type: categorical
+    measures:
+      - name: product_count
+        agg: count
+        expr: product_id
+
+metrics:
+  - name: gross_sales
+    label: Gross sales
+    description: List value of the units ordered, before discounts and returns, in USD. Excludes cancelled orders.
+    type: simple
+    type_params:
+      measure: gross_sales_amount
+    filter: "{{ Dimension('order_item__line_status') }} != 'cancelled'"
+  - name: discounts
+    label: Discounts
+    description: Discounts given on orders that were not cancelled, in USD.
+    type: simple
+    type_params:
+      measure: line_discount_amount
+    filter: "{{ Dimension('order_item__line_status') }} != 'cancelled'"
+  - name: returns
+    label: Returns
+    description: What was refunded for returned orders, in USD.
+    type: simple
+    type_params:
+      measure: net_sales_amount
+    filter: "{{ Dimension('order_item__line_status') }} = 'returned'"
+  - name: revenue
+    label: Net revenue
+    description: What customers paid for the items they kept, in USD; gross sales minus discounts minus returns, without shipping. The shop's main sales figure.
+    type: simple
+    type_params:
+      measure: net_sales_amount
+    filter: "{{ Dimension('order_item__line_status') }} = 'completed'"
+  - name: cost_of_goods_sold
+    label: Cost of goods sold
+    description: What the units customers kept cost the shop, in USD.
+    type: simple
+    type_params:
+      measure: cost_of_goods_amount
+    filter: "{{ Dimension('order_item__line_status') }} = 'completed'"
+  - name: gross_profit
+    label: Gross profit
+    description: Net revenue minus cost of goods sold, in USD.
+    type: simple
+    type_params:
+      measure: line_profit_amount
+    filter: "{{ Dimension('order_item__line_status') }} = 'completed'"
+  - name: gross_margin
+    label: Gross margin
+    description: Gross profit as a share of net revenue, from 0 to 1.
+    type: ratio
+    type_params:
+      numerator: gross_profit
+      denominator: revenue
+  - name: units_sold
+    label: Units sold
+    description: Units in completed orders.
+    type: simple
+    type_params:
+      measure: units
+    filter: "{{ Dimension('order_item__line_status') }} = 'completed'"
+  - name: orders
+    label: Orders
+    description: Orders placed and not cancelled, completed or returned.
+    type: simple
+    type_params:
+      measure: order_count
+    filter: "{{ Dimension('order__status') }} != 'cancelled'"
+  - name: completed_orders
+    label: Completed orders
+    description: Orders delivered and kept.
+    type: simple
+    type_params:
+      measure: order_count
+    filter: "{{ Dimension('order__status') }} = 'completed'"
+  - name: returned_orders
+    label: Returned orders
+    type: simple
+    type_params:
+      measure: order_count
+    filter: "{{ Dimension('order__status') }} = 'returned'"
+  - name: cancelled_orders
+    label: Cancelled orders
+    type: simple
+    type_params:
+      measure: order_count
+    filter: "{{ Dimension('order__status') }} = 'cancelled'"
+  - name: all_orders
+    label: All orders
+    description: Every order placed, cancelled ones included.
+    type: simple
+    type_params:
+      measure: order_count
+  - name: average_order_value
+    label: Average order value
+    description: Net revenue per completed order, in USD.
+    type: ratio
+    type_params:
+      numerator: revenue
+      denominator: completed_orders
+  - name: units_per_order
+    label: Units per order
+    description: Units sold per completed order.
+    type: ratio
+    type_params:
+      numerator: units_sold
+      denominator: completed_orders
+  - name: buyers
+    label: Buyers
+    description: Distinct customers with an order that was not cancelled.
+    type: simple
+    type_params:
+      measure: ordering_customers
+    filter: "{{ Dimension('order__status') }} != 'cancelled'"
+  - name: revenue_per_buyer
+    label: Revenue per buyer
+    description: Net revenue per distinct buyer, in USD.
+    type: ratio
+    type_params:
+      numerator: revenue
+      denominator: buyers
+  - name: discount_rate
+    label: Discount rate
+    description: Discounts as a share of gross sales, from 0 to 1.
+    type: ratio
+    type_params:
+      numerator: discounts
+      denominator: gross_sales
+  - name: return_rate
+    label: Return rate
+    description: Returned orders as a share of orders that were not cancelled, from 0 to 1.
+    type: ratio
+    type_params:
+      numerator: returned_orders
+      denominator: orders
+  - name: cancellation_rate
+    label: Cancellation rate
+    description: Cancelled orders as a share of all orders, from 0 to 1.
+    type: ratio
+    type_params:
+      numerator: cancelled_orders
+      denominator: all_orders
+  - name: shipping_revenue
+    label: Shipping revenue
+    description: Shipping fees charged on completed orders, in USD.
+    type: simple
+    type_params:
+      measure: shipping_fees
+    filter: "{{ Dimension('order__status') }} = 'completed'"
+  - name: new_customers
+    label: New customers
+    description: Customers who signed up, counted on their signup date.
+    type: simple
+    type_params:
+      measure: customer_count
+  - name: revenue_month_to_date
+    label: Net revenue, month to date
+    description: Net revenue from the first of the month through each day; group it by metric_time.
+    type: cumulative
+    type_params:
+      measure: net_sales_amount
+      cumulative_type_params:
+        grain_to_date: month
+    filter: "{{ Dimension('order_item__line_status') }} = 'completed'"
+  - name: revenue_trailing_28d
+    label: Net revenue, trailing 28 days
+    description: Net revenue over the 28 days up to each day; group it by metric_time.
+    type: cumulative
+    type_params:
+      measure: net_sales_amount
+      cumulative_type_params:
+        window: 28 days
+        period_agg: last
+    filter: "{{ Dimension('order_item__line_status') }} = 'completed'"
+  - name: revenue_last_year
+    label: Net revenue, a year earlier
+    description: Net revenue of the same period one year before; group it by metric_time.
+    type: derived
+    type_params:
+      expr: revenue_a_year_ago
+      metrics:
+        - name: revenue
+          alias: revenue_a_year_ago
+          offset_window: 1 year
+  - name: revenue_growth_yoy
+    label: Net revenue growth, year over year
+    description: Net revenue against the same period a year earlier, as a share (0.25 is 25% growth); group it by metric_time.
+    type: derived
+    type_params:
+      expr: (revenue - revenue_a_year_ago) / revenue_a_year_ago
+      metrics:
+        - name: revenue
+        - name: revenue
+          alias: revenue_a_year_ago
+          offset_window: 1 year
+
+saved_queries:
+  - name: revenue_by_region_monthly
+    label: Revenue by region, monthly
+    description: Net revenue, orders and average order value per region and month.
+    query_params:
+      metrics: [revenue, orders, average_order_value]
+      group_by:
+        - TimeDimension('metric_time', 'month')
+        - Dimension('customer__region')
+  - name: category_performance_quarterly
+    label: Category performance, quarterly
+    description: Net revenue, gross profit, gross margin, units and returns per product category and quarter.
+    query_params:
+      metrics: [revenue, gross_profit, gross_margin, units_sold, returns]
+      group_by:
+        - TimeDimension('metric_time', 'quarter')
+        - Dimension('product__category')
+  - name: segment_overview_quarterly
+    label: Customer segments, quarterly
+    description: Net revenue, buyers, revenue per buyer and average order value per customer segment and quarter.
+    query_params:
+      metrics: [revenue, buyers, revenue_per_buyer, average_order_value]
+      group_by:
+        - TimeDimension('metric_time', 'quarter')
+        - Dimension('customer__segment')

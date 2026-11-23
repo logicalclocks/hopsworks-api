@@ -803,3 +803,50 @@ class TestVersioning:
         assert args[1] == ["project", 1, "serving", 5, "rollback"]
         assert json.loads(kwargs["data"]) == {"version": 2}
         deployment.update_from_response_json.assert_called_once_with(response)
+
+    def test_get_deployment_sharing_reads_the_serving_id(self, mocker):
+        api = ServingApi()
+        body = {"allProjects": False, "projects": ["b"]}
+        hopsworks_client = _patch_client(mocker, body)
+        depl = MagicMock()
+        depl.id = 5
+
+        assert api._get_deployment_sharing(depl) == body
+
+        args, _ = hopsworks_client._send_request.call_args
+        assert args[:2] == ("GET", ["project", 1, "serving", 5, "sharing"])
+
+    @pytest.mark.parametrize("status, logged", [(200, False), (202, True)])
+    def test_change_deployment_sharing_patches_the_change_and_logs_a_pending_one(
+        self, mocker, caplog, status, logged
+    ):
+        api = ServingApi()
+        body = {"allProjects": False, "projects": ["b"]}
+        hopsworks_client = _patch_client(mocker, _switch_response(status, body))
+        depl = MagicMock()
+        depl.id = 5
+
+        with caplog.at_level(logging.INFO, logger="hsml.core.serving_api"):
+            assert api._change_deployment_sharing(depl, None, ["b"], ["a"]) == body
+
+        args, kwargs = hopsworks_client._send_request.call_args_list[0]
+        assert args[:2] == ("PATCH", ["project", 1, "serving", 5, "sharing"])
+        # No allProjects keeps the stored value.
+        assert json.loads(kwargs["data"]) == {"add": ["b"], "remove": ["a"]}
+        pending = [r for r in caplog.records if "within a minute" in r.message]
+        assert len(pending) == (1 if logged else 0)
+
+    def test_change_deployment_sharing_sends_all_projects_when_given(self, mocker):
+        api = ServingApi()
+        hopsworks_client = _patch_client(mocker, _switch_response(200, {}))
+        depl = MagicMock()
+        depl.id = 5
+
+        api._change_deployment_sharing(depl, False, [], [])
+
+        _, kwargs = hopsworks_client._send_request.call_args_list[0]
+        assert json.loads(kwargs["data"]) == {
+            "add": [],
+            "remove": [],
+            "allProjects": False,
+        }

@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import copy
 import functools
 import importlib
 import os
@@ -33,6 +34,7 @@ from hopsworks_common.core.constants import (
     great_expectations_not_installed_message,
     openai_not_installed_message,
     polars_not_installed_message,
+    pyarrow_not_installed_message,
     pyiceberg_not_installed_message,
     trino_not_installed_message,
 )
@@ -94,7 +96,9 @@ def _catch_not_found(*class_import_paths, fallback_return=None):
                     e.response.status_code in [400, 404]
                     and e.response.json().get("errorCode", "") in not_found_error_codes
                 ):
-                    return fallback_return
+                    # A copy, since the fallback is one object shared by every call: a caller that
+                    # adds to the {} it got back would otherwise change what later calls return.
+                    return copy.copy(fallback_return)
                 raise e
 
         return g
@@ -187,7 +191,7 @@ def _uses_pyarrow(f):
     @functools.wraps(f)
     def g(*args, **kwds):
         if not HAS_PYARROW:
-            raise ModuleNotFoundError("PyArrow is required for Arrow feature logging")
+            raise ModuleNotFoundError(pyarrow_not_installed_message)
         return f(*args, **kwds)
 
     return g

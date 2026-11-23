@@ -1,0 +1,5 @@
+# Installed into <slug>-jobs-env, a clone of pandas-training-pipeline (which ships
+# pandas, xgboost 3.2.0, scikit-learn and matplotlib and the Hopsworks client), for
+# the generator, training and the Kumo registration, which downloads the checkpoint
+# from Hugging Face. xgboost must match app-requirements.txt: the app loads the model.
+huggingface_hub==2.0.0

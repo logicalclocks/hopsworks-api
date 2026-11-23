@@ -16,33 +16,51 @@
 from __future__ import annotations
 
 import json
-from typing import Literal, get_args
 
 from hopsworks_apigen import public
 from hopsworks_common import client
 from hopsworks_common import project_member as project_member_mod
 
 
-_ROLE_ARG = Literal[
-    "Data owner",
-    "Data scientist",
-    "Observer",
-    "Feature store restricted",
-]
-_ROLES = get_args(_ROLE_ARG)
+_ROLES = ("Data owner", "Data scientist", "Observer", "Feature store restricted")
 
 
-def _normalize_role(role: str) -> str:
-    """Match a role case-insensitively and return it in the casing the backend expects.
+def _match_role(role: str, names) -> str | None:
+    if isinstance(role, str):
+        for name in names:
+            if role.casefold() == name.casefold():
+                return name
+    return None
+
+
+def _project_role_names() -> list[str]:
+    _client = client._get_instance()
+    path_params = ["project", _client._project_id, "roles"]
+    response = _client._send_request("GET", path_params) or {}
+    return [item["name"] for item in response.get("items", [])]
+
+
+def _resolve_roles(roles: list[str]) -> list[str]:
+    """Match role names case-insensitively and return them in the spelling the backend expects.
 
     The roles read as prose rather than as identifiers, so `data owner` is an easy thing to write;
     accepting it costs nothing and the backend still receives the canonical `Data owner`.
+    A name that is not built-in is looked up among the project's roles, which include the custom roles a cluster administrator defined, so a misspelt role is refused before any change is sent.
     """
-    if isinstance(role, str):
-        for canonical in _ROLES:
-            if role.casefold() == canonical.casefold():
-                return canonical
-    raise ValueError(f"Role must be one of the following: {_ROLES}.")
+    project_roles = None
+    resolved = []
+    for role in roles:
+        name = _match_role(role, _ROLES)
+        if name is None:
+            if project_roles is None:
+                project_roles = _project_role_names()
+            name = _match_role(role, project_roles)
+        if name is None:
+            raise ValueError(
+                f"Role must be one of the following: {tuple(project_roles)}."
+            )
+        resolved.append(name)
+    return resolved
 
 
 @public("hopsworks.core.project_members_api.ProjectMembersApi")
@@ -87,7 +105,7 @@ class ProjectMembersApi:
 
     @public
     def add_members(
-        self, emails_and_roles: dict[str, _ROLE_ARG]
+        self, emails_and_roles: dict[str, str]
     ) -> list[project_member_mod.ProjectMember]:
         """Add one or more users to the project in a single call.
 
@@ -95,19 +113,18 @@ class ProjectMembersApi:
             emails_and_roles:
                 Mapping of a member's email to the project role to grant them,
                 one of `Data owner`, `Data scientist`, `Observer`,
-                `Feature store restricted`.
+                `Feature store restricted`, or a custom project role.
                 Roles are matched regardless of case.
 
         Returns:
             List of the newly added `ProjectMember` objects.
 
         Raises:
-            ValueError: If any role is not a settable project role.
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a project owner.
+            ValueError: If any role is not a role of the project.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a project owner or may not give the role.
         """
-        emails_and_roles = {
-            email: _normalize_role(role) for email, role in emails_and_roles.items()
-        }
+        roles = _resolve_roles(list(emails_and_roles.values()))
+        emails_and_roles = dict(zip(emails_and_roles, roles, strict=True))
 
         _client = client._get_instance()
         path_params = ["project", _client._project_id, "projectMembers"]
@@ -131,9 +148,7 @@ class ProjectMembersApi:
         return [m for m in self.get_members() if m.email and m.email.lower() in added]
 
     @public
-    def add_member(
-        self, email: str, role: _ROLE_ARG
-    ) -> project_member_mod.ProjectMember:
+    def add_member(self, email: str, role: str) -> project_member_mod.ProjectMember:
         """Add a single user to the project.
 
         Example:
@@ -148,15 +163,15 @@ class ProjectMembersApi:
         Parameters:
             email: Email address of the user to add.
             role: The project role to grant, one of `Data owner`, `Data scientist`,
-                `Observer`, `Feature store restricted`.
+                `Observer`, `Feature store restricted`, or a custom project role.
                 Matched regardless of case.
 
         Returns:
             The newly added `ProjectMember`.
 
         Raises:
-            ValueError: If `role` is not a settable project role.
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a project owner.
+            ValueError: If `role` is not a role of the project.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a project owner or may not give the role.
             RuntimeError: If the add succeeded but `email` could not be found
                 in the project's member list immediately afterwards.
         """
@@ -170,7 +185,7 @@ class ProjectMembersApi:
 
     @public
     def update_role(
-        self, email: str, role: _ROLE_ARG
+        self, email: str, role: str
     ) -> project_member_mod.ProjectMember | None:
         """Change a project member's role by email.
 
@@ -186,7 +201,7 @@ class ProjectMembersApi:
         Parameters:
             email: Email address of the member to update.
             role: The new project role, one of `Data owner`, `Data scientist`,
-                `Observer`, `Feature store restricted`.
+                `Observer`, `Feature store restricted`, or a custom project role.
                 Matched regardless of case.
 
         Returns:
@@ -194,10 +209,10 @@ class ProjectMembersApi:
             found immediately after the update.
 
         Raises:
-            ValueError: If `role` is not a settable project role.
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a project owner or `email` is the project owner.
+            ValueError: If `role` is not a role of the project.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a project owner, may not give the role, or `email` is the project owner.
         """
-        role = _normalize_role(role)
+        role = _resolve_roles([role])[0]
         _client = client._get_instance()
         path_params = ["project", _client._project_id, "projectMembers", email]
         _client._send_request("POST", path_params, data={"role": role})

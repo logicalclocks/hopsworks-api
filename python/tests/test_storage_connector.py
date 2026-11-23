@@ -20,10 +20,21 @@ import os
 from pathlib import WindowsPath
 
 import pytest
-from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
+from hopsworks_common.tag import Tag
 from hsfs import engine, storage_connector
+from hsfs.core import storage_connector_api
 from hsfs.engine import python, spark
 from hsfs.storage_connector import BigQueryConnector
+
+
+def _client(mocker, response=None, side_effect=None):
+    client_mock = mocker.Mock()
+    client_mock._project_id = 119
+    client_mock._send_request.return_value = response
+    client_mock._send_request.side_effect = side_effect
+    mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
+    return client_mock
 
 
 class TestHopsfsConnector:
@@ -81,6 +92,8 @@ class TestS3Connector:
         assert sc.session_token == "test_session_token"
         assert sc.iam_role == "test_iam_role"
         assert sc.arguments == {"test_name": "test_value"}
+        assert sc.endpoint == "https://s3.example.com:9021"
+        assert sc.path_style_access is True
 
     def test_from_response_json_basic_info(self, backend_fixtures):
         # Arrange
@@ -102,6 +115,173 @@ class TestS3Connector:
         assert sc.session_token is None
         assert sc.iam_role is None
         assert sc.arguments == {}
+        assert sc.endpoint is None
+        assert sc.path_style_access is None
+
+    def test_round_trip_keeps_endpoint_and_path_style(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_s3"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        again = storage_connector.StorageConnector.from_response_json(sc.to_dict())
+
+        assert again.endpoint == "https://s3.example.com:9021"
+        assert again.path_style_access is True
+
+    def test_connector_options_with_endpoint(self, mocker):
+        mocker.patch("hsfs.storage_connector.StorageConnector._refetch")
+        sc = storage_connector.S3Connector(
+            id=1,
+            name="ecs",
+            featurestore_id=1,
+            bucket="landing",
+            region="us-east-1",
+            access_key="ak",
+            secret_key="sk",
+            endpoint="https://s3.example.com:9021",
+            path_style_access=True,
+        )
+
+        options = sc.connector_options()
+
+        assert options["endpoint"] == "s3.example.com:9021"
+        assert options["use_ssl"] is True
+        assert options["url_style"] == "path"
+        assert options["region"] == "us-east-1"
+
+    def test_connector_options_with_http_endpoint_and_virtual_hosts(self, mocker):
+        mocker.patch("hsfs.storage_connector.StorageConnector._refetch")
+        sc = storage_connector.S3Connector(
+            id=1,
+            name="minio",
+            featurestore_id=1,
+            bucket="landing",
+            endpoint="http://minio.example.com:9000",
+        )
+
+        options = sc.connector_options()
+
+        assert options["endpoint"] == "minio.example.com:9000"
+        assert options["use_ssl"] is False
+        assert options["url_style"] == "vhost"
+
+    @pytest.mark.parametrize(
+        ("ssl", "path_style", "use_ssl", "url_style"),
+        [
+            ("true", "true", True, "path"),
+            ("false", "false", False, "vhost"),
+            ("False", "TRUE", False, "path"),
+        ],
+    )
+    def test_connector_options_from_spark_options(
+        self, mocker, ssl, path_style, use_ssl, url_style
+    ):
+        mocker.patch("hsfs.storage_connector.StorageConnector._refetch")
+        sc = storage_connector.S3Connector(
+            id=1,
+            name="legacy",
+            featurestore_id=1,
+            bucket="landing",
+            arguments=[
+                {"name": "fs.s3a.endpoint", "value": "minio:9000"},
+                {"name": "fs.s3a.connection.ssl.enabled", "value": ssl},
+                {"name": "fs.s3a.path.style.access", "value": path_style},
+            ],
+        )
+
+        options = sc.connector_options()
+
+        assert options["endpoint"] == "minio:9000"
+        assert options["use_ssl"] is use_ssl
+        assert options["url_style"] == url_style
+
+    def test_connector_options_without_endpoint_or_spark_options(self, mocker):
+        mocker.patch("hsfs.storage_connector.StorageConnector._refetch")
+        sc = storage_connector.S3Connector(
+            id=1, name="aws", featurestore_id=1, bucket="landing", region="eu-north-1"
+        )
+
+        options = sc.connector_options()
+
+        assert "endpoint" not in options
+        assert "use_ssl" not in options
+        assert "url_style" not in options
+
+    def test_save_refuses_a_response_without_the_endpoint(self, mocker):
+        sc = storage_connector.S3Connector(
+            id=None,
+            name="ecs",
+            featurestore_id=1,
+            bucket="landing",
+            endpoint="https://s3.example.com:9021",
+        )
+        mocker.patch(
+            "hsfs.core.storage_connector_api.StorageConnectorApi._create",
+            return_value=storage_connector.S3Connector(
+                id=1, name="ecs", featurestore_id=1, bucket="landing"
+            ),
+        )
+
+        with pytest.raises(FeatureStoreException, match="saved without its endpoint"):
+            sc.save()
+
+    def test_save_with_tags_sends_them_and_keeps_the_endpoint(self, mocker):
+        sc = storage_connector.S3Connector(
+            id=None,
+            name="ecs",
+            featurestore_id=1,
+            bucket="landing",
+            endpoint="https://s3.example.com:9021",
+        )
+        stored = storage_connector.S3Connector(
+            id=1,
+            name="ecs",
+            featurestore_id=1,
+            bucket="landing",
+            endpoint="https://s3.example.com:9021",
+        )
+        tags = [{"name": "data_owner", "value": "platform"}]
+        create = mocker.patch(
+            "hsfs.core.storage_connector_api.StorageConnectorApi._create",
+            return_value=stored,
+        )
+
+        assert sc.save(tags=tags) is stored
+        create.assert_called_once_with(sc, tags)
+
+    def test_update_refuses_a_response_without_the_endpoint(self, mocker):
+        sc = storage_connector.S3Connector(
+            id=1,
+            name="ecs",
+            featurestore_id=1,
+            bucket="landing",
+            endpoint="https://s3.example.com:9021",
+        )
+
+        def drop_endpoint(instance):
+            instance._endpoint = None
+            return instance
+
+        mocker.patch(
+            "hsfs.core.storage_connector_api.StorageConnectorApi._update",
+            side_effect=drop_endpoint,
+        )
+
+        with pytest.raises(FeatureStoreException, match="saved without its endpoint"):
+            sc.update()
+
+    def test_save_without_endpoint_accepts_any_response(self, mocker):
+        sc = storage_connector.S3Connector(
+            id=None, name="aws", featurestore_id=1, bucket="landing"
+        )
+        stored = storage_connector.S3Connector(
+            id=1, name="aws", featurestore_id=1, bucket="landing"
+        )
+        mocker.patch(
+            "hsfs.core.storage_connector_api.StorageConnectorApi._create",
+            return_value=stored,
+        )
+
+        assert sc.save() is stored
 
     def test_default_path(self, mocker):
         mocker.patch("hsfs.engine._get_instance", return_value=spark.Engine())
@@ -2576,7 +2756,7 @@ class TestSqlConnectorProvidedCredentials:
 
         sc.save()
 
-        create.assert_called_once_with(sc)
+        create.assert_called_once_with(sc, None)
 
     def test_an_update_never_sends_the_credentials_filled_in_on_read(
         self, backend_fixtures, mocker
@@ -3031,6 +3211,8 @@ class TestStorageConnectorToDict:
         assert d["sessionToken"] == "test_session_token"
         assert d["iamRole"] == "test_iam_role"
         assert d["arguments"] == [{"name": "test_name", "value": "test_value"}]
+        assert d["endpoint"] == "https://s3.example.com:9021"
+        assert d["pathStyleAccess"] is True
 
     def test_s3_to_dict_minimal(self):
         sc = storage_connector.S3Connector(
@@ -3048,6 +3230,8 @@ class TestStorageConnectorToDict:
         assert d["bucket"] == "my-bucket"
         assert d["region"] == "eu-north-1"
         assert d["arguments"] == []
+        assert d["endpoint"] is None
+        assert d["pathStyleAccess"] is None
 
     def test_redshift_to_dict(self, backend_fixtures):
         json = backend_fixtures["storage_connector"]["get_redshift"]["response"]
@@ -3292,7 +3476,7 @@ class TestStorageConnectorSave:
 
         result = sc.save()
 
-        mock_create.assert_called_once_with(sc)
+        mock_create.assert_called_once_with(sc, None)
         assert result.id == 42
 
     def test_update_calls_api_update(self, mocker):
@@ -3936,14 +4120,6 @@ class TestSharePointConnector:
     ]
 
     @staticmethod
-    def _client(mocker, response=None):
-        client_mock = mocker.Mock()
-        client_mock._project_id = 119
-        client_mock._send_request.return_value = response
-        mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
-        return client_mock
-
-    @staticmethod
     def _connector(backend_fixtures):
         return storage_connector.StorageConnector.from_response_json(
             backend_fixtures["storage_connector"]["get_sharepoint"]["response"]
@@ -4025,7 +4201,7 @@ class TestSharePointConnector:
 
     def test_list_drives(self, mocker, backend_fixtures):
         sc = self._connector(backend_fixtures)
-        client = self._client(
+        client = _client(
             mocker,
             {
                 "count": 1,
@@ -4040,7 +4216,7 @@ class TestSharePointConnector:
 
     def test_list_folders(self, mocker, backend_fixtures):
         sc = self._connector(backend_fixtures)
-        client = self._client(
+        client = _client(
             mocker,
             {
                 "count": 1,
@@ -4057,9 +4233,7 @@ class TestSharePointConnector:
 
     def test_create_sync_posts_the_sync_dto(self, mocker, backend_fixtures):
         sc = self._connector(backend_fixtures)
-        client = self._client(
-            mocker, {"id": 5, "datasetName": "reports", "state": "IDLE"}
-        )
+        client = _client(mocker, {"id": 5, "datasetName": "reports", "state": "IDLE"})
 
         sync = sc.create_sync(
             drive_id="b!1",
@@ -4097,7 +4271,7 @@ class TestSharePointConnector:
         self, mocker, backend_fixtures
     ):
         sc = self._connector(backend_fixtures)
-        client = self._client(mocker, {"id": 5})
+        client = _client(mocker, {"id": 5})
 
         sc.create_sync(drive_id="b!1", schedule=None)
 
@@ -4107,7 +4281,7 @@ class TestSharePointConnector:
 
     def test_copy_folder_is_an_unscheduled_copy_run_now(self, mocker, backend_fixtures):
         sc = self._connector(backend_fixtures)
-        client = self._client(mocker, {"id": 6})
+        client = _client(mocker, {"id": 6})
 
         sc.copy_folder(drive_id="b!1", folder_path="Reports/2026")
 
@@ -4120,7 +4294,7 @@ class TestSharePointConnector:
 
     def test_get_syncs(self, mocker, backend_fixtures):
         sc = self._connector(backend_fixtures)
-        client = self._client(
+        client = _client(
             mocker, {"count": 2, "items": [{"id": 1}, {"id": 2, "paused": True}]}
         )
 
@@ -4132,7 +4306,7 @@ class TestSharePointConnector:
 
     def test_get_sync(self, mocker, backend_fixtures):
         sc = self._connector(backend_fixtures)
-        client = self._client(mocker, {"id": 3, "auditPath": "/Projects/p/a"})
+        client = _client(mocker, {"id": 3, "auditPath": "/Projects/p/a"})
 
         sync = sc.get_sync(3)
 
@@ -4149,7 +4323,7 @@ class TestSharePointConnector:
             "currentTemplateVersion": 2,
         }
         sc = self._connector(backend_fixtures)
-        client = self._client(mocker, response)
+        client = _client(mocker, response)
 
         sc.reset_script()
 
@@ -4573,3 +4747,364 @@ class TestFilesOnlyConnectorList:
             "SftpConnector",
             "GoogleDriveConnector",
         ]
+
+
+class TestStorageConnectorTags:
+    _BASE = [
+        "project",
+        119,
+        "featurestores",
+        67,
+        "storageconnectors",
+        "test_s3",
+        "tags",
+    ]
+
+    @staticmethod
+    def _connector(backend_fixtures):
+        return storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_s3"]["response"]
+        )
+
+    @staticmethod
+    def _error(mocker, status_code, error_code):
+        response = mocker.Mock()
+        response.status_code = status_code
+        response.json.return_value = {"errorCode": error_code}
+        return RestAPIError("url", response)
+
+    @staticmethod
+    def _tags(*items):
+        return {"count": len(items), "items": list(items)}
+
+    def test_add_tag_puts_json_value_under_connector_name(
+        self, mocker, backend_fixtures
+    ):
+        client = _client(mocker)
+
+        self._connector(backend_fixtures).add_tag("owner", {"team": "risk"})
+
+        call = client._send_request.call_args
+        assert call.args == ("PUT", [*self._BASE, "owner"])
+        assert call.kwargs["headers"] == {"content-type": "application/json"}
+        assert json.loads(call.kwargs["data"]) == {"team": "risk"}
+        assert call.kwargs["timeout"] == 60
+
+    def test_add_tag_refuses_none_before_the_request(self, mocker, backend_fixtures):
+        client = _client(mocker)
+
+        with pytest.raises(ValueError, match="cannot be None"):
+            self._connector(backend_fixtures).add_tag("owner", None)
+
+        client._send_request.assert_not_called()
+
+    def test_delete_tag_path(self, mocker, backend_fixtures):
+        client = _client(mocker)
+
+        self._connector(backend_fixtures).delete_tag("owner")
+
+        assert client._send_request.call_args.args == (
+            "DELETE",
+            [*self._BASE, "owner"],
+        )
+        assert client._send_request.call_args.kwargs["timeout"] == 60
+
+    def test_get_tags_returns_values(self, mocker, backend_fixtures):
+        client = _client(
+            mocker,
+            self._tags(
+                {"name": "owner", "value": '{"team": "risk"}'},
+                {"name": "tier", "value": "3"},
+            ),
+        )
+
+        tags = self._connector(backend_fixtures).get_tags()
+
+        assert tags == {"owner": {"team": "risk"}, "tier": 3}
+        assert client._send_request.call_args.args == ("GET", self._BASE)
+        assert client._send_request.call_args.kwargs["timeout"] == 60
+
+    def test_get_tag_reads_the_named_tag(self, mocker, backend_fixtures):
+        client = _client(
+            mocker, self._tags({"name": "owner", "value": '{"team": "risk"}'})
+        )
+
+        value = self._connector(backend_fixtures).get_tag("owner")
+
+        assert value == {"team": "risk"}
+        assert client._send_request.call_args.args == ("GET", [*self._BASE, "owner"])
+
+    def test_get_tag_missing_returns_none(self, mocker, backend_fixtures):
+        _client(mocker, side_effect=self._error(mocker, 404, 370002))
+        sc = self._connector(backend_fixtures)
+
+        assert sc.get_tag("owner") is None
+        assert sc.get_tag_metadata("owner") is None
+        assert sc.get_tags() == {}
+        assert sc.get_tags_metadata() == {}
+
+    def test_a_missing_tags_result_is_not_shared_between_calls(
+        self, mocker, backend_fixtures
+    ):
+        _client(mocker, side_effect=self._error(mocker, 404, 370002))
+        sc = self._connector(backend_fixtures)
+
+        sc.get_tags_metadata()["owner"] = "added by the caller"
+
+        assert sc.get_tags_metadata() == {}
+
+    def test_get_tags_metadata_keeps_created_on(self, mocker, backend_fixtures):
+        _client(
+            mocker,
+            self._tags(
+                {"name": "owner", "value": '"risk"', "createdOn": 1700000000000}
+            ),
+        )
+
+        attached = self._connector(backend_fixtures).get_tags_metadata()["owner"]
+
+        assert attached.value == "risk"
+        assert attached.created_on is not None
+        assert attached.created_on.timestamp() == 1700000000
+
+    def test_connector_not_found_is_not_swallowed(self, mocker, backend_fixtures):
+        _client(mocker, side_effect=self._error(mocker, 404, 270042))
+
+        with pytest.raises(RestAPIError):
+            self._connector(backend_fixtures).get_tags()
+
+
+class TestStorageConnectorMandatoryTags:
+    @staticmethod
+    def _s3_json(backend_fixtures, **extra):
+        return {**backend_fixtures["storage_connector"]["get_s3"]["response"], **extra}
+
+    @pytest.mark.parametrize(
+        "tags",
+        [
+            {"name": "owner", "value": {"team": "risk"}},
+            [{"name": "owner", "value": {"team": "risk"}}],
+            Tag("owner", {"team": "risk"}),
+            [Tag("owner", {"team": "risk"})],
+        ],
+    )
+    def test_save_sends_tags_with_their_values_as_json(
+        self, mocker, backend_fixtures, tags
+    ):
+        client = _client(mocker, self._s3_json(backend_fixtures))
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures)
+        )
+
+        sc.save(tags=tags)
+
+        call = client._send_request.call_args
+        assert call.args == (
+            "POST",
+            ["project", 119, "featurestores", 67, "storageconnectors"],
+        )
+        assert json.loads(call.kwargs["data"])["tags"] == {
+            "count": 1,
+            "items": [{"name": "owner", "value": '{"team": "risk"}'}],
+        }
+
+    @pytest.mark.parametrize(
+        "value", ["risk", "123", "false", "null", ["eu", "us"], 3, True]
+    )
+    def test_save_encodes_a_tag_value_as_add_tag_does(
+        self, mocker, backend_fixtures, value
+    ):
+        client = _client(mocker, self._s3_json(backend_fixtures))
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures)
+        )
+
+        sc.save(tags=[{"name": "owner", "value": value}])
+        created = json.loads(client._send_request.call_args.kwargs["data"])["tags"]
+        sc.add_tag("owner", value)
+        attached = client._send_request.call_args.kwargs["data"]
+
+        assert created["items"][0]["value"] == attached
+        # What get_tags makes of the stored text: a string that looks like JSON stays a string.
+        assert Tag.from_response_json(created)[0].value == value
+
+    def test_save_without_tags_sends_no_tags_key(self, mocker, backend_fixtures):
+        client = _client(mocker, self._s3_json(backend_fixtures))
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures)
+        )
+
+        sc.save()
+
+        body = json.loads(client._send_request.call_args.kwargs["data"])
+        assert "tags" not in body
+        assert body["name"] == "test_s3"
+
+    def test_missing_mandatory_tags_read_from_the_response(self, backend_fixtures):
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(
+                backend_fixtures,
+                missingMandatoryTags=[{"name": "owner", "dataSourceSpecific": True}],
+            )
+        )
+
+        assert sc.missing_mandatory_tags == [
+            {"name": "owner", "data_source_specific": True}
+        ]
+
+    def test_missing_mandatory_tags_default_to_empty(self, backend_fixtures):
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures)
+        )
+
+        assert sc.missing_mandatory_tags == []
+
+    def test_refetch_with_the_expansion_refreshes_missing_mandatory_tags(
+        self, backend_fixtures
+    ):
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures, missingMandatoryTags=[{"name": "owner"}])
+        )
+
+        sc.update_from_response_json(
+            self._s3_json(backend_fixtures, missingMandatoryTags=[])
+        )
+
+        assert sc.missing_mandatory_tags == []
+
+    def test_get_asks_for_missing_mandatory_tags_when_told_to(
+        self, mocker, backend_fixtures
+    ):
+        client = _client(mocker, self._s3_json(backend_fixtures))
+
+        storage_connector_api.StorageConnectorApi()._get(
+            67, "test_s3", with_mandatory_tags=True
+        )
+
+        assert client._send_request.call_args.args == (
+            "GET",
+            ["project", 119, "featurestores", 67, "storageconnectors", "test_s3"],
+        )
+        assert client._send_request.call_args.kwargs["query_params"] == {
+            "temporaryCredentials": True,
+            "expand": "mandatorytags",
+        }
+
+    # The refetch runs on every Spark read of an S3 external feature group, among others, and none of them reads the mandatory tags.
+    def test_get_and_refetch_do_not_ask_for_mandatory_tags_by_default(
+        self, mocker, backend_fixtures
+    ):
+        client = _client(mocker, self._s3_json(backend_fixtures))
+        api = storage_connector_api.StorageConnectorApi()
+
+        sc = api._get(67, "test_s3")
+        api._refetch(sc)
+
+        for call in client._send_request.call_args_list:
+            assert call.kwargs["query_params"] == {"temporaryCredentials": True}
+
+    def test_refetch_without_the_expansion_keeps_the_missing_mandatory_tags(
+        self, backend_fixtures
+    ):
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures, missingMandatoryTags=[{"name": "owner"}])
+        )
+
+        sc.update_from_response_json(self._s3_json(backend_fixtures))
+
+        assert sc.missing_mandatory_tags == [{"name": "owner"}]
+
+    @staticmethod
+    def _backend(mocker, version):
+        mocker.patch(
+            "hopsworks_common.client._get_connection",
+            return_value=mocker.Mock(backend_version=version),
+        )
+
+    def test_save_with_tags_refuses_a_backend_older_than_5_3(
+        self, mocker, backend_fixtures
+    ):
+        client = _client(mocker, self._s3_json(backend_fixtures))
+        self._backend(mocker, "5.2.4")
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures)
+        )
+
+        with pytest.raises(FeatureStoreException, match="5.3 or later"):
+            sc.save(tags=[{"name": "owner", "value": "risk"}])
+
+        client._send_request.assert_not_called()
+
+    def test_save_without_tags_still_creates_on_an_older_backend(
+        self, mocker, backend_fixtures
+    ):
+        # Without an endpoint too, which such a backend cannot store either.
+        aws_json = self._s3_json(backend_fixtures, endpoint=None, pathStyleAccess=None)
+        client = _client(mocker, aws_json)
+        self._backend(mocker, "5.2.4")
+        sc = storage_connector.StorageConnector.from_response_json(aws_json)
+
+        sc.save()
+
+        assert client._send_request.call_args.args[0] == "POST"
+        assert "tags" not in json.loads(client._send_request.call_args.kwargs["data"])
+
+    @pytest.mark.parametrize("version", ["5.3.0", "5.3.0.dev1", "6.0.0"])
+    def test_save_with_tags_sends_them_on_5_3_and_later(
+        self, mocker, backend_fixtures, version
+    ):
+        client = _client(mocker, self._s3_json(backend_fixtures))
+        self._backend(mocker, version)
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures)
+        )
+
+        sc.save(tags=[{"name": "owner", "value": "risk"}])
+
+        body = json.loads(client._send_request.call_args.kwargs["data"])
+        assert body["tags"]["items"] == [{"name": "owner", "value": '"risk"'}]
+
+    def test_save_with_endpoint_refuses_a_backend_older_than_5_3(
+        self, mocker, backend_fixtures
+    ):
+        client = _client(mocker, self._s3_json(backend_fixtures))
+        self._backend(mocker, "5.2.4")
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures)
+        )
+        sc._endpoint = "https://s3.example.com:9021"
+
+        with pytest.raises(FeatureStoreException, match="target AWS S3"):
+            sc.save()
+
+        client._send_request.assert_not_called()
+
+    def test_update_with_endpoint_refuses_a_backend_older_than_5_3(
+        self, mocker, backend_fixtures
+    ):
+        client = _client(mocker, self._s3_json(backend_fixtures))
+        self._backend(mocker, "5.2.4")
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures)
+        )
+        sc._endpoint = "https://s3.example.com:9021"
+
+        with pytest.raises(FeatureStoreException, match="target AWS S3"):
+            sc.update()
+
+        client._send_request.assert_not_called()
+
+    @pytest.mark.parametrize("endpoint", [None, "", "  "])
+    def test_update_without_endpoint_still_runs_on_an_older_backend(
+        self, mocker, backend_fixtures, endpoint
+    ):
+        client = _client(mocker, self._s3_json(backend_fixtures))
+        self._backend(mocker, "5.2.4")
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures)
+        )
+        sc._endpoint = endpoint
+
+        sc.update()
+
+        assert client._send_request.call_args.args[0] == "PUT"

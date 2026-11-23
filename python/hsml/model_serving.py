@@ -1017,6 +1017,34 @@ class ModelServing:
         return f"{istio_client._base_url}/{'/'.join(path_parts)}"
 
     @public
+    def get_anthropic_url(self) -> str | None:
+        """Get the Anthropic-compatible base URL of the LLM gateway.
+
+        This is the value for `ANTHROPIC_BASE_URL`, used by Claude Code and the Anthropic SDK.
+        The URL is the OpenAI-compatible URL of the LLM gateway followed by `/anthropic`.
+        Requests are routed to a deployment by the `model` field of the request body, which is the deployment name.
+        The same availability notes as [`ModelServing.get_openai_url`][hsml.model_serving.ModelServing.get_openai_url] apply.
+
+        Returns:
+            The Anthropic-compatible base URL, or `None` if the Istio client is not available.
+
+        Raises:
+            hopsworks.client.exceptions.ModelServingException: If the Kubernetes namespace of the project is unknown.
+
+        Example: Point Claude Code at the LLM gateway
+            ```python
+            ms = project.get_model_serving()
+            url = ms.get_anthropic_url()
+            # url = "https://host:port/v1/namespace/v1/anthropic"
+            # Then set: ANTHROPIC_BASE_URL=url
+            ```
+        """
+        openai_url = self.get_openai_url()
+        if openai_url is None:
+            return None
+        return f"{openai_url}/anthropic"
+
+    @public
     def get_llm_gateway(self) -> dict[str, Any]:
         """Get the state of the LLM gateway.
 

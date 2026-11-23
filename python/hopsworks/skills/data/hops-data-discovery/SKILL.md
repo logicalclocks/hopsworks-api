@@ -26,8 +26,9 @@ hops fv list                              # feature views
 ### Free-text search
 
 ```bash
-hops search <term>                     # match FGs, FVs, training datasets, features
-hops search <term> --type feature_group   # restrict by type
+hops search <term>                     # match FGs, FVs, training datasets, features, datasets, metrics, ...
+hops search <term> --type feature_group   # restrict by type: dataset, metric, model, job, ...
+hops search <term> --type metric       # semantic layer metrics; DETAIL leads with the semantic project
 hops search <term> --global            # search across shared/other projects
 ```
 

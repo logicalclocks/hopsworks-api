@@ -245,10 +245,33 @@ hops superset dataset list
 hops superset dataset create --database-id N --table-name T [--schema S] [--sql "SELECT ..."]
 
 hops superset chart list
-hops superset chart create --name X --viz-type bar --datasource-id N --params '{"metrics":["count"]}'
+hops superset chart types [TYPE]               # chart types; one type's config schema
+hops superset chart generate --dataset N --type xy --x event_time --y 'SUM(amount)' [--group-by c] [--time-grain P1D] [--name X] [--preview]
+hops superset chart generate --dataset N --config @chart.json
 
 hops superset dashboard list
 hops superset dashboard create "My Dashboard" [--published]
+```
+
+`chart generate` goes through Superset's MCP service, which validates the config against the dataset before it saves the chart.
+
+## Semantic Layer
+
+Wraps `project.get_semantic_layer_api()`: metrics defined in YAML next to a dbt project, over feature groups.
+The `hops-semantic` skill covers the YAML and every command; `hops semantic --help` lists them.
+
+```bash
+hops semantic list
+hops semantic init <name> [--from-fg <fg>[:<version>] ...] [--path <dir>] [--repo new|<url>]   # scaffold, register, compile
+hops semantic create <name> --path <dbt project dir> [--mode FOLLOW|PINNED] [--tag NAME=VALUE]
+hops semantic show <name>                                   # settings, the build queries use, and whether it is stale
+hops semantic compile <name> [--wait]                       # --wait shows the issues and exits 1 on an INVALID or FAILED build
+hops semantic test <name> [--metrics a,b] [--no-compile]    # compile, then run each metric once on Trino; exit 1 on any failure
+hops semantic metrics <name> [--group-by a,b]
+hops semantic dimensions <name> [--metrics a,b]
+hops semantic query <name> --metrics a,b [--group-by metric_time__month,customer__country] [--where "..."] [--order-by -a] [--limit N] [--explain]
+hops semantic dashboard <name> --metrics a,b [--group-by customer__country] [--title T]   # Superset dashboard on your own semantic connection
+hops semantic export run <name> <export> [--wait]           # run an export's job now (Data Owner)
 ```
 
 ## File system (HopsFS)
@@ -269,16 +292,20 @@ hops files unshare Resources/my_dir --target other_project
 
 ```bash
 # Project-scoped search across feature groups, feature views, training datasets, features,
-# jobs, apps, models, deployments and agents
+# datasets, semantic layer metrics, semantic projects and saved queries, jobs, apps, models, deployments,
+# agents and data sources
 hops search "transactions"
 
 # Global search across every project the caller can see
 hops search "transactions" --global
 
 # Restrict to one entity type: feature_group, feature_view, training_dataset, feature,
-# job, app, model, deployment, agent
+# dataset, metric, semantic_project, saved_query, job, app, model, deployment, agent, data_source
 hops search "transactions" --type feature_group
 hops search "fraud" --type model
+hops search "revenue" --type metric   # DETAIL leads with the metric's semantic project
+hops search "sales" --type semantic_project   # DETAIL is the semantic project's root path
+hops search "revenue" --type saved_query   # DETAIL leads with the saved query's semantic project
 
 # Filter by keyword and/or schematized tag (repeatable)
 hops search "transactions" --keyword fraud --keyword production

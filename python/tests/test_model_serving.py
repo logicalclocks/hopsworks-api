@@ -952,6 +952,17 @@ class TestOpenAI:
         with pytest.raises(ModelServingException, match="namespace"):
             ms.get_openai_url()
 
+    def test_get_anthropic_url_appends_anthropic_to_the_openai_url(self, istio):
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+
+        assert ms.get_anthropic_url() == "https://istio.example.com/v1/ns/v1/anthropic"
+
+    def test_get_anthropic_url_is_none_without_istio(self, mocker):
+        mocker.patch("hopsworks_common.client.istio._get_instance", return_value=None)
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+
+        assert ms.get_anthropic_url() is None
+
     def test_project_namespace_property(self, ms):
         assert ms.project_namespace is None
         assert (

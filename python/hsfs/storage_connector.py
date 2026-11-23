@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import base64
+import copy
 import logging
 import os
 import posixpath
@@ -25,6 +26,7 @@ import warnings
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
+from urllib.parse import urlsplit
 
 import humps
 from cryptography.hazmat.backends import default_backend
@@ -58,6 +60,7 @@ if TYPE_CHECKING:
 
     from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
     from hopsworks_common.job import Job
+    from hopsworks_common.tag import Tag
 
     if HAS_NUMPY:
         import numpy as np
@@ -155,6 +158,9 @@ class StorageConnector(ABC):
         self._storage_connector_api = storage_connector_api.StorageConnectorApi()
         self._trino_catalog_api = trino_catalog_api.TrinoCatalogApi()
         self._data_source_api = data_source_api.DataSourceApi()
+        # Set by from_response_json and update_from_response_json: the subclasses call this constructor without
+        # their **kwargs, so the response key would not reach it.
+        self._missing_mandatory_tags: list[dict[str, Any]] = []
 
     @classmethod
     def from_response_json(
@@ -191,7 +197,11 @@ class StorageConnector(ABC):
         for subcls in cls.__subclasses__():
             if subcls.type == sc_type:
                 _ = json_decamelized.pop("storage_connector_type")
-                return subcls(**json_decamelized)
+                connector = subcls(**json_decamelized)
+                connector._missing_mandatory_tags = (
+                    json_decamelized.get("missing_mandatory_tags") or []
+                )
+                return connector
         raise ValueError(
             f"Unknown storage_connector_type {sc_type!r}; expected one of "
             f"{sorted({s.type for s in cls.__subclasses__() if isinstance(s.type, str)})}."
@@ -253,7 +263,11 @@ class StorageConnector(ABC):
         _ = json_decamelized.pop("type", None)
         if self.type == json_decamelized["storage_connector_type"]:
             _ = json_decamelized.pop("storage_connector_type")
+            known_missing = self._missing_mandatory_tags
             self.__init__(**json_decamelized)
+            # Only the getters ask for the mandatory tags; a refetch without them keeps what the getter read.
+            missing = json_decamelized.get("missing_mandatory_tags")
+            self._missing_mandatory_tags = known_missing if missing is None else missing
         else:
             raise ValueError("Failed to update storage connector information.")
         return self
@@ -264,6 +278,10 @@ class StorageConnector(ABC):
 
     def _check_new(self) -> None:
         """Refuse to create the data source when its fields cannot be stored as given."""
+        return
+
+    def _check_stored(self, stored: StorageConnector) -> None:
+        """Refuse a save or update that the backend accepted without storing a field this client sent."""
         return
 
     def to_dict(self) -> dict[str, int | str | None]:
@@ -277,7 +295,10 @@ class StorageConnector(ABC):
         }
 
     @public
-    def save(self) -> StorageConnector:
+    def save(
+        self,
+        tags: Tag | dict[str, Any] | list[Tag | dict[str, Any]] | None = None,
+    ) -> StorageConnector:
         """Persist this storage connector to the feature store.
 
         Example:
@@ -294,17 +315,28 @@ class StorageConnector(ABC):
                 bucket="my-bucket",
                 region="eu-north-1",
             )
-            sc.save()
+            sc.save(tags=[{"name": "data_owner", "value": "email@hopsworks.ai"}])
             ```
+
+        Parameters:
+            tags:
+                Tags to attach to the data source as it is created, in the same request.
+                Each tag names its tag schema and carries a value that the schema validates.
+                Tags that are mandatory for data sources must be passed here, since the data source is not created without them.
 
         Returns:
             The saved storage connector with its assigned id.
 
         Raises:
             ValueError: If a SQL data source with provided credentials is given a username, password, wallet or wallet password, since each member sets their own with `set_credentials()`.
+            hopsworks.client.exceptions.FeatureStoreException: If `tags` are passed to a Hopsworks backend older than 5.3, which cannot store data source tags.
+                Also if an S3 data source has an endpoint, which such a backend cannot store: the request is not sent, or, when the backend's version is unknown, the data source is stored without the endpoint and targets AWS S3.
+            hopsworks.client.exceptions.RestAPIError: If a tag that is mandatory for data sources is missing from `tags`, if a tag value does not match its schema, or if the backend encounters another error when handling the request.
         """
         self._check_new()
-        return self._storage_connector_api._create(self)
+        stored = self._storage_connector_api._create(self, tags)
+        self._check_stored(stored)
+        return stored
 
     @public
     def update(self) -> StorageConnector:
@@ -324,8 +356,16 @@ class StorageConnector(ABC):
 
         Returns:
             The updated storage connector.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If an S3 data source has an endpoint and the backend is older than 5.3, which cannot store it: the request is not sent, or, when the backend's version is unknown, the data source is stored without the endpoint and targets AWS S3.
+            hopsworks.client.exceptions.RestAPIError: If the data source lacks a tag that is mandatory for data sources, which has to be added with [`add_tag`][hsfs.storage_connector.StorageConnector.add_tag] first, or if the backend encounters another error when handling the request.
         """
-        return self._storage_connector_api._update(self)
+        # The response overwrites this instance, so keep what was sent to compare against it.
+        requested = copy.copy(self)
+        updated = self._storage_connector_api._update(self)
+        requested._check_stored(updated)
+        return updated
 
     @public
     def get_trino_catalog_template(self) -> dict[str, Any]:
@@ -582,6 +622,15 @@ class StorageConnector(ABC):
         return self._description
 
     @public
+    @property
+    def missing_mandatory_tags(self) -> list[dict[str, Any]]:
+        """Mandatory tags this data source does not carry, as reported when it was last fetched.
+
+        Adding a tag does not update this list on the object in hand; fetch the data source again to see the change.
+        """
+        return self._missing_mandatory_tags
+
+    @public
     @abstractmethod
     def spark_options(self) -> dict[str, Any]:
         """Return prepared options to be passed to Spark, based on the additional arguments.
@@ -773,6 +822,112 @@ class StorageConnector(ABC):
         if training_datasets_provenance and training_datasets_provenance.accessible:
             return training_datasets_provenance.accessible
         return []
+
+    @public
+    def add_tag(self, name: str, value: Any) -> None:
+        """Attach a tag to the storage connector.
+
+        A tag consists of a name-value pair.
+        Tag names are unique identifiers across the whole cluster.
+        The value of a tag can be any valid json -- primitives, arrays or json objects.
+        Attaching a tag that is already attached replaces its value.
+        Only a data owner of the project that owns the feature store can attach tags, and the online feature store connectors cannot be tagged.
+
+        Example:
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            sc = fs.get_data_source("conn_name").storage_connector
+
+            sc.add_tag(name="example_tag", value={"owner": "risk"})
+            ```
+
+        Parameters:
+            name: Name of the tag to be added.
+            value: Value of the tag to be added.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        self._storage_connector_api._add_tag(self, name, value)
+
+    @public
+    def delete_tag(self, name: str) -> None:
+        """Delete a tag attached to the storage connector.
+
+        The tag is removed for every data source that uses this connector, not only for this object.
+        Only a data owner of the project that owns the feature store can delete tags.
+
+        Parameters:
+            name: Name of the tag to be removed.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        self._storage_connector_api._delete_tag(self, name)
+
+    @public
+    def get_tag(self, name: str) -> Any | None:
+        """Get the value of a tag attached to the storage connector.
+
+        Parameters:
+            name: Name of the tag to get.
+
+        Returns:
+            Tag value or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        attached = self.get_tag_metadata(name)
+        return attached.value if attached is not None else None
+
+    @public
+    def get_tags(self) -> dict[str, Any]:
+        """Retrieve all tags attached to the storage connector.
+
+        Returns:
+            The dictionary of tag names and values.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return {
+            tag_name: attached.value
+            for tag_name, attached in self.get_tags_metadata().items()
+        }
+
+    @public
+    def get_tag_metadata(self, name: str) -> Tag | None:
+        """Get a tag with its metadata, including the time it was attached.
+
+        Unlike [`StorageConnector.get_tag`][hsfs.storage_connector.StorageConnector.get_tag], which returns only the tag's value, this returns the [`Tag`][hopsworks.tag.Tag] object, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Parameters:
+            name: Name of the tag to get.
+
+        Returns:
+            The tag object or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._storage_connector_api._get_tags_metadata(self, name).get(name)
+
+    @public
+    def get_tags_metadata(self) -> dict[str, Tag]:
+        """Retrieve all tags attached to the storage connector, with their metadata.
+
+        Unlike [`StorageConnector.get_tags`][hsfs.storage_connector.StorageConnector.get_tags], which returns only the tag values, this keeps the [`Tag`][hopsworks.tag.Tag] objects, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Returns:
+            The dictionary of tag names to tag objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._storage_connector_api._get_tags_metadata(self)
 
     @public
     def get_databases(self) -> list[str]:
@@ -1241,6 +1396,29 @@ class HopsFSConnector(StorageConnector):
 
 @public
 class S3Connector(StorageConnector):
+    """A data source on an S3 bucket, in AWS or in an S3-compatible store.
+
+    Set [`endpoint`][hsfs.storage_connector.S3Connector.endpoint] to use an S3-compatible store such as MinIO, Dell ECS or Ceph.
+    Such a data source needs an access key and a secret key, and cannot use IAM roles.
+    Without a region it gets `us-east-1`, which stores without regions accept.
+
+    Example:
+        ```python
+        sc = hsfs.storage_connector.S3Connector(
+            id=None,
+            name="ecs_landing",
+            featurestore_id=fs.id,
+            bucket="landing",
+            region="us-east-1",
+            access_key="...",
+            secret_key="...",
+            endpoint="https://s3.example.com:9021",
+            path_style_access=True,
+        )
+        sc.save()
+        ```
+    """
+
     type = StorageConnector.S3
 
     def __init__(
@@ -1260,11 +1438,15 @@ class S3Connector(StorageConnector):
         session_token: str | None = None,
         iam_role: str | None = None,
         arguments: dict[str, Any] | None = None,
+        endpoint: str | None = None,
+        path_style_access: bool | None = None,
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
 
         # S3
+        self._endpoint = endpoint
+        self._path_style_access = path_style_access
         self._access_key = access_key
         self._secret_key = secret_key
         self._server_encryption_algorithm = server_encryption_algorithm
@@ -1341,8 +1523,32 @@ class S3Connector(StorageConnector):
 
         These are set using the `Spark Options` field in the UI when creating the connector.
         Example: `{"fs.s3a.endpoint": "s3.eu-west-1.amazonaws.com", "fs.s3a.path.style.access": "true"}`.
+        For an S3-compatible store, set [`endpoint`][hsfs.storage_connector.S3Connector.endpoint] instead, which every Hopsworks client honours.
         """
         return self._arguments
+
+    @public
+    @property
+    def endpoint(self) -> str | None:
+        """The S3-compatible store this data source targets, as `http(s)://host[:port]`.
+
+        `None` means AWS S3.
+        The backend refuses an endpoint without an access key and a secret key, together with an IAM role, or next to the `fs.s3a.endpoint` and `fs.s3a.path.style.access` Spark options it replaces.
+        A data source with an endpoint and no region gets the region `us-east-1`.
+        An update that leaves it `None` keeps the stored endpoint; an empty string removes it.
+        Changing it moves the data source, and the data it already holds stays on the previous store.
+        """
+        return self._endpoint
+
+    @public
+    @property
+    def path_style_access(self) -> bool | None:
+        """Whether requests to the endpoint name the bucket in the URL path instead of the host name.
+
+        Most S3-compatible stores need it, since their host names do not resolve per bucket.
+        It applies only together with an [`endpoint`][hsfs.storage_connector.S3Connector.endpoint], and `None` reads as `False`.
+        """
+        return self._path_style_access
 
     def to_dict(self) -> dict[str, Any]:
         payload = super().to_dict()
@@ -1360,9 +1566,19 @@ class S3Connector(StorageConnector):
                 "arguments": [
                     {"name": k, "value": v} for k, v in self._arguments.items()
                 ],
+                "endpoint": self._endpoint,
+                "pathStyleAccess": self._path_style_access,
             }
         )
         return payload
+
+    def _check_stored(self, stored: StorageConnector) -> None:
+        if self._endpoint and self._endpoint.strip() and not stored._endpoint:
+            raise FeatureStoreException(
+                f"Data source '{self._name}' was saved without its endpoint, so it targets AWS S3: "
+                "the Hopsworks cluster predates S3-compatible storage. "
+                "Upgrade Hopsworks to 5.3 or later before using an endpoint."
+            )
 
     def spark_options(self) -> dict[str, str]:
         return self._arguments
@@ -1388,7 +1604,15 @@ class S3Connector(StorageConnector):
 
     @public
     def connector_options(self) -> dict[str, Any]:
-        """Return options to be passed to an external S3 connector library."""
+        """Return options to be passed to an external S3 connector library.
+
+        The keys follow DuckDB's S3 secret: `endpoint` is a `host[:port]`, `use_ssl` a boolean and `url_style` either `path` or `vhost`.
+        With an [`endpoint`][hsfs.storage_connector.S3Connector.endpoint] set, all three come from it and [`path_style_access`][hsfs.storage_connector.S3Connector.path_style_access].
+        Otherwise they come from the `fs.s3a.endpoint`, `fs.s3a.connection.ssl.enabled` and `fs.s3a.path.style.access` Spark options, when those are set.
+
+        Info: `"false"` in the Spark options takes effect, ~=5.3.0
+            Before 5.3.0, `use_ssl` was the option's string as given and `url_style` was `path` for any value of `fs.s3a.path.style.access`, so `"false"` read as true.
+        """
         self._refetch()
         options = {
             "access_key": self.access_key,
@@ -1396,23 +1620,29 @@ class S3Connector(StorageConnector):
             "session_token": self.session_token,
             "region": self.region,
         }
+        if self.endpoint:
+            parts = urlsplit(self.endpoint)
+            options["endpoint"] = parts.netloc
+            options["use_ssl"] = parts.scheme == "https"
+            options["url_style"] = "path" if self.path_style_access else "vhost"
+            return options
         if not self.arguments:
             return options
+        # Spark's s3a and DuckDB name the same settings differently:
+        # https://hadoop.apache.org/docs/stable/hadoop-aws/tools/hadoop-aws/connecting.html
+        # https://duckdb.org/docs/stable/core_extensions/httpfs/s3api
         if self.arguments.get("fs.s3a.endpoint"):
             options["endpoint"] = self.arguments.get("fs.s3a.endpoint")
         if self.arguments.get("fs.s3a.connection.ssl.enabled"):
-            # use_ssl is used by s3 secrets in duckdb
-            # where as fs.s3a.connection.ssl.enabled is used by spark s3a connector
-            # hadoop : https://hadoop.apache.org/docs/stable/hadoop-aws/tools/hadoop-aws/connecting.html#Low-level_Network.2FHttp_Options
-            # duckdb : https://duckdb.org/docs/stable/core_extensions/httpfs/s3api
-            options["use_ssl"] = self.arguments.get("fs.s3a.connection.ssl.enabled")
+            options["use_ssl"] = (
+                str(self.arguments.get("fs.s3a.connection.ssl.enabled")).lower()
+                == "true"
+            )
         if self.arguments.get("fs.s3a.path.style.access"):
-            # url_style is used by duckdb s3 connector
-            # where as fs.s3a.path.style.access is used by spark s3a connector
-            # hadoop: https://hadoop.apache.org/docs/stable/hadoop-aws/tools/hadoop-aws/connecting.html#Third_party_stores
-            # duckdb: https://duckdb.org/docs/stable/core_extensions/httpfs/s3api
             options["url_style"] = (
-                "path" if self.arguments.get("fs.s3a.path.style.access") else "vhost"
+                "path"
+                if str(self.arguments.get("fs.s3a.path.style.access")).lower() == "true"
+                else "vhost"
             )
         return options
 
@@ -1448,6 +1678,9 @@ class S3Connector(StorageConnector):
 
         Returns:
             `DataFrame`.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: With the Spark engine, if the data source has an endpoint and `path` is in another bucket, or if the Spark application already uses the bucket name with another store.
         """
         if path is None:
             path = ""
