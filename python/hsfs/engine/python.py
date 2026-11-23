@@ -1070,12 +1070,23 @@ class Engine:
             # Nearest-rank, as describe() uses for its 25%, 50% and 75%, from one
             # sort per column: one quantile() per rank selected 99 times per column.
             fractions = pl.lit(pl.Series(self._PERCENTILE_FRACTIONS))
-            with_values = [col for col in numeric_cols if counts[col] > 0]
+            # NaN is missing in pandas but a value in Polars, where it sorts last and
+            # would land on the top percentiles.
+            valid = {}
+            for col in numeric_cols:
+                values = pl.col(col).drop_nulls()
+                if df.schema[col].is_float():
+                    values = values.drop_nans()
+                valid[col] = values
+            lengths = df.select(
+                [values.len().alias(col) for col, values in valid.items()]
+            ).row(0, named=True)
+            with_values = [col for col in numeric_cols if lengths[col] > 0]
             percentiles = {}
             if with_values:
                 ranked = []
                 for col in with_values:
-                    values = pl.col(col).drop_nulls()
+                    values = valid[col]
                     # Rounded half away from zero, as Polars' "nearest" does.
                     rank = (
                         ((values.len() - 1).cast(pl.Float64) * fractions + 0.5)

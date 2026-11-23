@@ -1576,6 +1576,79 @@ class TestPython:
         assert "approxPercentiles" not in columns[1]
         assert columns[1]["completeness"] == 0.0
 
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
+    def test_profile_polars_percentiles_skip_nan_like_pandas(self):
+        python_engine = python.Engine()
+        values = [float(v) for v in range(9)] + [float("nan")]
+
+        def percentiles(df):
+            return json.loads(
+                python_engine._profile(
+                    df=df, relevant_columns=None, correlations=None, histograms=None
+                )
+            )["columns"][0].get("approxPercentiles")
+
+        polars_percentiles = percentiles(pl.DataFrame({"x": values}))
+        # Ranked over the nine values, with the NaN left out as pandas leaves it out.
+        assert polars_percentiles == [
+            pl.Series([float(v) for v in range(9)]).quantile(
+                (ii + 1) / 100, interpolation="nearest"
+            )
+            for ii in range(99)
+        ]
+        pandas_percentiles = percentiles(pd.DataFrame({"x": values}))
+        assert pandas_percentiles[24] == polars_percentiles[24] == 2.0
+        assert pandas_percentiles[49] == polars_percentiles[49] == 4.0
+        assert pandas_percentiles[74] == polars_percentiles[74] == 6.0
+
+        # robust_scaler scales with these percentiles instead of returning its input.
+        from hsfs import engine as hopsworks_engine
+        from hsfs import transformation_function
+        from hsfs.builtin_transformations import robust_scaler
+        from hsfs.core.feature_descriptive_statistics import (
+            FeatureDescriptiveStatistics,
+        )
+        from hsfs.core.transformation_execution_dag import TransformationExecutionDAG
+        from hsfs.core.transformation_function_engine import (
+            TransformationFunctionEngine,
+        )
+
+        tf = transformation_function.TransformationFunction(
+            hopsworks_udf=robust_scaler("x"),
+            featurestore_id=1,
+            transformation_type=transformation_function.TransformationType.MODEL_DEPENDENT,
+        )
+        tf.transformation_statistics = [
+            FeatureDescriptiveStatistics(
+                feature_name="x", percentiles=polars_percentiles
+            )
+        ]
+        hopsworks_engine._set_instance(engine=python_engine, engine_type="python")
+        scaled = TransformationFunctionEngine._apply_transformation_functions(
+            execution_graph=TransformationExecutionDAG([tf]),
+            data=pd.DataFrame({"x": [0.0, 4.0, 8.0]}),
+        )
+        assert scaled["robust_scaler_x_"].tolist() == [-1.0, 0.0, 1.0]
+
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
+    def test_profile_polars_an_all_nan_column_has_no_percentiles(self):
+        python_engine = python.Engine()
+        df = pl.DataFrame({"x": [float("nan")] * 3}, schema={"x": pl.Float64})
+
+        column = json.loads(
+            python_engine._profile(
+                df=df, relevant_columns=None, correlations=None, histograms=None
+            )
+        )["columns"][0]
+
+        assert "approxPercentiles" not in column
+
     def test_profile_pandas_profiles_object_numbers_as_numeric(self):
         python_engine = python.Engine()
         df = pd.DataFrame({"n": pd.Series([1, 2, None, 4], dtype=object)})
