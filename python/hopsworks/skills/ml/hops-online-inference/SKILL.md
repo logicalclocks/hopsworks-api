@@ -29,7 +29,7 @@ kickoff flow uses. The model must already be registered (`hops model list`):
 
 ```bash
 hops deployment create <model_name> --name <name> --version 1 --env pandas-inference-pipeline \
-  [--cores 2] [--memory 2048]                                  # limits per instance; default 1 core, 1024 MB
+  [--cores 2] [--memory 2048] [--gpus 1]                       # limits per instance; default 1 core, 1024 MB, no GPU
 hops deployment start <name>
 hops deployment status <name>                                   # poll until READY
 hops deployment predict <name> --data '{"instances": [{ <one known-good row> }]}'

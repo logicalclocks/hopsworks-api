@@ -154,6 +154,36 @@ def test_deployment_create_sets_the_cores_and_memory_it_is_given(mock_project):
     assert model.deploy.call_args.kwargs["resources"] is None
 
 
+def test_deployment_create_requests_the_gpus_it_is_given(mock_project):
+    mr = mock.MagicMock()
+    model = mock.MagicMock()
+    model.version = 1
+    model.deploy.return_value = mock.MagicMock()
+    mr.get_models.return_value = [model]
+    mock_project.get_model_registry.return_value = mr
+    result = CliRunner().invoke(
+        cli,
+        [
+            "deployment",
+            "create",
+            "llm",
+            "--gpus",
+            "2",
+            "--loading-strategy",
+            "runai_streamer",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    kwargs = model.deploy.call_args.kwargs
+    resources = kwargs["resources"]
+    assert (resources.limits.gpus, resources.requests.gpus) == (2, 2)
+    assert (resources.limits.cores, resources.limits.memory) == (1, 1024)
+    assert kwargs["loading_strategy"] == "RUNAI_STREAMER"
+
+    result = CliRunner().invoke(cli, ["deployment", "create", "llm", "--gpus", "-1"])
+    assert result.exit_code != 0
+
+
 def test_deployment_create_forwards_the_loading_strategy(mock_project):
     mr = mock.MagicMock()
     model = mock.MagicMock()
