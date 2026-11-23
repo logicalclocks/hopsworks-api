@@ -140,10 +140,11 @@ class HistogramBuilder {
    * Shared by the categorical histogram and the exact-uniqueness statistics.
    */
   static Dataset<Row> valueCounts(Dataset<Row> df, String columnName) {
-    // Project to a fixed name before grouping. For a feature named "count", grouping on the
-    // column itself leaves two "count" columns: the uniqueness reads cannot resolve, and
-    // Spark resolves the histogram's orderBy against the grouping one rather than failing,
-    // so the bins come out ordered by value and the top-N cut keeps the wrong values.
+    // Project to a fixed name before grouping.
+    // For a feature named "count", grouping on the column itself leaves two "count" columns: the
+    // uniqueness reads cannot resolve, and Spark resolves the histogram's orderBy against the
+    // grouping one rather than failing, so the bins come out ordered by value and the top-N cut
+    // keeps the wrong values.
     return df.select(functions.col(columnName).alias("_v"))
         .filter(functions.col("_v").isNotNull())
         .groupBy(functions.col("_v"))

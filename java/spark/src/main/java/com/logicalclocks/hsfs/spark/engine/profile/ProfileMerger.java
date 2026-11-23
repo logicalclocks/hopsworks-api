@@ -37,10 +37,11 @@ import java.util.Map;
  *
  * <p>Both sides carry the state written by {@link ColumnProfiler} with {@code mergeableState}: the
  * moments of the non-null values (count, sum, mean, M2, min, max), an HLL sketch of the distinct
- * values and, for a numeric column, a KLL sketch of the finite values. Counts and sums add, the
- * mean and the standard deviation follow the parallel variance formula, the sketches are unioned
- * and the percentiles are read from the merged KLL sketch. The output has the profiler's JSON
- * shape, with the merged state under {@code mergeable} so the next commit can merge again.
+ * values and, for a numeric column, a KLL sketch of the finite values.
+ * Counts and sums add, the mean and the standard deviation follow the parallel variance formula,
+ * the sketches are unioned and the percentiles are read from the merged KLL sketch.
+ * The output has the profiler's JSON shape, with the merged state under {@code mergeable} so the
+ * next commit can merge again.
  *
  * <p>Exact uniqueness, correlations and exact histograms have no mergeable state, so a profile
  * with any of them is not merged: the caller profiles the whole snapshot instead.
@@ -191,7 +192,10 @@ public final class ProfileMerger {
     return merged;
   }
 
-  /** The moments of a column's non-null values. Spark's min, max and mean propagate NaN and the infinities. */
+  /**
+   * The moments of a column's non-null values.
+   * Spark's min, max and mean propagate NaN and the infinities.
+   */
   static final class Moments {
     final long count;
     final double sum;

@@ -182,10 +182,11 @@ public class ColumnProfiler {
 
     Dataset<Row> input = df.select(columnsOf(columns));
     // Every pass would otherwise re-read the source, which for a feature group means a Hudi or
-    // Delta scan from HopsFS each time. A selection of every column shares the plan, and so the
-    // cache, of a caller-persisted frame: persisting it again would make the unpersist below
-    // drop the caller's cache. A selection that skips a column has a plan of its own, and
-    // reports no cache, yet still reads from the caller's cached frame.
+    // Delta scan from HopsFS each time.
+    // A selection of every column shares the plan, and so the cache, of a caller-persisted frame:
+    // persisting it again would make the unpersist below drop the caller's cache.
+    // A selection that skips a column has a plan of its own, and reports no cache, yet still
+    // reads from the caller's cached frame.
     boolean persisted = passes > 1 && input.storageLevel().equals(StorageLevel.NONE())
         && df.storageLevel().equals(StorageLevel.NONE());
     if (persisted) {

@@ -61,7 +61,8 @@ public class StatisticsConfig {
 
   /**
    * Whether a commit's statistics merge the new rows into the previous statistics instead of profiling the whole
-   * table. Null uses the cluster default.
+   * table.
+   * Null uses the cluster default.
    * On update, null resets the setting to the cluster default, unlike kll and histogramBins, where null keeps the
    * stored value.
    * Merged percentiles and the approximate distinct count come from KLL and HLL sketches over finite values, so they

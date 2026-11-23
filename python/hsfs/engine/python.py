@@ -1067,8 +1067,9 @@ class Engine:
                 stats[col] = dict(
                     zip(described["statistic"], described[col], strict=False)
                 )
-            # Nearest-rank, as describe() uses for its 25%, 50% and 75%, from one
-            # sort per column: one quantile() per rank selected 99 times per column.
+            # Nearest-rank, as describe() uses for its 25%, 50% and 75%.
+            # One sort per column, gathered at the 99 ranks, instead of one quantile()
+            # call per rank.
             fractions = pl.lit(pl.Series(self._PERCENTILE_FRACTIONS))
             # NaN is missing in pandas but a value in Polars, where it sorts last and
             # would land on the top percentiles.
