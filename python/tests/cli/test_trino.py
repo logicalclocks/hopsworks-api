@@ -5,6 +5,8 @@ from __future__ import annotations
 from unittest import mock
 
 import click
+import pytest
+from click.testing import CliRunner
 from hopsworks.cli import config, session
 from hopsworks.cli.commands import trino
 from hopsworks.cli.main import cli
@@ -42,3 +44,20 @@ def test_explicit_catalog_and_schema_win():
     kwargs = _connect_kwargs(catalog="iceberg", schema="other")
     assert kwargs["catalog"] == "iceberg"
     assert kwargs["schema"] == "other"
+
+
+@pytest.mark.parametrize(
+    ("args", "sql"),
+    [
+        (["schemas", "2yck__pg"], 'SHOW SCHEMAS FROM "2yck__pg"'),
+        (["tables", "2yck__pg.public"], 'SHOW TABLES FROM "2yck__pg"."public"'),
+        (["tables", "public"], 'SHOW TABLES FROM "public"'),
+        (["describe", "2yck__pg.public.t"], 'DESCRIBE "2yck__pg"."public"."t"'),
+        (["schemas", '"2yck__pg"'], 'SHOW SCHEMAS FROM "2yck__pg"'),
+    ],
+)
+def test_catalog_and_schema_names_are_quoted(args, sql):
+    with mock.patch.object(trino, "_execute") as execute:
+        result = CliRunner().invoke(cli, ["trino", *args])
+    assert result.exit_code == 0, result.output
+    assert execute.call_args.args[1] == sql

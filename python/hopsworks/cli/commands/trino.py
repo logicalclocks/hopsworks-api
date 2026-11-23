@@ -15,6 +15,7 @@ per-command, e.g. ``--catalog iceberg`` for Iceberg feature groups, or
 from __future__ import annotations
 
 import contextlib
+import time
 from typing import TYPE_CHECKING, Any
 
 import click
@@ -253,6 +254,16 @@ def trino_catalogs(ctx: click.Context) -> None:
     _execute(ctx, "SHOW CATALOGS", catalog=None, schema=None, limit=0)
 
 
+def _quoted(ref: str) -> str:
+    """Quote each part of a dotted name, since catalog and store names may start with a digit.
+
+    A name the caller already quoted is used as given.
+    """
+    if '"' in ref:
+        return ref
+    return ".".join(f'"{part}"' for part in ref.split("."))
+
+
 @trino_group.command("schemas")
 @click.argument("catalog")
 @click.pass_context
@@ -263,7 +274,9 @@ def trino_schemas(ctx: click.Context, catalog: str) -> None:
         ctx: Click context.
         catalog: Trino catalog name.
     """
-    _execute(ctx, f"SHOW SCHEMAS FROM {catalog}", catalog=None, schema=None, limit=0)
+    _execute(
+        ctx, f"SHOW SCHEMAS FROM {_quoted(catalog)}", catalog=None, schema=None, limit=0
+    )
 
 
 @trino_group.command("tables")
@@ -278,13 +291,9 @@ def trino_tables(ctx: click.Context, target: str) -> None:
         ctx: Click context.
         target: ``<catalog>.<schema>`` or just ``<schema>``.
     """
-    if "." in target:
-        cat, sch = target.split(".", 1)
-        sql = f"SHOW TABLES FROM {cat}.{sch}"
-        _execute(ctx, sql, catalog=None, schema=None, limit=0)
-        return
-    sql = f"SHOW TABLES FROM {target}"
-    _execute(ctx, sql, catalog=None, schema=None, limit=0)
+    _execute(
+        ctx, f"SHOW TABLES FROM {_quoted(target)}", catalog=None, schema=None, limit=0
+    )
 
 
 @trino_group.command("describe")
@@ -304,7 +313,7 @@ def trino_describe(ctx: click.Context, table_ref: str) -> None:
         raise click.UsageError(
             "TABLE_REF must be <catalog>.<schema>.<table> or <schema>.<table>."
         )
-    _execute(ctx, f"DESCRIBE {table_ref}", catalog=None, schema=None, limit=0)
+    _execute(ctx, f"DESCRIBE {_quoted(table_ref)}", catalog=None, schema=None, limit=0)
 
 
 # region: connection info -------------------------------------------------
@@ -333,3 +342,151 @@ def trino_info(ctx: click.Context) -> None:
         ["FIELD", "VALUE"],
         [[k.upper(), str(v)] for k, v in payload.items()],
     )
+
+
+# region: catalogs ----------------------------------------------------------
+
+# A catalog applied without a restart (dynamic Trino) is SYNCED within one backend
+# poll (1 min) plus its CREATE CATALOG; the wait covers two polls.
+_CATALOG_WAIT_S = 150
+_CATALOG_POLL_S = 2
+
+
+@trino_group.group("catalog")
+def trino_catalog_group() -> None:
+    """Trino catalogs: query a data source through Trino."""
+
+
+def _catalog_api(ctx: click.Context) -> Any:
+    return session.get_project(ctx).get_trino_catalog_api()
+
+
+def _print_catalog(catalog: dict[str, Any]) -> None:
+    if output.JSON_MODE:
+        output.print_json(catalog)
+        return
+    fields = ("name", "connectorType", "scope", "status", "operation", "failureReason")
+    output.print_table(
+        ["FIELD", "VALUE"],
+        [[f.upper(), str(catalog.get(f) or "-")] for f in fields],
+    )
+
+
+def _wait_synced(api: Any, name: str, timeout_s: int) -> dict[str, Any]:
+    """Poll the catalog until Trino has it (SYNCED) or refused it (FAILED), within timeout_s."""
+    deadline = time.monotonic() + timeout_s
+    while True:
+        catalog = api.get_catalog(name)
+        if catalog.get("status") in ("SYNCED", "FAILED"):
+            return catalog
+        if time.monotonic() >= deadline:
+            return catalog
+        time.sleep(_CATALOG_POLL_S)
+
+
+@trino_catalog_group.command("create")
+@click.argument("data_source")
+@click.option(
+    "--name",
+    default=None,
+    help="Catalog name, with the prefix of the suggested one (default: the suggested name).",
+)
+@click.option(
+    "--wait/--no-wait",
+    default=True,
+    show_default=True,
+    help=f"Wait up to {_CATALOG_WAIT_S} s until Trino answers on the catalog.",
+)
+@click.pass_context
+def trino_catalog_create(
+    ctx: click.Context, data_source: str, name: str | None, wait: bool
+) -> None:
+    """Create a Trino catalog from DATA_SOURCE.
+
+    Query it as `"<catalog>".<schema>.<table>`.
+
+    Credentials come from the data source; none are passed here. On a Trino with dynamic
+    catalogs the catalog answers within about a minute. On a static one it answers after the
+    next Trino restart, whose time this prints.
+
+    Args:
+        ctx: Click context.
+        data_source: Data source name in the project's feature store.
+        name: Catalog name; the suggested one when unset.
+        wait: Wait until the catalog answers.
+    """
+    api = _catalog_api(ctx)
+    fs_id = session.get_feature_store(ctx).id
+    template = api.get_catalog_template(data_source, fs_id)
+    if not template.get("supported"):
+        raise click.ClickException(
+            f"Data source {data_source} cannot be a Trino catalog: {template.get('reason') or 'unsupported type'}."
+        )
+    catalog = api.create_catalog(
+        name or template["suggestedName"],
+        template["connectorType"],
+        template["properties"],
+        data_source_name=data_source,
+        featurestore_id=fs_id,
+        scope=template.get("scope"),
+    )
+    # Named before any further call, so a failure below still says which catalog exists now.
+    output.info("Created Trino catalog %s.", catalog["name"])
+    capabilities = api.get_capabilities()
+    if not capabilities.get("dynamicCatalogs"):
+        _print_catalog(catalog)
+        output.info(
+            "Trino here loads catalogs at a restart: %s answers after the next one (%s).",
+            catalog["name"],
+            capabilities.get("nextScheduledRestart")
+            or "none scheduled; ask an administrator",
+        )
+        return
+    if wait:
+        catalog = _wait_synced(api, catalog["name"], _CATALOG_WAIT_S)
+    _print_catalog(catalog)
+    if catalog.get("status") == "FAILED":
+        raise click.ClickException(
+            f"Trino refused catalog {catalog['name']}: {catalog.get('failureReason') or 'no reason given'}."
+        )
+    if catalog.get("status") == "SYNCED":
+        output.success(
+            "Catalog %s answers: hops trino schemas %s",
+            catalog["name"],
+            catalog["name"],
+        )
+    elif wait:
+        raise click.ClickException(
+            f"Catalog {catalog['name']} is still {catalog.get('status')} after {_CATALOG_WAIT_S} s."
+        )
+
+
+@trino_catalog_group.command("info")
+@click.argument("name")
+@click.pass_context
+def trino_catalog_info(ctx: click.Context, name: str) -> None:
+    """Show catalog NAME: its connector, scope and status.
+
+    Args:
+        ctx: Click context.
+        name: Catalog name.
+    """
+    _print_catalog(_catalog_api(ctx).get_catalog(name))
+
+
+@trino_catalog_group.command("delete")
+@click.argument("name")
+@click.option("--yes", is_flag=True, help="Delete without asking.")
+@click.pass_context
+def trino_catalog_delete(ctx: click.Context, name: str, yes: bool) -> None:
+    """Delete catalog NAME. Its data source stays.
+
+    Args:
+        ctx: Click context.
+        name: Catalog name.
+        yes: Skip the confirmation.
+    """
+    if not yes:
+        output.confirm(f"Delete Trino catalog {name}?")
+    _catalog_api(ctx).delete_catalog(name)
+    output.success("Deleted Trino catalog %s", name)
