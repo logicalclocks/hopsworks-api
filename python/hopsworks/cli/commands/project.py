@@ -411,7 +411,7 @@ def members_set(ctx: click.Context, email: str, role: str) -> None:
 def members_remove(
     ctx: click.Context, email: str, keep_schedules: bool, yes: bool
 ) -> None:
-    """Remove a member from the active project, or cancel a pending invite.
+    """Remove a member, or cancel a pending invite.
 
     Hopsworks stops their runs and notebooks. The schedules of jobs they
     created keep starting runs on the owner's resources, so they are paused
