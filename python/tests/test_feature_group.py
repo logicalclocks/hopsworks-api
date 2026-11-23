@@ -871,6 +871,108 @@ class TestFeatureGroup:
         # Stats are computed by the backend ingestion-triggered FM job, not in the client.
         mock_convert_to_default_dataframe.assert_called_once_with(data)
 
+    @pytest.fixture
+    def save_through_engine(self, mocker):
+        """A feature group whose `save()` runs the real `FeatureGroupEngine._save` without writing anything."""
+        engine = python.Engine()
+        mocker.patch("hsfs.engine._get_instance", return_value=engine)
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._save_feature_group_metadata"
+        )
+        mocker.patch("hsfs.engine.python.Engine._save_dataframe")
+        mocks = {
+            "validate_schema": mocker.patch(
+                "hsfs.core.schema_validation.DataFrameValidator._validate_schema",
+                side_effect=lambda fg, df, features: features,
+            ),
+            "ge_validate": mocker.patch(
+                "hsfs.core.great_expectation_engine.GreatExpectationEngine._validate",
+                return_value=None,
+            ),
+        }
+
+        fg = feature_group.FeatureGroup(
+            name="test_fg",
+            version=2,
+            featurestore_id=99,
+            primary_key=["primary_key"],
+            foreign_key=[],
+            partition_key=[],
+            time_travel_format="DELTA",
+        )
+        return fg, mocks
+
+    @pytest.mark.parametrize(
+        "validation_options,should_validate_schema",
+        [
+            (None, True),
+            ({"schema_validation": True}, True),
+            ({"schema_validation": False}, False),
+            ({"online_schema_validation": False}, False),
+        ],
+    )
+    def test_save_validation_options_control_schema_validation(
+        self,
+        save_through_engine,
+        dataframe_fixture_basic,
+        validation_options,
+        should_validate_schema,
+    ):
+        # Arrange
+        fg, mocks = save_through_engine
+
+        # Act
+        fg.save(dataframe_fixture_basic, validation_options=validation_options)
+
+        # Assert
+        assert mocks["validate_schema"].called == should_validate_schema
+
+    def test_save_validation_options_reach_great_expectations(
+        self, save_through_engine, dataframe_fixture_basic
+    ):
+        # Arrange
+        fg, mocks = save_through_engine
+        validation_options = {"run_validation": False, "save_report": False}
+
+        # Act
+        fg.save(dataframe_fixture_basic, validation_options=validation_options)
+
+        # Assert
+        assert (
+            mocks["ge_validate"].call_args.kwargs["validation_options"]
+            == validation_options
+        )
+
+    def test_save_validation_options_not_passed_as_transformation_context(
+        self, mocker, save_through_engine, dataframe_fixture_basic
+    ):
+        # Arrange
+        fg, _ = save_through_engine
+        tf = mocker.Mock()
+        tf.hopsworks_udf.output_column_names = []
+        tf.hopsworks_udf.return_types = []
+        tf.hopsworks_udf.dropped_features = []
+        mocker.patch.object(
+            feature_group.FeatureGroup,
+            "transformation_functions",
+            new_callable=mocker.PropertyMock,
+            return_value=[tf],
+        )
+        fg._transformation_function_execution_dag = mocker.Mock()
+        mock_apply = mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions",
+            side_effect=lambda **kwargs: kwargs["data"],
+        )
+
+        # Act
+        fg.save(
+            dataframe_fixture_basic, validation_options={"schema_validation": False}
+        )
+
+        # Assert
+        assert mock_apply.call_args.kwargs["transformation_context"] is None
+
     def test_save_report_true_default(self, mocker, dataframe_fixture_basic):
         engine = python.Engine()
         mocker.patch("hsfs.engine._get_instance", return_value=engine)
