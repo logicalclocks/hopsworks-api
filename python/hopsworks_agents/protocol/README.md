@@ -8,10 +8,13 @@ Server helpers that make any Python agent chat-ready in the Hopsworks UI with a 
 | `POST /v1/run` | One AG-UI run: `RunAgentInput` in, AG-UI events out as server-sent events |
 | `POST /v1/chat` | The same turn as one JSON reply, for callers that do not stream |
 | `GET /health` | Liveness probe |
+| `GET /.well-known/agent-card.json`, `POST /a2a`, `/a2a/rest/...` | The A2A face of the same agent (see below) |
 
 What Hopsworks adds to AG-UI rides under a `hopsworks` key in AG-UI's own extension points: the subject, context and metadata in `forwardedProps.hopsworks`; the trace id in `RUN_STARTED.metadata.hopsworks`; the trace id, subject and citations in `RUN_FINISHED.result.hopsworks`, and there too, as `text`, a stream handler's final text when it rewrites the draft it streamed (a final text that only adds to the draft streams the rest instead); the would-be HTTP status and retryability in `RUN_ERROR.metadata.hopsworks`; and image, file or audio parts of the reply as `CUSTOM` events named `hopsworks.media`. A client that knows nothing of it ignores it.
 
 CORS is enabled by default (required for the in-browser chat panel). Part of the `hopsworks` package; serving an agent needs the `agents` extra (`pip install 'hopsworks[agents]'`).
+
+The same app is also an [A2A (Agent2Agent)](https://a2a-protocol.org) 1.0 agent, so another agent or any A2A client can discover it and delegate work to it; see [A2A](#a2a-agent2agent).
 
 ## Quick start
 
@@ -339,6 +342,55 @@ the turn span and the traces pick it up from there.
   conversation id (memory degrades to per-conversation durability). Fine between
   project members; not a security boundary — see below for where the boundary
   actually is.
+
+## A2A (Agent2Agent)
+
+Every `AgentApp` serves the A2A 1.0 protocol next to AG-UI, built on the official `a2a-sdk`, with no change to the handler:
+
+| Route | Purpose |
+|---|---|
+| `GET /.well-known/agent-card.json` | The Agent Card: name, skills, media types, security schemes, and the interface URLs below |
+| `POST /a2a` | The JSON-RPC binding (`SendMessage`, `SendStreamingMessage`, `GetTask`, `ListTasks`, `CancelTask`, `SubscribeToTask`) |
+| `/a2a/rest/...` | The HTTP+JSON binding of the same operations (`/message:send`, `/tasks/{id}`, ...) |
+
+A message becomes a turn: `contextId` is the `conversation_id`, `text` parts the text, `raw` parts images, audio or files by media type, `data` parts the request `context`, and `url` parts reach the handler as `request.urls` untouched, unless `AgentApp(fetch_urls=["files.example.com"])` names hosts whose URLs are fetched into files first. The turn becomes a task: the reply text is always the artifact named `response`, streamed chunk by chunk from a stream handler, and the final status message carries the answer with `metadata.hopsworks` (`trace_id`, `citations`, `usage`, `subject`). `ctx.emit_event` goes out as a working status with the step under `metadata.hopsworks.step`; `ctx.interrupt` pauses the task in `INPUT_REQUIRED`, or `AUTH_REQUIRED` for `reason="auth_required"`, and the answer comes back as a message on the same task: a `data` part `{"<interrupt id>": <payload>}`, or plain text when one question is open. Credentials never travel in a message: an `auth_required` question describes what is needed in its `metadata`, and the answer is a reference such as `{"credential_ref": "<secret name>"}` the handler resolves itself.
+
+Named outputs beyond the reply are artifacts, returned whole or streamed while the handler works:
+
+```python
+from hopsworks_agents.protocol import AgentApp, AgentResponse, AgentSkill, Artifact, TextContent
+
+agent_app = AgentApp(
+    name="Churn analyst",
+    skills=[AgentSkill(id="churn-report", name="Churn report", tags=["churn"], output_modes=["text/csv"])],
+)
+
+
+@agent_app.chat
+async def chat(request, ctx):
+    await ctx.emit_artifact("log", TextContent(text="fetching segments..."))
+    summary, csv_b64 = await churn_report(request.text)
+    return AgentResponse.text(summary, artifacts=[Artifact(name="churn.csv", media_type="text/csv", data=csv_b64)])
+```
+
+Any A2A client works; with the Python SDK, against the same URL and credential the chat panel uses:
+
+```python
+import httpx
+from a2a.client import A2ACardResolver, ClientConfig, ClientFactory
+from a2a.types import Message, Part, Role, SendMessageRequest
+
+base = "https://<inference-lb>/v1/<project-namespace>/<deployment>"
+async with httpx.AsyncClient(headers={"Authorization": f"ApiKey {serving_key}"}) as http:
+    card = await A2ACardResolver(http, base).get_agent_card()
+    client = ClientFactory(ClientConfig(httpx_client=http, streaming=False)).create(card)
+    async for event in client.send_message(
+        SendMessageRequest(message=Message(role=Role.ROLE_USER, parts=[Part(text="Which segments churned?")]))
+    ):
+        task = event.task
+```
+
+What the card says comes from the app: `skills=` (one `chat` skill from the name, description and suggested prompts when absent), `input_media_types=` / `output_media_types=` to replace the media types derived from the modalities (the lists are exact, a wildcard matches nothing), and `public_url=` for the interface URLs when the platform has not set `HOPSWORKS_AGENT_PUBLIC_URL` and the request's `Host` is not the right base. `a2a=False` removes the card and the routes. Tasks are kept in memory, per replica, until the durable stores land; the manifest says so under `capabilities.custom.hopsworks.a2a`.
 
 ## Handler context (optional)
 

@@ -30,7 +30,7 @@ hops agent logs my_agent         # startup and request errors land here
 
 ## Write the entry script
 
-Build the agent with the framework of your choice and wrap it in `AgentApp` from `hopsworks_agents.protocol`. `AgentApp` is a FastAPI app that speaks **AG-UI**, the open agent–user interaction protocol, plus Hopsworks' extensions: the chat panel detects it from its manifest, `/v1/run` (AG-UI runs) and `/v1/chat` (one JSON reply) are served, health and readiness probes exist, CORS is on, and when tracing is enabled on the deployment the library wires OpenTelemetry itself. The script runs as a program in the pod, so serve the app on port 8080 in its main block.
+Build the agent with the framework of your choice and wrap it in `AgentApp` from `hopsworks_agents.protocol`. `AgentApp` is a FastAPI app that speaks **AG-UI**, the open agent–user interaction protocol, plus Hopsworks' extensions: the chat panel detects it from its manifest, `/v1/run` (AG-UI runs) and `/v1/chat` (one JSON reply) are served, health and readiness probes exist, CORS is on, and when tracing is enabled on the deployment the library wires OpenTelemetry itself. The same app is also an A2A 1.0 agent (the Agent Card at `/.well-known/agent-card.json`, JSON-RPC at `/a2a`, REST under `/a2a/rest`), so another agent or any A2A client can call it with the same credential; `a2a=False` switches that off. The script runs as a program in the pod, so serve the app on port 8080 in its main block.
 
 ```python
 # my_agent.py

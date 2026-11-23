@@ -51,6 +51,15 @@ class HandlerContext:
         # correlation ids: stable for the life of this turn
         self.response_id = response_id
         self.message_id = request.message.id
+        #: Which protocol the turn arrived on: ``chat`` (``/v1/chat``), ``agui``
+        #: (``/v1/run``) or ``a2a``. Set by the route; for the handler that cares.
+        self.protocol = "chat"
+        #: The A2A task this turn is, when it arrived over A2A; None otherwise.
+        self.task_id: str | None = None
+        #: Set when the caller cancelled the task or hung up, for a handler that
+        #: wants to stop early inside a long tool: ``if ctx.cancelled.is_set()``.
+        #: The turn itself is interrupted at its next ``await`` regardless.
+        self.cancelled = asyncio.Event()
         # turn identity: groups every memory row this turn writes, so a reply,
         # its tool calls, and anything derived from them stay linked
         self.turn_id = turn_id
@@ -105,6 +114,12 @@ class HandlerContext:
         self._event_queue: asyncio.Queue[Any] | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._event_buffer: list[dict[str, Any]] = []
+        # artifact chunks emitted while no transport streams them: assembled
+        # onto the response's artifacts when the turn ends
+        self._artifact_buffer: list[dict[str, Any]] = []
+        # Where the questions this turn asks are recorded: the conversation,
+        # or over A2A the task, since one context may hold several tasks.
+        self._pending_key = self.conversation_id
         #: Tool names the handler has emitted an event for in this turn. The
         #: automatic span-driven emitter stays off them: an agent that reports
         #: its own progress has said what it wants shown.
@@ -624,6 +639,46 @@ class HandlerContext:
         self._handler_emitted.add(name)
         self._emit_sync(name, status, message, data, event_id)
 
+    @public
+    async def emit_artifact(
+        self,
+        name: str,
+        part: Any,
+        *,
+        append: bool = False,
+        last: bool = False,
+        artifact_id: str | None = None,
+        description: str | None = None,
+    ) -> None:
+        """Send a piece of a named artifact while the handler works.
+
+        An A2A client receives it as a task artifact chunk as soon as it is
+        emitted, so a long report or a large file can go out as it is built
+        instead of with the reply.
+        The reply text itself needs none of this: it is always the artifact
+        named `response`.
+
+        Parameters:
+            name: The artifact's name, as the client lists it.
+            part: What to send: a `TextContent`, `ImageContent`, `AudioContent`, `FileContent` or `UrlContent`.
+            append: Whether this continues the artifact's earlier chunks rather than starting it.
+                The first chunk of an artifact always starts it, whatever is passed.
+            last: Whether this is the artifact's final chunk.
+            artifact_id: A stable id for clients that follow the artifact across chunks; the name by default.
+            description: What the artifact is, for a client that lists it.
+        """
+        payload: dict[str, Any] = {
+            "kind": "artifact",
+            "name": name,
+            "id": artifact_id or name,
+            "part": part.model_dump() if hasattr(part, "model_dump") else part,
+            "append": append,
+            "last": last,
+        }
+        if description is not None:
+            payload["description"] = description
+        self._dispatch(payload)
+
     async def _emit_tool_call(
         self,
         name: str,
@@ -766,11 +821,18 @@ class HandlerContext:
                 )
 
     def _dispatch(self, payload: dict[str, Any]) -> None:
-        self._recorded_events.append(payload)
+        artifact = payload.get("kind") == "artifact"
+        if artifact:
+            # not a progress event: it is output, and can be megabytes, so it
+            # is neither recorded in the transcript nor shown as a chip
+            kind, buffer = "artifact", self._artifact_buffer
+        else:
+            self._recorded_events.append(payload)
+            kind, buffer = "tool_event", self._event_buffer
         queue = self._event_queue
         loop = self._loop
         if queue is None or loop is None:
-            self._event_buffer.append(payload)
+            buffer.append(payload)
             return
         try:
             running = asyncio.get_running_loop()
@@ -779,11 +841,11 @@ class HandlerContext:
         if running is loop:
             # already on the request's event loop (handler called emit_event):
             # enqueue directly so ordering vs. yielded deltas is preserved
-            queue.put_nowait(("tool_event", payload))
+            queue.put_nowait((kind, payload))
         else:
             # off-thread (a framework tool running in a threadpool): hop back
             # onto the loop safely
-            loop.call_soon_threadsafe(queue.put_nowait, ("tool_event", payload))
+            loop.call_soon_threadsafe(queue.put_nowait, (kind, payload))
 
 
 # Arguments and results ride on progress events and into the memory transcript,

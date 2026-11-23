@@ -164,6 +164,10 @@ agents = [
     # Pinned to a minor version so an upstream change to the protocol fails our
     # tests rather than a deployed agent.
     "ag-ui-protocol>=1.0.0,<1.1",
+    # A2A (Agent2Agent) 1.0: the card, the JSON-RPC and REST bindings, the task
+    # store and push delivery are the reference implementation's. Pinned to the
+    # major version for the same reason as AG-UI.
+    "a2a-sdk[fastapi,signing,encryption]>=1.3.0,<2",
     "opentelemetry-sdk>=1.0.0",
     "opentelemetry-exporter-otlp-proto-http>=1.0.0",
 ]

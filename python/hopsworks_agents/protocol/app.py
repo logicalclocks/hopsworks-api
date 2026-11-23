@@ -45,10 +45,13 @@ from .models import (
     PROTOCOL_VERSION,
     AgentError,
     AgentResponse,
+    AgentSkill,
+    Artifact,
     ChatRequest,
     ChatResponse,
     FeedbackRequest,
     ResumeAnswer,
+    TextContent,
     new_conversation_id,
     new_response_id,
 )
@@ -122,6 +125,12 @@ class AgentApp(FastAPI):
         allow_cors: bool = True,
         eval_per_request: bool = False,
         memory_routes: bool = True,
+        a2a: bool = True,
+        skills: list[AgentSkill] | None = None,
+        public_url: str | None = None,
+        fetch_urls: list[str] | None = None,
+        input_media_types: list[str] | None = None,
+        output_media_types: list[str] | None = None,
         **fastapi_kwargs: Any,
     ):
         super().__init__(title=name, description=description, **fastapi_kwargs)
@@ -133,6 +142,21 @@ class AgentApp(FastAPI):
         self._placeholder = placeholder
         self._input_modalities = input_modalities or ["text"]
         self._output_modalities = output_modalities or ["text"]
+        # What the A2A Agent Card says beyond the fields above: the skills it
+        # lists (one "chat" skill derived from the agent when none are given),
+        # the base URL its interfaces are reachable at (the platform sets it;
+        # otherwise it is read from each request), the hosts whose URLs a
+        # caller may have the agent fetch (none by default: a URL part reaches
+        # the handler as a URL), and the exact media types in and out when the
+        # ones derived from the modalities are not right.
+        self._skills = list(skills or [])
+        self._public_url = public_url
+        self._fetch_urls = [h.lower() for h in fetch_urls or []]
+        self._input_media_types = input_media_types
+        self._output_media_types = output_media_types
+        # Set when the pod was told to stop: /ready says so, and turns still
+        # running get the drain window to finish (see _drain).
+        self._draining = False
         # Records which conversation was with whom, for anyone later holding a
         # customer key and no way to find their conversations. Constructed
         # unconditionally but connects nothing until something identifies a
@@ -252,6 +276,18 @@ class AgentApp(FastAPI):
 
         self._register_routes()
 
+        # A2A: the Agent Card and the JSON-RPC and REST bindings, on the same
+        # turn pipeline. Off removes them all; nothing else changes.
+        self._a2a: Any = None
+        if a2a:
+            from .a2a import A2AServer
+
+            self._a2a = A2AServer(self)
+
+        @self.on_event("shutdown")
+        async def _drain_turns() -> None:  # pragma: no cover - lifespan hook
+            await self._drain()
+
     # ── handler decorators ────────────────────────────────────────────────
 
     @public
@@ -365,7 +401,15 @@ class AgentApp(FastAPI):
             endpoints["graph"] = "/v1/graph"
         # always served: a chat UI built on the gateway has nowhere else to send a verdict
         endpoints["feedback"] = "/v1/feedback"
+        if self._a2a is not None:
+            endpoints.update(self._a2a._endpoints())
         hopsworks: dict[str, Any] = {
+            # Whether this agent is also an A2A agent, with what, so the UI,
+            # the evaluation runner and the loadtest can tell one on an older
+            # SDK from one that opted out.
+            "a2a": self._a2a._capabilities()
+            if self._a2a is not None
+            else {"enabled": False},
             "streaming": streaming,
             # protocol-level statement that history is server-side. The
             # per-tier detail is under "memory" below; this was previously
@@ -493,7 +537,7 @@ class AgentApp(FastAPI):
             attributes[conventions.INPUT_VALUE] = text
         return attributes
 
-    def _prepare(self, request: ChatRequest) -> HandlerContext:
+    def _prepare(self, request: ChatRequest, protocol: str = "chat") -> HandlerContext:
         # handlers can always rely on conversation_id being present
         if not request.conversation_id:
             request.conversation_id = new_conversation_id()
@@ -505,7 +549,7 @@ class AgentApp(FastAPI):
 
         # the response id is generated up front so ctx.response_id matches the
         # id on the response the client ultimately receives (correlation)
-        return HandlerContext(
+        ctx = HandlerContext(
             request=request,
             memory=self.memory,
             framework=self.framework,
@@ -515,6 +559,8 @@ class AgentApp(FastAPI):
             subjects=self._subjects,
             trial_subjects=self._trial_subjects,
         )
+        ctx.protocol = protocol
+        return ctx
 
     async def _attach_evaluation(
         self, ctx: HandlerContext, headers: Any
@@ -729,6 +775,11 @@ class AgentApp(FastAPI):
         # non-streaming tool events (buffered on the context) ride on metadata
         if ctx._event_buffer:
             response.metadata.setdefault("tool_events", ctx._event_buffer)
+        # artifact chunks emitted with no transport to stream them: assembled
+        # into whole artifacts next to the ones the handler returned
+        if ctx._artifact_buffer:
+            response.artifacts.extend(_assemble_artifacts(ctx._artifact_buffer))
+            ctx._artifact_buffer = []
         # Which subject this turn's memory was actually keyed on. Only reported
         # when the agent identified the user itself (rebind_subject): the client
         # already knows the subject it asserted, but it cannot know one the
@@ -974,7 +1025,7 @@ class AgentApp(FastAPI):
         try:
             await asyncio.to_thread(
                 self._pending_store()._put,
-                ctx.conversation_id,
+                ctx._pending_key,
                 json.dumps(record),
                 _record_expiry(interrupts),
             )
@@ -1047,9 +1098,9 @@ class AgentApp(FastAPI):
         store = self._pending_store()
         try:
             if answered:
-                await asyncio.to_thread(store._clear, ctx.conversation_id)
+                await asyncio.to_thread(store._clear, ctx._pending_key)
             else:
-                await asyncio.to_thread(store._release, ctx.conversation_id)
+                await asyncio.to_thread(store._release, ctx._pending_key)
         except Exception:  # noqa: BLE001
             import logging  # noqa: PLC0415
 
@@ -1074,6 +1125,8 @@ class AgentApp(FastAPI):
                 "handler": self._chat_handler is not None
                 or self._stream_handler is not None,
                 "memory": self.memory is None or self.memory.healthcheck(),
+                # a pod told to stop takes no new work while its turns finish
+                "accepting": not self._draining,
             }
             ok = all(checks.values())
             return JSONResponse(
@@ -1103,7 +1156,7 @@ class AgentApp(FastAPI):
                         422,
                     )
                 )
-            ctx = self._prepare(request)
+            ctx = self._prepare(request, protocol="chat")
             ctx._claimed = replay is not None
             refused = await self._attach_evaluation(ctx, raw.headers)
             if refused is not None:
@@ -1186,7 +1239,7 @@ class AgentApp(FastAPI):
                 )
             except AgentError as err:
                 return _error_response(err)
-            ctx = self._prepare(request)
+            ctx = self._prepare(request, protocol="agui")
             ctx._claimed = replay is not None
             refused = await self._attach_evaluation(ctx, raw.headers)
             if refused is not None:
@@ -1478,71 +1531,18 @@ class AgentApp(FastAPI):
             ctx._span = span
             trace_id = _trace_id(span)
             completed: ChatResponse | None = None
-            # What the handler produced, kept outside the queue: a resumed turn
-            # whose client hung up is settled from this once the handler is
-            # really done (see _finish_detached), and `detached` says so.
-            outcome: dict[str, Any] = {"chunks": []}
-            detached = False
+            run: _TurnRun | None = None
             try:
                 yield stream._started(trace_id)
-                from .autoevents import current_context
-
-                # The handler runs as a task that feeds a queue, so progress
-                # events (ctx.emit_event, automatic tool calls) go out while it
-                # works rather than after it.
-                queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue()
-                ctx._event_queue = queue
-                ctx._loop = asyncio.get_running_loop()
-
-                async def pump() -> None:
-                    token = current_context.set(ctx)
-                    try:
-                        if self._stream_handler is None:
-                            response = await self._run_chat(ctx)
-                            outcome["answered"] = response
-                            await queue.put(("final", response))
-                        else:
-                            async for item in self._invoke_stream(ctx):
-                                if isinstance(item, ChatResponse):
-                                    outcome["final"] = item
-                                else:
-                                    outcome["chunks"].append(item)
-                                await queue.put(("item", item))
-                    except Interrupted as paused:
-                        outcome["interrupt"] = paused.interrupts
-                        await queue.put(("interrupt", paused.interrupts))
-                    except AgentError as err:
-                        await queue.put(("error", err))
-                    except Exception as err:  # noqa: BLE001 — surfaced to the client
-                        import logging  # noqa: PLC0415
-
-                        logging.getLogger(__name__).exception("the handler failed")
-                        await queue.put(
-                            (
-                                "error",
-                                AgentError(
-                                    f"{type(err).__name__}: {err}", "agent_error", 500
-                                ),
-                            )
-                        )
-                    finally:
-                        current_context.reset(token)
-                        await queue.put(("done", None))
-
-                task = asyncio.create_task(pump())
-                chunks: list[str] = []
-                final: ChatResponse | None = None
-                answered: ChatResponse | None = None
+                run = _TurnRun(self, ctx)
                 try:
                     while True:
                         try:
-                            kind, payload = await asyncio.wait_for(
-                                queue.get(), timeout=SSE_KEEP_ALIVE_S
-                            )
+                            kind, payload = await run._next(timeout=SSE_KEEP_ALIVE_S)
                         except asyncio.TimeoutError:
                             if await raw.is_disconnected():
                                 _mark_cancelled(span)
-                                detached = self._let_finish(ctx, task)
+                                run._hangup()
                                 return
                             yield ": keep-alive\n\n"
                             continue
@@ -1554,7 +1554,7 @@ class AgentApp(FastAPI):
                             # with a short latency -- the shape of a fast,
                             # healthy reply.
                             _mark_cancelled(span)
-                            detached = self._let_finish(ctx, task)
+                            run._hangup()
                             return
                         if kind == "error":
                             _record_span_error(span, payload)
@@ -1571,12 +1571,9 @@ class AgentApp(FastAPI):
                             return
                         if kind == "tool_event":
                             yield stream._progress(payload)
-                        elif kind == "final":
-                            answered = payload
-                        elif isinstance(payload, ChatResponse):
-                            final = payload
-                        else:
-                            chunks.append(payload)
+                        elif kind == "artifact":
+                            yield stream._artifact(payload)
+                        elif kind == "delta":
                             yield stream._text(payload)
                 except asyncio.CancelledError:
                     # What a client hanging up actually looks like. Starlette
@@ -1586,19 +1583,16 @@ class AgentApp(FastAPI):
                     # healthy reply -- and the turn stayed open until the
                     # reaper called it abandoned much later.
                     _mark_cancelled(span)
-                    detached = self._let_finish(ctx, task)
+                    run._hangup()
                     raise
                 except GeneratorExit:
                     # the same hang-up, as a server that closes the generator
                     # instead of cancelling it reports it
                     _mark_cancelled(span)
-                    detached = self._let_finish(ctx, task)
+                    run._hangup()
                     raise
-                finally:
-                    if not detached and not task.done():
-                        task.cancel()
 
-                response = answered or self._merge_stream_result(chunks, final, ctx)
+                response = run._response()
                 completed = response
                 yield stream._finished(
                     response,
@@ -1606,22 +1600,193 @@ class AgentApp(FastAPI):
                     subject_source=ctx.subject_source if ctx.has_subject else None,
                 )
             finally:
-                if detached:
-                    # settled when the handler is really done, not now
-                    keeper = asyncio.create_task(
-                        self._finish_detached(ctx, task, outcome)
-                    )
-                    _DETACHED.add(keeper)
-                    keeper.add_done_callback(_DETACHED.discard)
-                else:
-                    # Best effort: if the whole task tree is being cancelled this
-                    # may not get to run, which is what the store's stale-turn
-                    # reaper is there to catch.
+                # Best effort: if the whole task tree is being cancelled this
+                # may not get to run, which is what the store's stale-turn
+                # reaper is there to catch.
+                if run is None:
                     await self._finalize_turn(ctx, completed)
+                else:
+                    await run._close(completed)
+
+    async def _drain(self) -> None:
+        """Let the turns still running finish before the process exits.
+
+        A turn detached from its client (a resumed turn whose caller hung up, an
+        A2A task sent with ``returnImmediately``) has no request the server waits
+        for, so the lifespan's shutdown is the last point at which it can be
+        given time.
+        ``HOPSWORKS_AGENT_TASK_DRAIN_SECONDS`` (default 600) bounds that; a turn
+        still running at the deadline is cancelled, which ends it the way a
+        hang-up does.
+        """
+        self._draining = True
+        pending = {task for task in _DETACHED if not task.done()}
+        if self._a2a is not None:
+            pending |= self._a2a._running()
+        if not pending:
+            return
+        import os  # noqa: PLC0415
+
+        try:
+            window = float(os.environ.get("HOPSWORKS_AGENT_TASK_DRAIN_SECONDS", "600"))
+        except ValueError:
+            window = 600.0
+        _, late = await asyncio.wait(pending, timeout=window)
+        for task in late:
+            task.cancel()
+        if late:
+            await asyncio.wait(late, timeout=5)
 
 
 # Turns settled after their client hung up, held so the loop keeps them.
 _DETACHED: set[asyncio.Task] = set()
+
+
+class _TurnRun:
+    """One turn's handler, run as a task feeding a queue of events for a transport to encode.
+
+    Both transports consume it: ``AgentApp._run_events`` turns the events into
+    AG-UI frames and the A2A executor into task events.
+    The handler runs as a task so progress events (``ctx.emit_event``, automatic
+    tool calls, artifact chunks) go out while it works rather than after it.
+    What the handler produced is kept on the run, outside the queue: a resumed
+    turn whose client hung up is settled from it once the handler is really
+    done (``_finish_detached``).
+    """
+
+    def __init__(self, app: AgentApp, ctx: HandlerContext):
+        from .autoevents import current_context
+
+        self._app = app
+        self._current_context = current_context
+        self.ctx = ctx
+        self.queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue()
+        ctx._event_queue = self.queue
+        ctx._loop = asyncio.get_running_loop()
+        # everything the handler produced, for a turn settled after its client left
+        self.outcome: dict[str, Any] = {"chunks": []}
+        # what the consumer saw, which is what the answer is built from
+        self.chunks: list[str] = []
+        self.final: ChatResponse | None = None
+        self.answered: ChatResponse | None = None
+        self.detached = False
+        self._closed = False
+        self.task = asyncio.create_task(self._pump())
+
+    async def _pump(self) -> None:
+        app, ctx, queue, outcome = self._app, self.ctx, self.queue, self.outcome
+        token = self._current_context.set(ctx)
+        try:
+            if app._stream_handler is None:
+                response = await app._run_chat(ctx)
+                outcome["answered"] = response
+                await queue.put(("final", response))
+            else:
+                async for item in app._invoke_stream(ctx):
+                    if isinstance(item, ChatResponse):
+                        outcome["final"] = item
+                        await queue.put(("stream_final", item))
+                    else:
+                        outcome["chunks"].append(item)
+                        await queue.put(("delta", item))
+        except Interrupted as paused:
+            outcome["interrupt"] = paused.interrupts
+            await queue.put(("interrupt", paused.interrupts))
+        except AgentError as err:
+            await queue.put(("error", err))
+        except Exception as err:  # noqa: BLE001 — surfaced to the client
+            import logging  # noqa: PLC0415
+
+            logging.getLogger(__name__).exception("the handler failed")
+            await queue.put(
+                (
+                    "error",
+                    AgentError(f"{type(err).__name__}: {err}", "agent_error", 500),
+                )
+            )
+        finally:
+            self._current_context.reset(token)
+            await queue.put(("done", None))
+
+    async def _next(self, timeout: float | None = None) -> tuple[str, Any]:
+        """The next event, noted for the answer it contributes to.
+
+        Kinds: ``delta`` (a piece of the reply), ``tool_event``, ``artifact``,
+        ``final`` (the chat handler's whole answer), ``stream_final`` (a stream
+        handler's closing response), ``interrupt``, ``error`` and ``done``.
+
+        Raises:
+            asyncio.TimeoutError: Nothing arrived within ``timeout`` seconds.
+        """
+        if timeout is None:
+            kind, payload = await self.queue.get()
+        else:
+            kind, payload = await asyncio.wait_for(self.queue.get(), timeout=timeout)
+        if kind == "final":
+            self.answered = payload
+        elif kind == "stream_final":
+            self.final = payload
+        elif kind == "delta":
+            self.chunks.append(payload)
+        return kind, payload
+
+    def _response(self) -> ChatResponse:
+        """The finished answer, once ``done`` was seen."""
+        if self.answered is not None:
+            return self.answered
+        return self._app._merge_stream_result(self.chunks, self.final, self.ctx)
+
+    def _hangup(self) -> None:
+        """The client went away or cancelled: stop the handler, or let a resumed one finish."""
+        self.ctx.cancelled.set()
+        self.detached = self._app._let_finish(self.ctx, self.task)
+
+    async def _close(self, completed: ChatResponse | None) -> None:
+        """End the turn: now, or when a detached handler is really done. Once."""
+        if self._closed:
+            return
+        self._closed = True
+        if self.detached:
+            keeper = asyncio.create_task(
+                self._app._finish_detached(self.ctx, self.task, self.outcome)
+            )
+            _DETACHED.add(keeper)
+            keeper.add_done_callback(_DETACHED.discard)
+            return
+        if not self.task.done():
+            self.task.cancel()
+        await self._app._finalize_turn(self.ctx, completed)
+
+
+def _assemble_artifacts(chunks: list[dict[str, Any]]) -> list[Artifact]:
+    """Whole artifacts from the chunks a handler emitted, in emission order.
+
+    A chunk that appends to an artifact whose last part is text, with text,
+    extends that text; any other chunk adds a part.
+    """
+    from pydantic import TypeAdapter  # noqa: PLC0415
+
+    from .models import ContentPart  # noqa: PLC0415
+
+    adapter = TypeAdapter(ContentPart)
+    assembled: OrderedDict[str, Artifact] = OrderedDict()
+    for chunk in chunks:
+        part = adapter.validate_python(chunk["part"])
+        artifact = assembled.get(chunk["id"])
+        if artifact is None or not chunk.get("append"):
+            assembled[chunk["id"]] = Artifact(
+                id=chunk["id"],
+                name=chunk["name"],
+                parts=[part],
+                description=chunk.get("description"),
+            )
+            continue
+        last = artifact.parts[-1] if artifact.parts else None
+        if last is not None and last.type == "text" and part.type == "text":
+            artifact.parts[-1] = TextContent(text=last.text + part.text)
+        else:
+            artifact.parts.append(part)
+    return list(assembled.values())
 
 
 def _set_span_attribute(span: Any, key: str, value: Any) -> None:
