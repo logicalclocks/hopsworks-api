@@ -354,6 +354,35 @@ def test_a_conflict_or_another_failure_is_never_resent():
     assert slept == []
 
 
+def test_a_deletion_start_refused_with_a_short_retry_after_waits_and_starts(
+    monkeypatch,
+):
+    from hopsworks.cli.commands import embed
+    from hopsworks_common.core import execution_api
+
+    done = SimpleNamespace(id=7, args="", final_status="SUCCEEDED")
+    answers = iter([_refused(429, 130099, retry_after="0"), done])
+    starts = []
+
+    class Executions:
+        def _get_all(self, job):
+            return []
+
+        def _start(self, job, args, deletion):
+            starts.append((args, deletion))
+            answer = next(answers)
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+
+    monkeypatch.setattr(execution_api, "ExecutionApi", Executions)
+    job = SimpleNamespace(name="g_parse")
+
+    assert embed._run_deletion(job, "g", 60, kind="parse") == 7
+    assert len(starts) == 2
+    assert all(deletion for _, deletion in starts)
+
+
 def test_a_claim_refused_for_a_newer_run_stops_without_writing():
     message = str(
         embed_run.claim_refused(

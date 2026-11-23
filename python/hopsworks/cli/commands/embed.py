@@ -643,34 +643,45 @@ def _start(
     jitter: Any = random.random,
     kind: str = "embed",
 ) -> Any:
-    """One execution of the job.
+    """One execution of the job; refusals as `_send` handles them."""
+    try:
+        return _send(
+            lambda: job.run(await_termination=False), kind, sleep=sleep, jitter=jitter
+        )
+    except Exception as exc:  # noqa: BLE001
+        refusal = start_refusal(exc, group, kind)
+        if refusal is not None:
+            raise click.ClickException(refusal) from exc
+        raise click.ClickException(f"Could not start job '{job.name}': {exc}") from exc
 
-    A capacity refusal with a short Retry-After is waited out and sent again,
-    with up to 1 s of jitter so commands refused together do not return
-    together. Any other refusal, or one past the budget, exits non-zero.
+
+def _send(
+    start: Any,
+    kind: str,
+    sleep: Any = time.sleep,
+    jitter: Any = random.random,
+) -> Any:
+    """What start() returns, sent again after a capacity refusal with a short Retry-After.
+
+    Each wait adds up to 1 s of jitter so commands refused together do not
+    return together. Any other refusal, or one past the budget, is raised as is.
     """
     waited = 0
     for send in range(1, START_SENDS + 1):
         try:
             with output.sdk_quiet():
-                return job.run(await_termination=False)
+                return start()
         except Exception as exc:  # noqa: BLE001
             wait = short_wait(exc)
             if (
-                wait is not None
-                and send < START_SENDS
-                and waited + wait <= START_WAIT_BUDGET_S
+                wait is None
+                or send == START_SENDS
+                or waited + wait > START_WAIT_BUDGET_S
             ):
-                output.info("%s jobs are at capacity; waiting %d s", kind, wait)
-                waited += wait
-                sleep(wait + jitter())
-                continue
-            refusal = start_refusal(exc, group, kind)
-            if refusal is not None:
-                raise click.ClickException(refusal) from exc
-            raise click.ClickException(
-                f"Could not start job '{job.name}': {exc}"
-            ) from exc
+                raise
+            output.info("%s jobs are at capacity; waiting %d s", kind, wait)
+            waited += wait
+            sleep(wait + jitter())
     raise AssertionError("unreachable: the last send returns or raises")
 
 
@@ -853,10 +864,13 @@ def _run_deletion(job: Any, group: str, timeout_s: int, kind: str = "embed") -> 
     latest = max(deletions, key=lambda e: e.id) if deletions else None
     if latest is None or (_final(latest) and latest.final_status != "SUCCEEDED"):
         try:
-            latest = executions_api._start(
-                job,
-                args=shlex.join(["fg", kind, "delete", group, IN_JOB]),
-                deletion=True,
+            latest = _send(
+                lambda: executions_api._start(
+                    job,
+                    args=shlex.join(["fg", kind, "delete", group, IN_JOB]),
+                    deletion=True,
+                ),
+                kind,
             )
         except Exception as exc:  # noqa: BLE001
             refusal = start_refusal(exc, group, kind)
