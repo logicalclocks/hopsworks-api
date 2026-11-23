@@ -44,6 +44,7 @@ from .tools import (
     FeatureGroupTools,
     JobTools,
     ProjectTools,
+    SemanticLayerTools,
     TerminalTools,
 )
 
@@ -88,7 +89,8 @@ def build_mcp(
     Returns:
         The configured ``FastMCP`` instance.
     """
-    server = FastMCP(name="Hopsworks MCP", auth=auth)
+    # Registering a second tool under a taken name would silently replace the first.
+    server = FastMCP(name="Hopsworks MCP", auth=auth, on_duplicate_tools="error")
 
     AuthTools(server)
     ProjectTools(server)
@@ -98,6 +100,7 @@ def build_mcp(
     JobTools(server)
     DatasetTools(server)
     FeatureGroupTools(server)
+    SemanticLayerTools(server)
 
     if enable_shell_tools:
         TerminalTools(server)

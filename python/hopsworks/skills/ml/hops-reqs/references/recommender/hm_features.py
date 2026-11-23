@@ -1,9 +1,9 @@
 # ruff: noqa: INP001
 """The recommender's feature pipeline: H&M customers, articles, transactions and interactions.
 
-Run as the job `<slug>-features` in `<slug>-jobs-env`:
+Run as the job `<slug>-features` in `python-feature-pipeline`, which ships what it imports:
 
-    hops job deploy <slug>-features src/<slug_pkg>/hm_features.py --env <slug>-jobs-env \
+    hops job deploy <slug>-features src/<slug_pkg>/hm_features.py --env python-feature-pipeline \
         --args "--customers 5000 --synthetic 30" --run --wait
 
 Based on the Decoding AI / Hopsworks H&M course
@@ -325,6 +325,9 @@ def write(fs, df: pl.DataFrame, name: str, primary_key: list[str], **options):
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Write the H&M feature groups.")
     parser.add_argument("--customers", type=int, default=5000, help="customers sampled")
+    # Every asset's description starts with the system's slug, which is how deleting the
+    # system with its assets tells its own from another's.
+    parser.add_argument("--system", default="recs-example", help="the system's slug")
     parser.add_argument(
         "--synthetic", type=int, default=30, help="synthetic purchases added per customer"
     )
@@ -362,14 +365,18 @@ def main(argv: list[str] | None = None) -> int:
 
     fs = hopsworks.login().get_feature_store()
     write(
-        fs, customers, "customers", ["customer_id"], description="H&M customers: age, club status"
+        fs,
+        customers,
+        "customers",
+        ["customer_id"],
+        description=f"{args.system}: H&M customers: age, club status",
     )
     write(
         fs,
         articles,
         "articles",
         ["article_id"],
-        description="H&M articles: type, colour, category, description and image",
+        description=f"{args.system}: H&M articles: type, colour, category, description and image",
     )
     write(
         fs,
@@ -377,7 +384,7 @@ def main(argv: list[str] | None = None) -> int:
         "transactions",
         ["customer_id", "article_id", "t_dat"],
         event_time="t_dat",
-        description="H&M purchases of the sampled customers; synthetic marks the generated ones",
+        description=f"{args.system}: H&M purchases of the sampled customers; synthetic marks the generated ones",
         online_config=BY_CUSTOMER,
     )
     write(
@@ -386,7 +393,7 @@ def main(argv: list[str] | None = None) -> int:
         "interactions",
         ["customer_id", "article_id", "t_dat", "interaction_score"],
         event_time="t_dat",
-        description="Purchases (2), clicks (1) and ignores (0); the app appends to it",
+        description=f"{args.system}: purchases (2), clicks (1) and ignores (0); the app appends to it",
         online_config=BY_CUSTOMER,
     )
     print(

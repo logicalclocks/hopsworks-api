@@ -3,7 +3,9 @@
 Reads the window's feature vectors through the feature view, so the
 model-dependent transformations match training, scores them with the model
 version `training.model` names, and writes to `<ident>_predictions` only the
-fields `requirements.data_policy.log_fields` allows.
+fields `requirements.data_policy.log_fields` allows. It times the read, the scoring
+and the write, and its result.json carries the batch SLA verdict, so its first run over
+a full scheduled window is the `full_window` measurement.
 
     hops job deploy <slug>-inference inference_pipeline.py --env <inference.environment> \
         --args "--bundle Resources/<slug>/runs/<run_id>/bundle.tar.gz"
@@ -15,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -95,6 +98,49 @@ def _write_result(manifest: dict, result: dict) -> str:
 # endregion
 
 
+def batch_budget_s(cron: str, must_finish_by: str, features_s: float = 0.0) -> float | None:
+    """Seconds a scoring run has between its cron fire and `must_finish_by`.
+
+    Reads the hour and minute of a Quartz cron (`sec min hour ...`) and a
+    `HH:MM` deadline on the same day, less the measured feature job when it runs
+    in the same window. None when the cron fires at no fixed time of day.
+    """
+    fields = cron.split()
+    if len(fields) < 3 or not (fields[1].isdigit() and fields[2].isdigit()):
+        return None
+    fire = int(fields[2]) * 3600 + int(fields[1]) * 60
+    hour, minute = must_finish_by.split()[0].split(":")
+    deadline = int(hour) * 3600 + int(minute) * 60
+    if deadline <= fire:
+        deadline += 24 * 3600
+    return deadline - fire - features_s
+
+
+def batch_verdict(system: dict, rows: int, window_s: float, kind: str = "full_window") -> dict:
+    """The batch SLA verdict for one timed window, as a `measured` line of system.yaml takes it."""
+    sla = system["requirements"]["sla"]["batch"]
+    cron = system["inference"]["batch"]["job"]["schedule"]["cron"]
+    features_s = max(
+        (
+            ((p.get("benchmark") or {}).get("last_run") or {}).get("full_window_s", 0)
+            for p in (system.get("features") or {}).get("pipelines") or []
+        ),
+        default=0,
+    )
+    budget_s = batch_budget_s(cron, sla["must_finish_by"], features_s)
+    fits = budget_s is not None and window_s <= budget_s
+    return {
+        "kind": kind,
+        "rows": rows,
+        "window_s": round(window_s, 1),
+        "rows_per_s": round(rows / window_s, 1) if window_s else 0.0,
+        "budget_s": budget_s,
+        "fits_window": fits,
+        # A sample is a screening estimate and never the basis of met.
+        "met": fits and kind == "full_window",
+    }
+
+
 def prediction_rows(keys: Any, scores: Any, predicted_at: datetime, log_fields: list[str]) -> Any:
     """The rows written to the prediction feature group, restricted to the allowed fields.
 
@@ -136,16 +182,17 @@ def main(argv: list[str] | None = None) -> int:
     fv = fs.get_feature_view(
         training["feature_view"]["name"], version=training["feature_view"]["version"]
     )
-    fv.init_batch_scoring(training_dataset_version=training["harness"]["training_dataset_version"])
-    batch = fv.get_batch_data(start_time=begin, end_time=finish, primary_key=True)
-
     entity = system["requirements"]["problem"]["entity"]
-    key_columns = [c for c in batch.columns if c == entity or c.endswith("_" + entity)]
     model_spec = training["model"]
     model = project.get_model_registry().get_model(
         model_spec["name"], version=model_spec["version"]
     )
     predict = evaluate.load_predictor(model.download())
+
+    started = time.monotonic()
+    fv.init_batch_scoring(training_dataset_version=training["harness"]["training_dataset_version"])
+    batch = fv.get_batch_data(start_time=begin, end_time=finish, primary_key=True)
+    key_columns = [c for c in batch.columns if c == entity or c.endswith("_" + entity)]
     scores = predict(batch.drop(columns=key_columns))
 
     rows = prediction_rows(
@@ -171,6 +218,7 @@ def main(argv: list[str] | None = None) -> int:
             "window": [begin, finish],
             "rows_written": len(rows),
             "model_version": model_spec["version"],
+            **batch_verdict(system, len(rows), time.monotonic() - started),
         },
     )
     return 0

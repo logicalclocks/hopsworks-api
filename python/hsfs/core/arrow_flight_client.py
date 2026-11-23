@@ -97,6 +97,8 @@ def _is_no_commits_found_error(exception):
 
 
 _ORACLE_ERROR = re.compile(r"ORA-\d{5}")
+# The tail of Arrow Flight's refusal of an S3 endpoint; the host it names stays in the server's message and log.
+_ENDPOINT_REFUSAL = "resolves to a loopback, link-local or unspecified address"
 
 
 def _is_no_metadata_found_error(exception):
@@ -114,12 +116,15 @@ def _is_no_data_found_error(exception):
 
 
 def _data_source_error(exception) -> str | None:
-    """The data source's own refusal, such as an Oracle grant error, as its first line.
+    """The data source's own refusal as one line: an Oracle error such as a missing grant, or Arrow Flight's refusal of an S3 endpoint.
 
     A member reading through their own credentials needs the database's reason to tell a missing grant from a wrong password.
+    A user whose endpoint is refused needs to know that the endpoint failed, not the store.
     """
     if not isinstance(exception, pyarrow._flight.FlightServerError):
         return None
+    if _ENDPOINT_REFUSAL in str(exception):
+        return f"The data source's S3 endpoint {_ENDPOINT_REFUSAL}, which Hopsworks does not connect to."
     match = _ORACLE_ERROR.search(str(exception))
     if match is None:
         return None

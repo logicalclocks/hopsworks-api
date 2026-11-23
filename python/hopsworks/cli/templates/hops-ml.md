@@ -142,7 +142,9 @@ an app is wanted; it always gets a Python app with a JavaScript UI. The options 
 console), **GIS military infrastructure
 finder** (`gis-example`, real-time, a pretrained model with no feature or training pipeline), **Hops
 Run with Kumo Tabular** (`run-example`, real-time, a pretrained model served as a deployment, with no
-feature or training pipeline) and **Help desk agent** (`helpdesk-example`, agentic); use each `label`
+feature or training pipeline), **Gardening machine leasing** (`leasing-example`, real-time, XGBoost
+and Kumo Tabular in the app on a feature view's custom transformations, retrained on simulated
+outcomes) and **Help desk agent** (`helpdesk-example`, agentic); use each `label`
 as the option's description. Create it with the
 example's own slug, which writes its whole `system.yaml`, then record the target:
 

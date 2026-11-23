@@ -1,0 +1,34 @@
+# The ecommerce semantic layer blueprint, read by `hops factory run analytics-semantic` into system.yaml.
+program: ecommerce.py
+environment: python-feature-pipeline
+backfill:
+  args: --mode backfill
+tables:
+  - {name: ecommerce_customers, version: 1, primary_key: [customer_id], event_time: signup_ts, cadence: daily}
+  - {name: ecommerce_products, version: 1, primary_key: [product_id], event_time: launched_at}
+  - {name: ecommerce_orders, version: 1, primary_key: [order_id], event_time: ordered_at, cadence: daily}
+  - {name: ecommerce_order_items, version: 1, primary_key: [order_item_id], event_time: ordered_at, cadence: daily}
+cadences:
+  daily:
+    cron: 0 30 0 * * ?
+    max_catchup_runs: 14
+    args: --mode daily
+    tables: [ecommerce_customers, ecommerce_orders, ecommerce_order_items]
+semantic:
+  path: dbt               # the dbt project, in the system's directory
+  time_spine: {start: "2020-01-01", end: "2030-12-31"}
+app:
+  path: app               # the chat app, in the system's directory
+  environment: python-agent-pipeline
+# Metrics whose totals the verify phase reconciles with SQL over the tables: each metric's SQL is
+# run on Trino over the feature groups, over the whole history, and must match to the cent.
+reconcile:
+  revenue: SELECT sum(net_amount) FROM ecommerce_order_items_1 WHERE status = 'completed'
+  gross_sales: SELECT sum(gross_amount) FROM ecommerce_order_items_1 WHERE status <> 'cancelled'
+  discounts: SELECT sum(discount_amount) FROM ecommerce_order_items_1 WHERE status <> 'cancelled'
+  returns: SELECT sum(net_amount) FROM ecommerce_order_items_1 WHERE status = 'returned'
+  gross_profit: SELECT sum(profit_amount) FROM ecommerce_order_items_1 WHERE status = 'completed'
+  units_sold: SELECT sum(quantity) FROM ecommerce_order_items_1 WHERE status = 'completed'
+  orders: SELECT count(*) FROM ecommerce_orders_1 WHERE status <> 'cancelled'
+  buyers: SELECT count(DISTINCT customer_id) FROM ecommerce_orders_1 WHERE status <> 'cancelled'
+  new_customers: SELECT count(*) FROM ecommerce_customers_1

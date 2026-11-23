@@ -9,6 +9,7 @@ class TAGS:
     DATASET = "dataset"
     ENVIRONMENT = "environment"
     JOB = "job"
+    SEMANTIC_LAYER = "semantic_layer"
     SYSTEM = "system"
     TERMINAL = "terminal"
 

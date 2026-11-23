@@ -834,7 +834,7 @@ class TestPython:
         )
 
         mock_boto3_client.return_value.list_objects_v2.return_value = {
-            "is_truncated": False,
+            "IsTruncated": False,
             "Contents": [
                 {"Key": "test", "Size": 1, "Body": ""},
                 {"Key": "test1", "Size": 1, "Body": ""},
@@ -867,7 +867,7 @@ class TestPython:
         )
 
         mock_boto3_client.return_value.list_objects_v2.return_value = {
-            "is_truncated": False,
+            "IsTruncated": False,
             "Contents": [
                 {"Key": "test", "Size": 1, "Body": ""},
                 {"Key": "test1", "Size": 1, "Body": ""},
@@ -901,7 +901,7 @@ class TestPython:
 
         mock_boto3_client.return_value.list_objects_v2.side_effect = [
             {
-                "is_truncated": True,
+                "IsTruncated": True,
                 "NextContinuationToken": "test_token",
                 "Contents": [
                     {"Key": "test", "Size": 1, "Body": ""},
@@ -909,7 +909,7 @@ class TestPython:
                 ],
             },
             {
-                "is_truncated": False,
+                "IsTruncated": False,
                 "Contents": [
                     {"Key": "test2", "Size": 1, "Body": ""},
                     {"Key": "test3", "Size": 1, "Body": ""},
@@ -928,6 +928,112 @@ class TestPython:
         assert "aws_session_token" not in mock_boto3_client.call_args[1]
         assert mock_boto3_client.call_count == 1
         assert mock_python_engine_read_pandas.call_count == 4
+        second_page = mock_boto3_client.return_value.list_objects_v2.call_args_list[1]
+        assert second_page.kwargs["ContinuationToken"] == "test_token"
+
+    def test_read_s3_empty_prefix(self, mocker):
+        mock_boto3_client = mocker.patch("boto3.client")
+        mock_python_engine_read_pandas = mocker.patch(
+            "hsfs.engine.python.Engine._read_pandas"
+        )
+        connector = storage_connector.S3Connector(
+            id=1, name="test_connector", featurestore_id=1
+        )
+        mock_boto3_client.return_value.list_objects_v2.return_value = {
+            "IsTruncated": False,
+            "KeyCount": 0,
+        }
+
+        result = python.Engine()._read_s3(
+            storage_connector=connector, location="", data_format=None
+        )
+
+        assert result == []
+        assert mock_python_engine_read_pandas.call_count == 0
+
+    @pytest.mark.parametrize(
+        ("path_style", "addressing_style"), [(True, "path"), (None, "virtual")]
+    )
+    def test_read_s3_with_endpoint(self, mocker, path_style, addressing_style):
+        mock_boto3_client = mocker.patch("boto3.client")
+        mocker.patch("hsfs.engine.python.Engine._read_pandas")
+        connector = storage_connector.S3Connector(
+            id=1,
+            name="ecs",
+            featurestore_id=1,
+            bucket="landing",
+            region="us-east-1",
+            access_key="ak",
+            secret_key="sk",
+            session_token="token",
+            endpoint="https://s3.example.com:9021",
+            path_style_access=path_style,
+        )
+        mock_boto3_client.return_value.list_objects_v2.return_value = {
+            "IsTruncated": False,
+            "Contents": [{"Key": "fg/part-0", "Size": 1}],
+        }
+
+        python.Engine()._read_s3(
+            storage_connector=connector, location="s3://landing/fg", data_format=None
+        )
+
+        kwargs = mock_boto3_client.call_args.kwargs
+        assert kwargs["endpoint_url"] == "https://s3.example.com:9021"
+        assert kwargs["region_name"] == "us-east-1"
+        assert kwargs["aws_session_token"] == "token"
+        assert kwargs["config"].s3 == {"addressing_style": addressing_style}
+
+    def test_read_s3_with_endpoint_sends_no_flexible_checksum(self, mocker):
+        import boto3
+        from botocore.awsrequest import AWSResponse
+
+        sent = []
+
+        def answer(request, **kwargs):
+            sent.append(request)
+            if request.method == "GET" and "list-type=2" in request.url:
+                body = (
+                    b"<ListBucketResult><IsTruncated>false</IsTruncated>"
+                    b"<Contents><Key>fg/part-0</Key><Size>1</Size></Contents>"
+                    b"</ListBucketResult>"
+                )
+            else:
+                body = b"x"
+            raw = mocker.Mock()
+            raw.stream.return_value = iter([body])
+            return AWSResponse(request.url, 200, {}, raw)
+
+        real_client = boto3.client
+
+        def client(*args, **kwargs):
+            s3 = real_client(*args, **kwargs)
+            s3.meta.events.register("before-send.s3", answer)
+            return s3
+
+        mocker.patch("boto3.client", side_effect=client)
+        mocker.patch("hsfs.engine.python.Engine._read_pandas")
+        connector = storage_connector.S3Connector(
+            id=1,
+            name="ecs",
+            featurestore_id=1,
+            bucket="landing",
+            region="us-east-1",
+            access_key="ak",
+            secret_key="sk",
+            endpoint="https://s3.example.com:9021",
+            path_style_access=True,
+        )
+
+        python.Engine()._read_s3(
+            storage_connector=connector, location="s3://landing/fg", data_format=None
+        )
+
+        assert [r.method for r in sent] == ["GET", "GET"]
+        for request in sent:
+            assert not [
+                h for h in request.headers if h.lower().startswith("x-amz-checksum")
+            ]
 
     def test_read_options(self):
         # Arrange

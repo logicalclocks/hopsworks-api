@@ -83,6 +83,98 @@ def test_model_job_and_deployment_hits_are_listed(mock_project):
     assert "more" not in result.output
 
 
+def test_dataset_and_metric_hits_are_listed_with_the_semantic_project(mock_project):
+    metric = {"semanticProjectId": 4, "semanticProjectName": "sales", "tags": []}
+    _search_api(
+        mock_project,
+        {
+            "jobs": [_item("nightly_ingest", jobType="PYSPARK")],
+            "metrics": [
+                _item(
+                    "revenue",
+                    label="Revenue",
+                    description="Gross order value\nin EUR",
+                    **metric,
+                ),
+                _item("aov", label="Average order value", **metric),
+            ],
+            "datasets": [_item("Resources", description="Raw uploads", datasetId=7)],
+        },
+    )
+
+    result = CliRunner().invoke(cli, ["search", "blah"])
+
+    assert result.exit_code == 0, result.output
+    rows = [line.split() for line in result.output.splitlines()[2:]]
+    assert [row[0] for row in rows] == ["dataset", "metric", "metric", "job"]
+    assert rows[0] == ["dataset", "Resources", "-", "demo", "Raw", "uploads"]
+    assert rows[1][:4] == ["metric", "revenue", "-", "demo"]
+    assert rows[1][4:] == ["sales:", "Gross", "order", "value"]
+    assert rows[2][:4] == ["metric", "aov", "-", "demo"]
+    assert rows[2][4:] == ["sales:", "Average", "order", "value"]
+    assert "in EUR" not in result.output
+
+
+def test_saved_query_hits_are_listed_after_semantic_projects_with_theirs(
+    mock_project,
+):
+    semantic_project = {"semanticProjectId": 4, "semanticProjectName": "sales"}
+    _search_api(
+        mock_project,
+        {
+            "savedQueries": [
+                _item(
+                    "revenue_by_country", label="Revenue by country", **semantic_project
+                )
+            ],
+            "semanticProjects": [_item("sales", rootPath="/Projects/demo/sales")],
+            "metrics": [_item("revenue", label="Revenue", **semantic_project)],
+        },
+    )
+
+    result = CliRunner().invoke(cli, ["search", "revenue"])
+
+    assert result.exit_code == 0, result.output
+    rows = [line.split() for line in result.output.splitlines()[2:]]
+    assert [row[0] for row in rows] == ["metric", "semantic_project", "saved_query"]
+    assert rows[2] == [
+        "saved_query",
+        "revenue_by_country",
+        "-",
+        "demo",
+        "sales:",
+        "Revenue",
+        "by",
+        "country",
+    ]
+
+
+def test_semantic_project_hits_show_their_root_path(mock_project):
+    _search_api(
+        mock_project,
+        {
+            "semanticProjects": [
+                _item(
+                    "sales",
+                    rootPath="/Projects/demo/Resources/semantic/sales",
+                    semanticProjectId=7,
+                )
+            ],
+        },
+    )
+
+    result = CliRunner().invoke(cli, ["search", "sales", "--type", "semantic_project"])
+
+    assert result.exit_code == 0, result.output
+    assert result.output.splitlines()[2].split() == [
+        "semantic_project",
+        "sales",
+        "-",
+        "demo",
+        "/Projects/demo/Resources/semantic/sales",
+    ]
+
+
 def test_type_option_maps_to_the_backend_doc_type(mock_project):
     api = _search_api(mock_project)
 
@@ -90,6 +182,10 @@ def test_type_option_maps_to_the_backend_doc_type(mock_project):
         ("model", "MODEL"),
         ("training_dataset", "TRAININGDATASET"),
         ("Agent", "AGENT"),
+        ("dataset", "DATASET"),
+        ("metric", "METRIC"),
+        ("semantic_project", "SEMANTIC_PROJECT"),
+        ("saved_query", "SAVED_QUERY"),
         ("data_source", "DATASOURCE"),
     ):
         CliRunner().invoke(cli, ["search", "x", "--type", spelling])
