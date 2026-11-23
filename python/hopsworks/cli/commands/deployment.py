@@ -15,6 +15,7 @@ from typing import Any
 
 import click
 from hopsworks.cli import lineage, output, session, versions
+from hopsworks_common.constants import DEPLOYMENT_KIND
 
 
 @click.group("deployment")
@@ -23,17 +24,33 @@ def deployment_group() -> None:
 
 
 @deployment_group.command("list")
+@click.option(
+    "--kind",
+    "kinds",
+    multiple=True,
+    type=click.Choice(
+        [
+            DEPLOYMENT_KIND.MODEL,
+            DEPLOYMENT_KIND.FEATURE_VIEW,
+            DEPLOYMENT_KIND.AGENT,
+            DEPLOYMENT_KIND.PYTHON,
+        ],
+        case_sensitive=False,
+    ),
+    help="Only list deployments of this kind (repeatable).",
+)
 @click.pass_context
-def deployment_list(ctx: click.Context) -> None:
-    """List every deployment in the active project.
+def deployment_list(ctx: click.Context, kinds: tuple[str, ...]) -> None:
+    """List every deployment in the active project, or only those of the given kinds.
 
     Args:
         ctx: Click context.
+        kinds: Deployment kinds to keep; every kind when empty.
     """
     project = session.get_project(ctx)
     ms = project.get_model_serving()
     try:
-        deployments = ms.get_deployments()
+        deployments = ms.get_deployments(kind=[k.upper() for k in kinds] or None)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not list deployments: {exc}") from exc
 
@@ -43,13 +60,16 @@ def deployment_list(ctx: click.Context) -> None:
             [
                 getattr(d, "id", "?"),
                 getattr(d, "name", "?"),
-                getattr(d, "model_name", "?"),
-                getattr(d, "model_version", "?"),
+                getattr(d, "kind", "-"),
+                getattr(d, "model_name", None) or "-",
+                getattr(d, "model_version", None) or "-",
                 getattr(d, "serving_tool", "-"),
                 _deployment_status_live(d),
             ]
         )
-    output.print_table(["ID", "NAME", "MODEL", "VERSION", "TOOL", "STATUS"], rows)
+    output.print_table(
+        ["ID", "NAME", "KIND", "MODEL", "VERSION", "TOOL", "STATUS"], rows
+    )
 
 
 @deployment_group.command("info")
@@ -285,7 +305,7 @@ DEFAULT_MEMORY_MB = 1024
     "knative_mode",
     default=None,
     help="KServe mode: Knative (scale-to-zero) or Standard (no scale-to-zero, CPU/memory autoscaling or fixed replicas when min equals max). "
-    "Omit to let the backend decide (vLLM deployments default to Standard, others to Knative mode). "
+    "Omit to let the backend decide: a new deployment runs in Standard mode, Knative is the opt-in. "
     "On an update, omitting it keeps the deployment's current mode.",
 )
 @click.option("--description", default="", help="Deployment description.")

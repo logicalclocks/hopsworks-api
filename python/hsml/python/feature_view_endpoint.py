@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hsml.constants import PREDICTOR
+from hsml.constants import DEPLOYMENT_KIND, PREDICTOR
 from hsml.predictor import Predictor
 
 
@@ -22,11 +22,12 @@ class FeatureViewEndpoint(Predictor):
     """Predictor of a feature view deployment: the default predictor with no model.
 
     Serialises to the backend as a plain Python endpoint; the feature view
-    identity lives in the predictor env vars and the schema.
+    link is sent as its own fields and the schema.
     """
 
     def __init__(self, name: str, **kwargs):
         kwargs["model_server"] = PREDICTOR.MODEL_SERVER_PYTHON
+        kwargs.setdefault("kind", DEPLOYMENT_KIND.FEATURE_VIEW)
         kwargs["default_predictor"] = True
         if name is None:
             raise ValueError("A deployment name must be provided")

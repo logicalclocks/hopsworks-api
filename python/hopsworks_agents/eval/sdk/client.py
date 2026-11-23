@@ -102,14 +102,14 @@ class AgentServing:
             `Agent`: the agent, or `None` when no deployment has that name or id.
 
         Raises:
-            `AgentServingError`: If the deployment exists but is a model deployment rather than an agent.
+            `AgentServingError`: If the deployment exists but is not an agent.
         """
         serving = self._serving_row(agent)
         if serving is None:
             return None
         if not is_agent(serving):
             raise AgentServingError(
-                f"deployment {serving.get('name')!r} serves a model, not an agent; "
+                f"deployment {serving.get('name')!r} is not an agent; "
                 "use project.get_model_serving() for it"
             )
         return Agent(self, int(serving["id"]), serving=serving)
