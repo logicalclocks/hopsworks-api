@@ -390,6 +390,7 @@ class DeltaEngine:
         When `end_ts` predates every commit the earliest version is returned, as the full scan does.
         The full scan instead stops at the first version past the bound.
         On a log whose commitInfo timestamps are not monotonic (writers with skewed clocks) it can pin an older version than the one that recorded the bound; the two agree on a monotonic log.
+        On such a log, an `as_of` read at a time that is not a recorded commit time can include a commit stamped after that time, where the full scan leaves out commits made before it; this needs commits from different clocks closer together than the clocks disagree, and is accepted.
         Returns None when the log cannot be read this way, and the caller falls back to the full scan.
         That includes Spark Connect sessions, a bound further back than the versions read, and a commit file without a commitInfo timestamp.
         """
