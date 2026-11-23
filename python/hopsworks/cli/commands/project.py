@@ -168,7 +168,7 @@ def members_group() -> None:
 @members_group.command("list")
 @click.pass_context
 def members_list(ctx: click.Context) -> None:
-    """List the members of the active project: role and owner, then pending invites.
+    """List members, their role and the owner, then pending invites.
 
     Args:
         ctx: Click context carrying the resolved ``HopsConfig``.
@@ -219,7 +219,7 @@ def members_list(ctx: click.Context) -> None:
 )
 @click.pass_context
 def members_usage(ctx: click.Context, since: str, until: str | None) -> None:
-    """Each member's CPU and memory use of the active project over a window.
+    """CPU and memory each member used in the project, over a window.
 
     Use, not the bill: core-hours and GB-hours of the pods each member started.
     A Data owner sees every member and the pods with no member; any other
@@ -351,13 +351,14 @@ def members_add(ctx: click.Context, email: str, role: str) -> None:
 )
 @click.pass_context
 def members_invite(ctx: click.Context, email: str, role: str) -> None:
-    """Invite an email address with no Hopsworks account to the active project.
+    """Invite an address with no Hopsworks account to the project.
 
     Once an account with that address is activated and its email is
     proven, it becomes a member with the role. The invite lasts 14 days;
     inviting again refreshes it. For an existing user, use add. Only a
     Data owner of the project can invite.
 
+    \f
     Args:
         ctx: Click context carrying the resolved ``HopsConfig``.
         email: Email address to invite.
