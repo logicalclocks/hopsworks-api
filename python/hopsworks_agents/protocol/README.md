@@ -376,7 +376,7 @@ async def chat(request, ctx):
     return AgentResponse.text(summary, artifacts=[Artifact(name="churn.csv", media_type="text/csv", data=csv_b64)])
 ```
 
-Any A2A client works; with the Python SDK, against the same URL and credential the chat panel uses:
+Any A2A client works; a client of your own must send `A2A-Version: 1.0` on every request, as the official ones do, since a request without it is taken for the 0.3 protocol. With the Python SDK, against the same URL and credential the chat panel uses:
 
 ```python
 import httpx
