@@ -1159,6 +1159,28 @@ class TestFeatureGroup:
         assert fg.online_enabled is True
         assert fg.stream is False
 
+    def test_delete_partitions_delegates_to_engine(self, mocker):
+        # Arrange
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            time_travel_format="DELTA",
+        )
+        fg._feature_group_engine = mocker.Mock()
+        partitions = {"day": ["2026-09-02"]}
+
+        # Act
+        result = fg.delete_partitions(partitions)
+
+        # Assert
+        fg._feature_group_engine._delete_partitions.assert_called_once_with(
+            fg, partitions
+        )
+        assert result is fg._feature_group_engine._delete_partitions.return_value
+
 
 class TestExternalFeatureGroup:
     def test_from_response_json(self, backend_fixtures):
