@@ -554,7 +554,8 @@ def fg_create(
     help=(
         "Object-storage path for data-lake sources, e.g. an S3 key for a single "
         "parquet file (`sales/2024.parquet`) or a prefix for a parquet directory "
-        "(`sales/`)."
+        "(`sales/`). For a HopsFS source, the folder relative to its dataset "
+        "(`hubspot_deals_1`)."
     ),
 )
 @click.option(
@@ -622,7 +623,8 @@ def fg_create_external(
     - ``--query`` for SQL / data-warehouse sources (Snowflake, BigQuery,
       Redshift, SQL, SAP HANA, Unity Catalog).
     - ``--path`` + ``--data-format`` for object-storage sources (S3 parquet
-      file or directory, ADLS, GCS).
+      file or directory, ADLS, GCS) and HopsFS folders (parquet, csv, orc,
+      Delta, Iceberg).
     - ``--database`` + ``--table`` for MongoDB collections.
 
     Args:

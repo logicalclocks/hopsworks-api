@@ -261,6 +261,19 @@ class TestArrowFlightClient:
         # Assert
         assert supported
 
+    def test_supports_hopsfs(self):
+        # Arrange
+        connector = storage_connector.HopsFSConnector(0, "HopsFSConnector", 99)
+        external_feature_group = feature_group.ExternalFeatureGroup(
+            primary_key=[""], data_source=ds.DataSource(storage_connector=connector)
+        )
+
+        # Act
+        supported = arrow_flight_client._supports([external_feature_group])
+
+        # Assert
+        assert supported
+
     def test_supports_unsupported(self):
         # Arrange
         external_feature_group = feature_group.ExternalFeatureGroup(

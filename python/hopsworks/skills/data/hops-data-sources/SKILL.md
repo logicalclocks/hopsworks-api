@@ -93,6 +93,18 @@ ext_fg = fs.create_external_feature_group(
 ext_fg.save()
 ```
 
+### A folder in the project (HopsFS)
+
+A folder of parquet, csv or orc files, or a Delta or Iceberg table folder, in a project dataset mounts through a HOPSFS data source on that dataset. `--dataset` takes the dataset's name, never a path: `Resources`, `<project>_Training_Datasets`, or `<project>_featurestore.db`, where each feature group's table is the folder `<name>_<version>`. Reuse a HOPSFS data source on that dataset when `hops datasource list` shows one. A HOPSFS data source has no connection test: its create checks that the dataset exists. `--path` is the folder relative to the dataset. A folder with `_delta_log/` is Delta, one with `metadata/` is Iceberg; otherwise the files' extension names the format. The create reads the schema from the files, so `--features` is not needed, and `--primary-key` can wait until `hops fg info` has shown the columns.
+
+```bash
+hops files list /apps/hive/warehouse/<project>_featurestore.db   # the feature store's table folders; other datasets: hops files list <dataset>
+hops datasource create hopsfs <ds> --dataset <project>_featurestore.db
+hops fg create-external <fg> --connector <ds> --path <folder> --data-format <parquet|csv|orc|delta|iceberg> --no-statistics
+hops fg info <fg>               # the columns
+hops fg preview <fg> --limit 5
+```
+
 ## Create a connector
 
 Connectors are not UI-only.
