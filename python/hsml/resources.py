@@ -245,11 +245,12 @@ class ComponentResources(ABC):
         )
         if from_backend and hopsfs_mount is not None:
             # A newer backend may send settings this client does not know.
+            # None, rather than an empty dict, keeps them when the resources are saved back.
             hopsfs_mount = {
                 key: value
                 for key, value in hopsfs_mount.items()
                 if key in cls._HOPSFS_MOUNT_KEYS
-            }
+            } or None
         kwargs["hopsfs_mount"] = hopsfs_mount
 
         # extract num instances
@@ -278,13 +279,13 @@ class ComponentResources(ABC):
             ),
             "limits": self._limits.to_dict() if self._limits is not None else None,
         }
-        hopsfs_mount = {
-            humps.camelize(key): value
-            for key, value in (self._hopsfs_mount or {}).items()
-            if value is not None
-        }
-        if hopsfs_mount:
-            resources["hopsfsMountConfig"] = hopsfs_mount
+        # None leaves the deployment's mount settings as they are, and an empty dict resets them.
+        if self._hopsfs_mount is not None:
+            resources["hopsfsMountConfig"] = {
+                humps.camelize(key): value
+                for key, value in self._hopsfs_mount.items()
+                if value is not None
+            }
         return resources
 
     @public
@@ -336,6 +337,7 @@ class ComponentResources(ABC):
         `memory` is the memory limit (MB) of the mount.
         `namenode_connections` is the number of connections the mount keeps to the HopsFS NameNode.
         A key left out uses the cluster default.
+        Saving a deployment whose resources have no mount settings keeps the settings it has, and an empty dictionary resets them to the cluster defaults.
         The mount a model deployment reads its model files from requests less CPU by default than other HopsFS mounts.
         Only has an effect when the deployment's pods mount HopsFS, as with the loading strategies `'MOUNT'` and `'RUNAI_STREAMER'`; see [`Predictor.loading_strategy`][hsml.predictor.Predictor.loading_strategy].
         """
