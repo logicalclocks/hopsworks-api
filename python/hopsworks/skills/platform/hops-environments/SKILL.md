@@ -83,8 +83,8 @@ the workload, then add libs.
 | Feature pipeline (Python) | `python-feature-pipeline` |
 | Feature pipeline (Spark) | `spark-feature-pipeline` |
 | Training | `pandas-training-pipeline`, `torch-training-pipeline`, `ray-training-pipeline` |
-| LLM fine-tuning (LoRA, QLoRA) | `lora-fine-tuning-torch` (one host: Axolotl, Unsloth, PEFT, TRL, DeepSpeed, Transformer Engine; `llamafactory-cli`), `ray-torch-training-pipeline` (Ray job) |
-| LLM RL post-training (Ray) | `rl-post-training` (SkyRL with FSDP, OpenRLHF, vLLM; `openhands`) |
+| LLM fine-tuning (LoRA, QLoRA) | `torch-training-pipeline` (one host: TRL, PEFT, Unsloth, DeepSpeed), `ray-torch-training-pipeline` (Ray job) |
+| LLM RL post-training (Ray) | `rl-post-training` (SkyRL with FSDP training and vLLM rollouts) |
 | Inference / deployment | `pandas-inference-pipeline`, `torch-inference-pipeline`, `tensorflow-inference-pipeline`, `minimal-inference-pipeline` |
 | Streamlit / Custom app | `python-app-pipeline` |
 | Agent job / deployment | `agent-job`, `python-agent-pipeline` |
