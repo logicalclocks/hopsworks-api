@@ -577,6 +577,32 @@ class Project:
         return self._project_members_api.get_invites()
 
     @public
+    def get_member_usage(self, since: str = "7d", until: str | None = None) -> dict:
+        """Get each member's container use of the project over a window of whole hours.
+
+        The numbers are use, not the bill: CPU core-hours and memory GB-hours of the pods each member started, from an
+        hourly rollup. A Data owner reads every member; any other member reads their own row. GPU and storage are not
+        split by member.
+
+        ```python
+        usage = project.get_member_usage(since="7d")
+        for m in usage["members"]:
+            print(m["email"], m["cpuCoreHours"])
+        ```
+
+        Parameters:
+            since: How far back from `until`, in hours (`36h`) or days (`7d`).
+            until: An ISO-8601 instant; now when not given.
+
+        Returns:
+            A dict with `since`, `until`, `hours`, `hoursMissing`, `members`, `notByMember`, `gpu` and `storage`.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the window is invalid or longer than the use kept.
+        """
+        return self._project_members_api.get_usage(since, until)
+
+    @public
     def cancel_invite(self, email: str) -> None:
         """Cancel the pending invite of an email address.
 

@@ -342,6 +342,32 @@ class ProjectMembersApi:
         return _client._send_request("GET", path_params) or []
 
     @public
+    def get_usage(self, since: str = "7d", until: str | None = None) -> dict:
+        """Get each member's container use of the project over a window of whole hours.
+
+        The numbers are use, not the bill: CPU core-hours and memory GB-hours of the pods each member started, from an
+        hourly rollup. GPU and storage are not split by member.
+
+        Parameters:
+            since: How far back from `until`, in hours (`36h`) or days (`7d`).
+            until: An ISO-8601 instant; now when not given.
+
+        Returns:
+            A dict with `since`, `until`, `hours`, `hoursMissing`, `members` (each `email`, `cpuCoreHours`,
+            `memoryGbHours`), `notByMember` (pods with no user label, Data owners only) and `gpu` and `storage`
+            (always None).
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the window is invalid or longer than the use kept.
+        """
+        _client = client._get_instance()
+        path_params = ["project", _client._project_id, "projectMembers", "usage"]
+        query_params = {"since": since}
+        if until:
+            query_params["until"] = until
+        return _client._send_request("GET", path_params, query_params) or {}
+
+    @public
     def cancel_invite(self, email: str) -> None:
         """Cancel the pending invite of an email address.
 

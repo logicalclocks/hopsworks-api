@@ -45,6 +45,7 @@ hops project members invite <email> --role "Data scientist"  # No account yet (a
 hops project members set <email> --role "Data owner"
 hops project members remove <email> --yes # Pauses the schedules of jobs they created; --keep-schedules; cancels an invite
 hops project members transfer <email> --yes  # Owner only, to a Data owner; the new owner pays
+hops project members usage --since 7d     # CPU and memory each member used (use, not the bill); Data owners see all
 hops project costs --window month         # Kubernetes cost of the project (data owners); --project NAME, --json
 ```
 

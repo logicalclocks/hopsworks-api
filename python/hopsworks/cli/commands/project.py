@@ -205,6 +205,74 @@ def members_list(ctx: click.Context) -> None:
         click.echo(f"invites unavailable: {unavailable}", err=True)
 
 
+@members_group.command("usage")
+@click.option(
+    "--since",
+    default="7d",
+    show_default=True,
+    help="How far back: hours (36h) or days (7d).",
+)
+@click.option(
+    "--until",
+    default=None,
+    help="End of the window, an ISO-8601 time; now when not given.",
+)
+@click.pass_context
+def members_usage(ctx: click.Context, since: str, until: str | None) -> None:
+    """Each member's CPU and memory use of the active project over a window.
+
+    Use, not the bill: core-hours and GB-hours of the pods each member started.
+    A Data owner sees every member and the pods with no member; any other
+    member sees their own row. Money per project: `hops project costs`.
+
+    \f
+    Args:
+        ctx: Click context carrying the resolved ``HopsConfig``.
+        since: Window length back from ``until``.
+        until: Window end, or now.
+    """
+    project = session.get_project(ctx)
+    try:
+        usage = project.get_member_usage(since=since, until=until)
+    except RestAPIError as exc:
+        raise click.ClickException(
+            f"Could not read member usage: {exc.user_message or exc}"
+        ) from exc
+    except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
+        raise click.ClickException(f"Could not read member usage: {exc}") from exc
+    if output.JSON_MODE:
+        output.print_json(usage)
+        return
+    rows = [
+        [
+            m.get("email") or "?",
+            f"{m.get('cpuCoreHours', 0):.2f}",
+            f"{m.get('memoryGbHours', 0):.2f}",
+        ]
+        for m in sorted(
+            usage.get("members") or [], key=lambda m: -(m.get("cpuCoreHours") or 0)
+        )
+    ]
+    other = usage.get("notByMember")
+    if other:
+        rows.append(
+            [
+                "(not by a member)",
+                f"{other.get('cpuCoreHours', 0):.2f}",
+                f"{other.get('memoryGbHours', 0):.2f}",
+            ]
+        )
+    output.print_table(["EMAIL", "CPU CORE-H", "MEMORY GB-H"], rows)
+    click.echo(
+        f"{usage.get('since')} to {usage.get('until')}, {usage.get('hours')} hours. Use, not the bill. GPU and storage: not split by member."
+    )
+    if usage.get("hoursMissing"):
+        click.echo(
+            f"{usage['hoursMissing']} hours missing: not rolled up yet, or Prometheus had no answer.",
+            err=True,
+        )
+
+
 def _invites_of(project: Any) -> tuple[list[dict], str | None]:
     """Pending invites and why they could not be read, if so.
 

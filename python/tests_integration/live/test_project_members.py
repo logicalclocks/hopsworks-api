@@ -30,6 +30,7 @@ it pending, is refused for an existing user's address, and cancels the invite wi
 is deleted at the end, waited for until it answers 404. A missing environment variable or an unreachable cluster fails the run: there is no skip.
 """
 
+import json
 import os
 import subprocess
 import sys
@@ -334,6 +335,87 @@ def test_the_owner_invites_lists_and_cancels_an_address(live):
         assert cancelled.returncode == 0, cancelled.stderr[-2000:]
         assert f"Cancelled the invite of {address}" in cancelled.stderr
         assert _invited(live, project_id) == {}
+    finally:
+        if project_id is not None:
+            _delete_and_wait(live, project_id)
+
+
+def test_member_usage_reads_every_member_for_the_owner_and_only_their_own_for_a_member(
+    live,
+):
+    name = f"hpu{int(time.time())}"
+    member_email = _rest(live, live["member"], "GET", "/users/profile").json()["email"]
+    owner_email = _rest(live, live["owner"], "GET", "/users/profile").json()["email"]
+    project_id = None
+    try:
+        project_id = _create_project(live, name)
+        added = _hops(
+            live,
+            live["owner"],
+            name,
+            project_id,
+            "project",
+            "members",
+            "add",
+            member_email,
+            "--role",
+            "data scientist",
+        )
+        assert added.returncode == 0, added.stderr[-2000:]
+
+        owner = _hops(
+            live,
+            live["owner"],
+            name,
+            project_id,
+            "project",
+            "members",
+            "usage",
+            "--since",
+            "2d",
+            "--json",
+        )
+        assert owner.returncode == 0, owner.stderr[-2000:]
+        usage = json.loads(owner.stdout)
+        assert usage["hours"] == 48
+        assert usage["gpu"] is None and usage["storage"] is None
+        assert {m["email"] for m in usage["members"]} <= {owner_email, member_email}
+
+        member = _hops(
+            live,
+            live["member"],
+            name,
+            project_id,
+            "project",
+            "members",
+            "usage",
+            "--json",
+        )
+        assert member.returncode == 0, member.stderr[-2000:]
+        mine = json.loads(member.stdout)
+        assert mine["hours"] == 7 * 24
+        assert {m["email"] for m in mine["members"]} <= {member_email}
+        assert mine["notByMember"] is None
+
+        table = _hops(
+            live, live["owner"], name, project_id, "project", "members", "usage"
+        )
+        assert table.returncode == 0, table.stderr[-2000:]
+        assert "EMAIL" in table.stdout and "Use, not the bill." in table.stdout
+
+        too_long = _hops(
+            live,
+            live["owner"],
+            name,
+            project_id,
+            "project",
+            "members",
+            "usage",
+            "--since",
+            "400d",
+        )
+        assert too_long.returncode == 1, too_long.stdout[-2000:]
+        assert "Could not read member usage: " in too_long.stderr
     finally:
         if project_id is not None:
             _delete_and_wait(live, project_id)
