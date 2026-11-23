@@ -24,7 +24,7 @@ import json
 from collections import OrderedDict
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ag_ui.core import AgentCapabilities, RunAgentInput
 from ag_ui.core.version import PROTOCOL_VERSION as AGUI_PROTOCOL_VERSION
@@ -57,6 +57,10 @@ from .models import (
 )
 from .pending import EXPIRED_GRACE, RETENTION, _PendingQuestions, _ProcessPending
 from .tracing import resolve_framework, setup_tracing, turn_span
+
+
+if TYPE_CHECKING:
+    from .a2a import A2AConfig
 
 
 ChatHandler = Callable[..., Awaitable[ChatResponse | str] | ChatResponse | str]
@@ -125,7 +129,7 @@ class AgentApp(FastAPI):
         allow_cors: bool = True,
         eval_per_request: bool = False,
         memory_routes: bool = True,
-        a2a: bool = True,
+        a2a: bool | A2AConfig = True,
         skills: list[AgentSkill] | None = None,
         public_url: str | None = None,
         fetch_urls: list[str] | None = None,
@@ -280,9 +284,11 @@ class AgentApp(FastAPI):
         # turn pipeline. Off removes them all; nothing else changes.
         self._a2a: Any = None
         if a2a:
-            from .a2a import A2AServer
+            from .a2a import A2AConfig, A2AServer
 
-            self._a2a = A2AServer(self)
+            self._a2a = A2AServer(
+                self, a2a if isinstance(a2a, A2AConfig) else A2AConfig()
+            )
 
         @self.on_event("shutdown")
         async def _drain_turns() -> None:  # pragma: no cover - lifespan hook
@@ -833,6 +839,7 @@ class AgentApp(FastAPI):
         merged.citations = final.citations
         merged.usage = final.usage
         merged.metadata = {**final.metadata}
+        merged.artifacts = list(final.artifacts)
         if final.conversation_id:
             merged.conversation_id = final.conversation_id
         return self._finalize(merged, ctx)
@@ -1616,13 +1623,14 @@ class AgentApp(FastAPI):
         for, so the lifespan's shutdown is the last point at which it can be
         given time.
         ``HOPSWORKS_AGENT_TASK_DRAIN_SECONDS`` (default 600) bounds that; a turn
-        still running at the deadline is cancelled, which ends it the way a
-        hang-up does.
+        still running at the deadline is aborted: its handler is cancelled, its
+        turn abandoned in the store, and an A2A task fails with
+        ``executor_shutdown`` so the caller knows to resend.
         """
         self._draining = True
-        pending = {task for task in _DETACHED if not task.done()}
-        if self._a2a is not None:
-            pending |= self._a2a._running()
+        keepers = {task for task in _DETACHED if not task.done()}
+        runs = list(self._a2a.executor.runs.values()) if self._a2a is not None else []
+        pending = keepers | {run.task for run in runs if not run.task.done()}
         if not pending:
             return
         import os  # noqa: PLC0415
@@ -1632,10 +1640,17 @@ class AgentApp(FastAPI):
         except ValueError:
             window = 600.0
         _, late = await asyncio.wait(pending, timeout=window)
-        for task in late:
+        if not late:
+            return
+        for run in runs:
+            if run.task in late:
+                run._abort()
+        for task in late & keepers:
             task.cancel()
-        if late:
-            await asyncio.wait(late, timeout=5)
+        # the executors report the abort and settle their turns; give them a moment
+        await asyncio.wait(late, timeout=5)
+        if self._a2a is not None:
+            await self._a2a.executor._settled(timeout=5)
 
 
 # Turns settled after their client hung up, held so the loop keeps them.
@@ -1671,6 +1686,8 @@ class _TurnRun:
         self.answered: ChatResponse | None = None
         self.detached = False
         self._closed = False
+        #: The pod is stopping and the handler was cut short: what ``done`` then means.
+        self.aborted = False
         self.task = asyncio.create_task(self._pump())
 
     async def _pump(self) -> None:
@@ -1740,6 +1757,13 @@ class _TurnRun:
         """The client went away or cancelled: stop the handler, or let a resumed one finish."""
         self.ctx.cancelled.set()
         self.detached = self._app._let_finish(self.ctx, self.task)
+
+    def _abort(self) -> None:
+        """The process is stopping: the handler is cancelled whatever it is doing."""
+        self.aborted = True
+        self.ctx.cancelled.set()
+        if not self.task.done():
+            self.task.cancel()
 
     async def _close(self, completed: ChatResponse | None) -> None:
         """End the turn: now, or when a detached handler is really done. Once."""

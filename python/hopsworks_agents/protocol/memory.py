@@ -28,6 +28,7 @@ NOT pass a memory store — one source of truth for history is enough.
 from __future__ import annotations
 
 import asyncio
+import bisect
 import inspect
 import logging
 import os
@@ -38,7 +39,7 @@ import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
 
@@ -182,6 +183,20 @@ def _already_exists(err: Exception) -> bool:
 @public
 def new_turn_id() -> str:
     return f"turn_{uuid.uuid4().hex}"
+
+
+def _by_turn_start(rows: list[Any]) -> list[Any]:
+    """Rows in id order, regrouped so each turn's rows are contiguous, turns by their first row.
+
+    Turns of one conversation can run at once (A2A tasks on one context): the
+    first one's answer then lands after the second one's question, and a reader
+    in id order sees the two interleaved. A turn is read as one unit, where it
+    started.
+    """
+    first: dict[Any, int] = {}
+    for row in rows:
+        first.setdefault(row.turn_id, row.id)
+    return sorted(rows, key=lambda row: (first[row.turn_id], row.id))
 
 
 def _utcnow() -> datetime:
@@ -651,6 +666,12 @@ class InMemoryAgentMemory(ChatMemory):
         # on close and are dropped on abandon, so history never shows a
         # question whose answer never arrived
         self._open: dict[str, list[Turn]] = {}
+        # when each open turn began, so a turn lands where it started even
+        # when another turn of the conversation closed before it
+        self._started: dict[str, int] = {}
+        self._ticks = 0
+        # where each stored message's turn began, aligned with _conversations
+        self._starts: dict[str, list[int]] = {}
         # who each conversation is with and when it last moved, for listing
         self._subjects: dict[str, str] = {}
         self._active_at: dict[str, str] = {}
@@ -676,6 +697,8 @@ class InMemoryAgentMemory(ChatMemory):
     ) -> None:
         with self._lock:
             self._open[turn_id] = [{"role": role, "content": content}]
+            self._ticks += 1
+            self._started[turn_id] = self._ticks
             if subject:
                 self._subjects[conversation_id] = subject
 
@@ -705,12 +728,20 @@ class InMemoryAgentMemory(ChatMemory):
     ) -> None:
         with self._lock:
             buffered = self._open.pop(turn_id, None)
+            started = self._started.pop(turn_id, self._ticks)
             if not buffered or status != TURN_CLOSED:
                 return
             turns = self._conversations.setdefault(conversation_id, [])
-            turns.extend(buffered)
+            starts = self._starts.setdefault(conversation_id, [])
+            # a turn lands after every turn that began before it, so two
+            # turns run at once read back as two turns, not interleaved
+            at = bisect.bisect_right(starts, started)
+            turns[at:at] = buffered
+            starts[at:at] = [started] * len(buffered)
             if len(turns) > self._max:
-                del turns[: len(turns) - self._max]
+                cut = len(turns) - self._max
+                del turns[:cut]
+                del starts[:cut]
             self._active_at[conversation_id] = datetime.now(timezone.utc).isoformat()
 
     def list_conversations(
@@ -737,6 +768,7 @@ class InMemoryAgentMemory(ChatMemory):
     def clear(self, conversation_id: str) -> None:
         with self._lock:
             self._conversations.pop(conversation_id, None)
+            self._starts.pop(conversation_id, None)
             self._subjects.pop(conversation_id, None)
             self._active_at.pop(conversation_id, None)
         self._pending._clear(conversation_id)
@@ -1438,7 +1470,10 @@ class ManagedMemoryService(ChatMemory):
         except Exception:  # noqa: BLE001
             log.exception("Memory read failed; returning empty history")
             return []
-        turns = [{"role": r.role, "content": r.content} for r in reversed(rows)]
+        turns = [
+            {"role": r.role, "content": r.content}
+            for r in _by_turn_start(list(reversed(rows)))
+        ]
         if count is not None:
             with self._lock:
                 self._cache[conversation_id] = (key, list(turns))
@@ -2182,7 +2217,7 @@ class ManagedMemoryService(ChatMemory):
             )
         try:
             with self._engine.connect() as conn:
-                rows = conn.execute(stmt.order_by(t.c.id)).fetchall()
+                rows = _by_turn_start(conn.execute(stmt.order_by(t.c.id)).fetchall())
         except Exception:  # noqa: BLE001
             log.exception("Transcript read failed")
             return []

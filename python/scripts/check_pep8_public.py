@@ -117,6 +117,11 @@ POLYMORPHISM_FALLBACK_QUALNAMES: set[str] = {
     # ``Class.method``, which is what the rule below compares against.
     "HopsworksAgentExecutor.execute",
     "HopsworksAgentExecutor.cancel",
+    # The bounded task store implements the SDK's ``TaskStore`` the same way.
+    "_BoundedTaskStore.save",
+    "_BoundedTaskStore.get",
+    "_BoundedTaskStore.list",
+    "_BoundedTaskStore.delete",
 }
 
 # Third-party-API-mirroring re-exports: symbols that intentionally mirror an

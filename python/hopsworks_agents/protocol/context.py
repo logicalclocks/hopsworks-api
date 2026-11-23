@@ -120,6 +120,10 @@ class HandlerContext:
         # Where the questions this turn asks are recorded: the conversation,
         # or over A2A the task, since one context may hold several tasks.
         self._pending_key = self.conversation_id
+        # The history as this turn first read it. Several turns of one
+        # conversation can run at once (A2A tasks on one context), and a turn
+        # that reads the conversation twice must not see it change under it.
+        self._history_snapshot: list[Turn] | None = None
         #: Tool names the handler has emitted an event for in this turn. The
         #: automatic span-driven emitter stays off them: an agent that reports
         #: its own progress has said what it wants shown.
@@ -154,7 +158,9 @@ class HandlerContext:
         """
         if self.memory is None:
             return []
-        return self.memory.get(self.conversation_id)
+        if self._history_snapshot is None:
+            self._history_snapshot = self.memory.get(self.conversation_id)
+        return list(self._history_snapshot)
 
     @property
     def summary(self) -> str | None:
@@ -486,7 +492,7 @@ class HandlerContext:
         """:attr:`history`, read in a worker thread."""
         if self.memory is None:
             return []
-        return await asyncio.to_thread(self.memory.get, self.conversation_id)
+        return await asyncio.to_thread(lambda: self.history)
 
     @public
     async def asummary(self) -> str | None:

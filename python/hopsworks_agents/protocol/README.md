@@ -355,10 +355,13 @@ Every `AgentApp` serves the A2A 1.0 protocol next to AG-UI, built on the officia
 
 A message becomes a turn: `contextId` is the `conversation_id`, `text` parts the text, `raw` parts images, audio or files by media type, `data` parts the request `context`, and `url` parts reach the handler as `request.urls` untouched, unless `AgentApp(fetch_urls=["files.example.com"])` names hosts whose URLs are fetched into files first. The turn becomes a task: the reply text is always the artifact named `response`, streamed chunk by chunk from a stream handler, and the final status message carries the answer with `metadata.hopsworks` (`trace_id`, `citations`, `usage`, `subject`). `ctx.emit_event` goes out as a working status with the step under `metadata.hopsworks.step`; `ctx.interrupt` pauses the task in `INPUT_REQUIRED`, or `AUTH_REQUIRED` for `reason="auth_required"`, and the answer comes back as a message on the same task: a `data` part `{"<interrupt id>": <payload>}`, or plain text when one question is open. Credentials never travel in a message: an `auth_required` question describes what is needed in its `metadata`, and the answer is a reference such as `{"credential_ref": "<secret name>"}` the handler resolves itself.
 
-Named outputs beyond the reply are artifacts, returned whole or streamed while the handler works:
+Several tasks may run on one `contextId` at once (two replicas, or one caller sending twice). Each turn reads the conversation as it was when the turn first read it, and the store keeps every turn's rows together, in the order the turns started. An agent that wants one task at a time per context sets `AgentApp(a2a=A2AConfig(serialize_context=True))`: the next task waits as `SUBMITTED` until the running one ends or pauses, per replica. `A2AConfig` also bounds the in-memory task store (`max_tasks`, `max_task_bytes`, finished tasks dropped oldest first).
+
+Named outputs beyond the reply are artifacts, returned whole or streamed while the handler works. The first chunk of an artifact creates it, a later chunk appends unless sent with `append=False`, which replaces it; a stream handler whose final text rewrites the draft it streamed replaces the `response` artifact the same way. Artifacts whose media type the caller did not accept are left out and listed under `metadata.hopsworks.dropped_artifacts`:
 
 ```python
 from hopsworks_agents.protocol import AgentApp, AgentResponse, AgentSkill, Artifact, TextContent
+from hopsworks_agents.protocol.a2a import A2AConfig
 
 agent_app = AgentApp(
     name="Churn analyst",
@@ -390,7 +393,7 @@ async with httpx.AsyncClient(headers={"Authorization": f"ApiKey {serving_key}"})
         task = event.task
 ```
 
-What the card says comes from the app: `skills=` (one `chat` skill from the name, description and suggested prompts when absent), `input_media_types=` / `output_media_types=` to replace the media types derived from the modalities (the lists are exact, a wildcard matches nothing), and `public_url=` for the interface URLs when the platform has not set `HOPSWORKS_AGENT_PUBLIC_URL` and the request's `Host` is not the right base. `a2a=False` removes the card and the routes. Tasks are kept in memory, per replica, until the durable stores land; the manifest says so under `capabilities.custom.hopsworks.a2a`.
+A URL part from a host in `fetch_urls` is fetched at the address the host resolved to when it was checked (the name is kept for TLS and `Host`), with no redirects and a size cap; a private or link-local address is refused unless the platform listed the host or its network in `HOPSWORKS_AGENT_PUSH_INTERNAL_ALLOW`. What the card says comes from the app: `skills=` (one `chat` skill from the name, description and suggested prompts when absent), `input_media_types=` / `output_media_types=` to replace the media types derived from the modalities (the lists are exact, a wildcard matches nothing), and `public_url=` for the interface URLs when the platform has not set `HOPSWORKS_AGENT_PUBLIC_URL` and the request's `Host` is not the right base. `a2a=False` removes the card and the routes. Tasks are kept in memory, per replica, until the durable stores land; the manifest says so under `capabilities.custom.hopsworks.a2a`.
 
 ## Handler context (optional)
 

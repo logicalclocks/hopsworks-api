@@ -229,6 +229,8 @@ class TestAgentCard:
             "push_notifications": False,
             "signed": False,
             "task_store": "memory",
+            "task_limit": 1000,
+            "serialize_context": False,
         }
 
     def test_a2a_can_be_switched_off(self):
@@ -1002,3 +1004,332 @@ class TestTasks:
             "second",
             "2 before",
         ]
+
+
+class TestReviewRoundOne:
+    """What the first review of the adapter found, and must stay fixed."""
+
+    def _memory(self, tmp_path):
+        from hopsworks_agents.protocol import ManagedMemoryService
+
+        return ManagedMemoryService(
+            url=f"sqlite:///{tmp_path}/m.db", table_name="agent_memory_messages_t"
+        )
+
+    def test_the_drain_deadline_fails_a_running_task_as_shutdown(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv("HOPSWORKS_AGENT_TASK_DRAIN_SECONDS", "0.1")
+        memory = self._memory(tmp_path)
+        started = asyncio.Event()
+        seen = {}
+        app = AgentApp(memory=memory)
+
+        @app.chat
+        async def chat(request, ctx):
+            started.set()
+            try:
+                await asyncio.sleep(10)
+            finally:
+                seen["cancelled"] = ctx.cancelled.is_set()
+            return "late"
+
+        async def scenario():
+            client, _ = await connect(app, polling=True)
+            task = task_of(
+                await send(
+                    client, user_message("x", context_id="c1"), return_immediately=True
+                )
+            )
+            await asyncio.wait_for(started.wait(), 2)
+            await app._drain()
+            got = task
+            for _ in range(100):
+                got = await client.get_task(GetTaskRequest(id=task.id))
+                if state_name(got) not in (
+                    "TASK_STATE_WORKING",
+                    "TASK_STATE_SUBMITTED",
+                ):
+                    break
+                await asyncio.sleep(0.02)
+            # not a success with an empty answer: a failure the caller can act on
+            assert state_name(got) == "TASK_STATE_FAILED"
+            facts = hopsworks_of(got.status.message)
+            assert facts["status"] == "executor_shutdown"
+            assert facts["retryable"] is True
+            assert seen["cancelled"] is True
+            assert app._draining is True
+
+        run(scenario())
+        memory.healthcheck()
+        with memory._engine.connect() as conn:
+            rows = conn.execute(memory._table.select()).fetchall()
+        assert [r.status for r in rows] == ["abandoned"]
+
+    def test_finished_tasks_are_dropped_past_the_limit(self):
+        from hopsworks_agents.protocol.a2a import A2AConfig
+
+        app = echo_app(a2a=A2AConfig(max_tasks=2))
+
+        async def scenario():
+            client, _ = await connect(app)
+            tasks = [
+                task_of(await send(client, user_message(f"q{i}"))) for i in range(3)
+            ]
+            with pytest.raises(Exception, match="(?i)not found|TaskNotFound"):
+                await client.get_task(GetTaskRequest(id=tasks[0].id))
+            kept = await client.get_task(GetTaskRequest(id=tasks[2].id))
+            assert state_name(kept) == "TASK_STATE_COMPLETED"
+
+        run(scenario())
+
+    def test_a_chunk_with_append_false_replaces_the_artifact(self):
+        app = AgentApp()
+
+        @app.chat
+        async def chat(request, ctx):
+            await ctx.emit_artifact("log", TextContent(text="draft"))
+            await ctx.emit_artifact(
+                "log", TextContent(text="final"), append=False, last=True
+            )
+            return "ok"
+
+        async def scenario():
+            client, _ = await connect(app, streaming=True)
+            events = await send(client, user_message("q"))
+            logs = [
+                e.artifact_update
+                for e in events
+                if e.HasField("artifact_update")
+                and e.artifact_update.artifact.artifact_id == "log"
+            ]
+            assert [a.append for a in logs] == [False, False]
+            task = await client.get_task(GetTaskRequest(id=events[0].task.id))
+            assert text_of(artifact(task, "log")) == "final"
+
+        run(scenario())
+
+    def test_a_final_text_that_rewrites_the_draft_replaces_the_reply(self):
+        app = AgentApp()
+
+        @app.stream
+        async def stream(request):
+            yield "draft answer"
+            yield AgentResponse.text("corrected answer")
+
+        async def scenario():
+            client, _ = await connect(app)
+            task = task_of(await send(client, user_message("q")))
+            assert text_of(artifact(task, "response")) == "corrected answer"
+            assert text_of(task.status.message) == "corrected answer"
+
+        run(scenario())
+
+    def test_a_stream_handlers_final_artifacts_are_kept(self):
+        app = AgentApp()
+
+        @app.stream
+        async def stream(request):
+            yield "text"
+            yield AgentResponse.text(
+                "",
+                artifacts=[
+                    Artifact(name="report.csv", media_type="text/csv", data="YQ==")
+                ],
+            )
+
+        async def scenario():
+            client, _ = await connect(app)
+            task = task_of(await send(client, user_message("q")))
+            assert [a.name for a in task.artifacts] == ["response", "report.csv"]
+            assert text_of(artifact(task, "response")) == "text"
+
+        run(scenario())
+        # and on AG-UI, where the same merge runs
+        body = TestClient(app).post(
+            "/v1/run",
+            json={
+                "threadId": "t",
+                "runId": "r",
+                "messages": [{"id": "m", "role": "user", "content": "q"}],
+                "tools": [],
+                "context": [],
+                "forwardedProps": {},
+            },
+        )
+        custom = [
+            json.loads(line[len("data: ") :])
+            for line in body.text.split("\n")
+            if line.startswith("data: ") and '"CUSTOM"' in line
+        ]
+        assert [e["value"]["name"] for e in custom] == ["report.csv"]
+
+    def test_history_is_a_snapshot_and_turns_stay_contiguous(self, tmp_path):
+        memory = self._memory(tmp_path)
+        gate = asyncio.Event()
+        seen = {}
+        app = AgentApp(memory=memory)
+
+        @app.chat
+        async def chat(request, ctx):
+            if request.text == "slow":
+                first = ctx.history
+                await gate.wait()
+                seen["reads"] = (first, ctx.history)
+                return "slow done"
+            return "fast done"
+
+        async def scenario():
+            client, _ = await connect(app)
+            slow = asyncio.create_task(
+                send(client, user_message("slow", context_id="c"))
+            )
+            await asyncio.sleep(0.1)
+            task_of(await send(client, user_message("fast", context_id="c")))
+            gate.set()
+            task_of(await slow)
+            # the reply goes out before the turn closes in the store
+            for _ in range(100):
+                if len(await asyncio.to_thread(memory.get, "c")) == 4:
+                    break
+                await asyncio.sleep(0.02)
+
+        run(scenario())
+        # what the slow turn read did not change under it when the fast one ended
+        assert seen["reads"] == ([], [])
+        # each turn is read as one unit, where it started
+        assert [t["content"] for t in memory.get("c")] == [
+            "slow",
+            "slow done",
+            "fast",
+            "fast done",
+        ]
+        assert [m["content"] for m in memory.transcript("c")] == [
+            "slow",
+            "slow done",
+            "fast",
+            "fast done",
+        ]
+
+    def test_the_process_store_also_keeps_turns_where_they_started(self):
+        from hopsworks_agents.protocol import InMemoryAgentMemory
+
+        memory = InMemoryAgentMemory()
+        memory.begin_turn("c", "t1", "user", "slow")
+        memory.begin_turn("c", "t2", "user", "fast")
+        memory.record_item("c", "t2", "assistant", "fast done")
+        memory.end_turn("c", "t2")
+        memory.record_item("c", "t1", "assistant", "slow done")
+        memory.end_turn("c", "t1")
+        assert [t["content"] for t in memory.get("c")] == [
+            "slow",
+            "slow done",
+            "fast",
+            "fast done",
+        ]
+
+    def test_serialize_context_runs_the_tasks_of_a_context_one_at_a_time(self):
+        from hopsworks_agents.protocol.a2a import A2AConfig
+
+        order = []
+        app = AgentApp(a2a=A2AConfig(serialize_context=True))
+
+        @app.chat
+        async def chat(request):
+            order.append(("start", request.text))
+            await asyncio.sleep(0.03)
+            order.append(("end", request.text))
+            return "ok"
+
+        async def scenario():
+            client, _ = await connect(app)
+            results = await asyncio.gather(
+                *(
+                    send(client, user_message(f"q{i}", context_id="one"))
+                    for i in range(3)
+                )
+            )
+            for events in results:
+                assert state_name(task_of(events)) == "TASK_STATE_COMPLETED"
+
+        run(scenario())
+        assert len(order) == 6
+        for i in range(0, 6, 2):
+            assert order[i][0] == "start"
+            assert order[i + 1] == ("end", order[i][1])
+
+    def test_emitted_artifacts_honour_the_accepted_output_modes(self):
+        from hopsworks_agents.protocol import ImageContent
+
+        app = AgentApp(output_modalities=["text", "image"])
+
+        @app.chat
+        async def chat(request, ctx):
+            await ctx.emit_artifact(
+                "chart", ImageContent(media_type="image/png", data="aGk="), last=True
+            )
+            return AgentResponse.text(
+                "t",
+                artifacts=[Artifact(name="x.csv", media_type="text/csv", data="YQ==")],
+            )
+
+        async def scenario():
+            client, _ = await connect(app)
+            task = task_of(
+                await send(client, user_message("q"), accepted=["text/plain"])
+            )
+            assert [a.name for a in task.artifacts] == ["response"]
+            assert hopsworks_of(task.status.message)["dropped_artifacts"] == [
+                "chart",
+                "x.csv",
+            ]
+
+        run(scenario())
+
+
+class TestUrlPinning:
+    """An allowed URL part is fetched at the address that was checked, never re-resolved."""
+
+    def test_a_private_address_is_refused(self, monkeypatch):
+        import hopsworks_agents.protocol.a2a as a2a_module
+
+        monkeypatch.setattr(a2a_module, "_resolve", lambda host, port: ["10.0.0.5"])
+        monkeypatch.delenv(a2a_module.INTERNAL_ALLOW_ENV, raising=False)
+        with pytest.raises(AgentError) as err:
+            a2a_module._pin("https://files.test/x.csv")
+        assert err.value.code == "unsupported_content"
+
+    def test_a_rebinding_answer_is_refused(self, monkeypatch):
+        import hopsworks_agents.protocol.a2a as a2a_module
+
+        monkeypatch.setattr(
+            a2a_module,
+            "_resolve",
+            lambda host, port: ["93.184.216.34", "169.254.169.254"],
+        )
+        monkeypatch.delenv(a2a_module.INTERNAL_ALLOW_ENV, raising=False)
+        with pytest.raises(AgentError):
+            a2a_module._pin("https://files.test/x.csv")
+
+    def test_a_public_address_is_pinned_with_the_name_kept(self, monkeypatch):
+        import hopsworks_agents.protocol.a2a as a2a_module
+
+        monkeypatch.setattr(
+            a2a_module, "_resolve", lambda host, port: ["93.184.216.34"]
+        )
+        pinned = a2a_module._pin("https://files.test/data/x.csv?v=1")
+        assert pinned.url == "https://93.184.216.34:443/data/x.csv?v=1"
+        assert pinned.host == "files.test"
+        assert pinned.host_header == "files.test"
+
+    def test_an_allowed_internal_network_is_fetched(self, monkeypatch):
+        import hopsworks_agents.protocol.a2a as a2a_module
+
+        monkeypatch.setattr(a2a_module, "_resolve", lambda host, port: ["10.0.0.5"])
+        monkeypatch.setenv(a2a_module.INTERNAL_ALLOW_ENV, "10.0.0.0/8, other.test")
+        pinned = a2a_module._pin("https://files.test:8443/x.csv")
+        assert pinned.url == "https://10.0.0.5:8443/x.csv"
+        assert pinned.host_header == "files.test:8443"
+        # a listed hostname is allowed whatever it resolves to
+        monkeypatch.setattr(a2a_module, "_resolve", lambda host, port: ["127.0.0.1"])
+        assert a2a_module._pin("http://other.test/x").url == "http://127.0.0.1:80/x"

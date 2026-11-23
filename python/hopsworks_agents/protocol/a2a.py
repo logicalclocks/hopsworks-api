@@ -25,11 +25,15 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import ipaddress
 import json
 import logging
 import os
+import socket
+from collections import OrderedDict
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 from a2a.helpers.proto_helpers import new_task
 from a2a.server.agent_execution import (
@@ -41,8 +45,9 @@ from a2a.server.request_handlers import DefaultRequestHandlerV2
 from a2a.server.routes import create_jsonrpc_routes, create_rest_routes
 from a2a.server.routes.fastapi_routes import add_a2a_routes_to_fastapi
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
+from a2a.server.tasks.task_store import TaskStore
 from a2a.types import AgentCard, Message, Part, Task, TaskState
-from a2a.utils.constants import TransportProtocol
+from a2a.utils.constants import TERMINAL_TASK_STATES, TransportProtocol
 from fastapi import Request  # noqa: TC002 -- FastAPI resolves the annotation at runtime
 from fastapi.responses import JSONResponse
 from google.protobuf.json_format import MessageToDict, ParseDict
@@ -62,8 +67,7 @@ from .models import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
-
+    from a2a.server.context import ServerCallContext
     from a2a.server.events import EventQueue
 
     from .app import AgentApp, _TurnRun
@@ -89,6 +93,14 @@ RESPONSE_ARTIFACT_ID = "response"
 INTERRUPTED_TASK_TIMEOUT_S = 15 * 60
 #: The most an allowed URL part may be when fetched for the handler.
 MAX_FETCHED_BYTES = 20 * 1024 * 1024
+#: Internal hosts or networks an allowed URL part may resolve to, besides public
+#: addresses: comma-separated hostnames or CIDRs, set by the platform. The same
+#: list the push sender honours.
+INTERNAL_ALLOW_ENV = "HOPSWORKS_AGENT_PUSH_INTERNAL_ALLOW"
+#: How many finished tasks the in-memory store keeps, oldest dropped first.
+DEFAULT_MAX_TASKS = 1000
+#: How much the kept tasks may hold together, artifacts included.
+DEFAULT_MAX_TASK_BYTES = 256 * 1024 * 1024
 #: The media types each modality accepts or produces when the app does not say.
 #: Exact, because the SDK's validator checks a part's type by set membership.
 MEDIA_TYPES: dict[str, list[str]] = {
@@ -137,6 +149,79 @@ def _struct(value: dict[str, Any]) -> dict[str, Any]:
     return json.loads(json.dumps(value, default=str))
 
 
+@dataclass
+class A2AConfig:
+    """How an ``AgentApp`` serves A2A, for the few things an author may want to set.
+
+    Pass it as ``AgentApp(a2a=A2AConfig(...))``; ``a2a=True`` is the defaults.
+
+    Parameters:
+        serialize_context: Run the tasks of one `contextId` one at a time, in the order they arrived, instead of concurrently.
+            A second task waits as `SUBMITTED` until the first reaches a terminal or interrupted state.
+            Per replica: two replicas serving the same context do not coordinate until the durable stores land.
+        max_tasks: How many finished tasks the in-memory store keeps; the oldest are dropped first.
+        max_task_bytes: How much the kept tasks may hold together, artifacts included, before the oldest are dropped.
+    """
+
+    serialize_context: bool = False
+    max_tasks: int = DEFAULT_MAX_TASKS
+    max_task_bytes: int = DEFAULT_MAX_TASK_BYTES
+
+
+class _BoundedTaskStore(TaskStore):
+    """The SDK's in-memory store, with finished tasks dropped past a budget.
+
+    The SDK's store keeps every task for ever; a long-running replica would
+    hold every reply and artifact it ever produced.
+    Finished tasks are kept newest-first within a count and a byte budget; a
+    task still running, paused or being read is never dropped.
+    """
+
+    def __init__(self, max_tasks: int, max_bytes: int):
+        self._store = InMemoryTaskStore()
+        self._max_tasks = max(1, max_tasks)
+        self._max_bytes = max(1, max_bytes)
+        # finished tasks in save order, each with its size and the context that
+        # may delete it (the store scopes every operation by owner)
+        self._finished: OrderedDict[str, tuple[int, ServerCallContext]] = OrderedDict()
+        self._bytes = 0
+
+    async def save(self, task: Task, context: ServerCallContext) -> None:
+        await self._store.save(task, context)
+        self._forget(task.id)
+        if task.status.state in TERMINAL_TASK_STATES:
+            size = task.ByteSize()
+            self._finished[task.id] = (size, context)
+            self._bytes += size
+            await self._evict()
+
+    async def get(self, task_id: str, context: ServerCallContext) -> Task | None:
+        return await self._store.get(task_id, context)
+
+    async def list(self, *args: Any, **kwargs: Any) -> Any:
+        return await self._store.list(*args, **kwargs)
+
+    async def delete(self, task_id: str, context: ServerCallContext) -> None:
+        await self._store.delete(task_id, context)
+        self._forget(task_id)
+
+    def _forget(self, task_id: str) -> None:
+        entry = self._finished.pop(task_id, None)
+        if entry is not None:
+            self._bytes -= entry[0]
+
+    async def _evict(self) -> None:
+        while self._finished and (
+            len(self._finished) > self._max_tasks or self._bytes > self._max_bytes
+        ):
+            task_id, (size, context) = self._finished.popitem(last=False)
+            self._bytes -= size
+            try:
+                await self._store.delete(task_id, context)
+            except Exception:  # noqa: BLE001 -- already gone is fine
+                _logger.debug("could not drop finished task %s", task_id, exc_info=True)
+
+
 class A2AServer:
     """The A2A face of one ``AgentApp``: its card, handler and routes.
 
@@ -144,12 +229,15 @@ class A2AServer:
     is off.
     """
 
-    def __init__(self, app: AgentApp):
+    def __init__(self, app: AgentApp, config: A2AConfig | None = None):
         self._app = app
-        self.executor = HopsworksAgentExecutor(app)
+        self.config = config or A2AConfig()
+        self.executor = HopsworksAgentExecutor(app, self.config)
         # In memory, bounded: tasks are per replica and gone with the pod.
         # Durable stores on the project's online database are the next phase.
-        self.task_store = InMemoryTaskStore()
+        self.task_store = _BoundedTaskStore(
+            self.config.max_tasks, self.config.max_task_bytes
+        )
         self.handler = DefaultRequestHandlerV2(
             agent_executor=self.executor,
             task_store=self.task_store,
@@ -214,6 +302,8 @@ class A2AServer:
             "push_notifications": False,
             "signed": False,
             "task_store": "memory",
+            "task_limit": self.config.max_tasks,
+            "serialize_context": self.config.serialize_context,
         }
 
     def _running(self) -> set[asyncio.Task]:
@@ -331,17 +421,35 @@ def _base_url(request: Request) -> str:
 class HopsworksAgentExecutor(AgentExecutor):
     """Runs one A2A message as a turn of the app, and reports it as task events."""
 
-    def __init__(self, app: AgentApp):
+    def __init__(self, app: AgentApp, config: A2AConfig | None = None):
         self._app = app
+        self._config = config or A2AConfig()
         #: The turns running now, by task id: what a cancel stops and a drain waits for.
         self.runs: dict[str, _TurnRun] = {}
+        # one lock per context when tasks on a context run one at a time
+        self._context_locks: dict[str, asyncio.Lock] = {}
+        # executions in flight, for the drain to wait on after it aborted them
+        self._executing: set[asyncio.Task] = set()
+
+    async def _settled(self, timeout: float) -> None:
+        """Wait for the executions in flight to end, for the drain."""
+        pending = {task for task in self._executing if not task.done()}
+        if pending:
+            await asyncio.wait(pending, timeout=timeout)
 
     # ── the SDK's entry points ───────────────────────────────────────────
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
-        from .app import _mark_cancelled, _record_span_error, _trace_id, _TurnRun
-        from .evaluation import active as eval_active
-        from .tracing import turn_span
+        current = asyncio.current_task()
+        if current is not None:
+            self._executing.add(current)
+        try:
+            await self._execute(context, event_queue)
+        finally:
+            if current is not None:
+                self._executing.discard(current)
+
+    async def _execute(self, context: RequestContext, event_queue: EventQueue) -> None:
 
         app = self._app
         task_id = context.task_id or ""
@@ -379,12 +487,40 @@ class HopsworksAgentExecutor(AgentExecutor):
             await app._settle_pending(ctx, answered=False)
             await self._reject(updater, refused)
             return
+        if context.current_task is not None:
+            await updater.submit()
+        if not self._config.serialize_context:
+            await self._turn(context, updater, ctx, headers)
+            return
+        # One task of the context at a time: the next waits, SUBMITTED, until
+        # the running one ends or pauses. In this process only.
+        key = context.context_id or ""
+        lock = self._context_locks.setdefault(key, asyncio.Lock())
+        async with lock:
+            try:
+                await self._turn(context, updater, ctx, headers)
+            finally:
+                if not lock.locked() or not lock._waiters:  # noqa: SLF001
+                    self._context_locks.pop(key, None)
+
+    async def _turn(
+        self,
+        context: RequestContext,
+        updater: TaskUpdater,
+        ctx: HandlerContext,
+        headers: dict[str, str],
+    ) -> None:
+        """Run the turn and report it on the task, once nothing is in its way."""
+        from .app import _mark_cancelled, _record_span_error, _trace_id, _TurnRun
+        from .evaluation import active as eval_active
+        from .tracing import turn_span
+
+        app = self._app
+        task_id = context.task_id or ""
         await app._resolve_subject(ctx)
         await app._open_turn(ctx)
         # WORKING follows, with the trace id, which is how a caller joins the
         # task to its trace.
-        if context.current_task is not None:
-            await updater.submit()
         completed: ChatResponse | None = None
         run: _TurnRun | None = None
         with (
@@ -410,6 +546,13 @@ class HopsworksAgentExecutor(AgentExecutor):
                 while True:
                     kind, payload = await run._next()
                     if kind == "done":
+                        if run.aborted:
+                            # the drain deadline cut the handler short: the
+                            # turn is abandoned and the caller told to resend
+                            _mark_cancelled(span)
+                            await run._close(None)
+                            await self._shutdown(updater, trace_id)
+                            return
                         break
                     if kind == "delta":
                         await artifacts._text(payload)
@@ -447,7 +590,9 @@ class HopsworksAgentExecutor(AgentExecutor):
                 await updater.complete(
                     updater.new_agent_message(
                         [Part(text=_text_of(response))],
-                        metadata=_hopsworks(self._facts(ctx, response, trace_id)),
+                        metadata=_hopsworks(
+                            self._facts(ctx, response, trace_id, artifacts.dropped)
+                        ),
                     )
                 )
             except asyncio.CancelledError:
@@ -719,13 +864,18 @@ class HopsworksAgentExecutor(AgentExecutor):
 
     @staticmethod
     def _facts(
-        ctx: HandlerContext, response: ChatResponse, trace_id: str | None
+        ctx: HandlerContext,
+        response: ChatResponse,
+        trace_id: str | None,
+        dropped: list[str] | None = None,
     ) -> dict[str, Any]:
         facts: dict[str, Any] = {
             "trace_id": trace_id,
             "response_id": response.id,
             "citations": response.citations or None,
             "usage": response.usage,
+            # outputs the caller's accepted media types left out, by name
+            "dropped_artifacts": dropped or None,
         }
         if ctx.has_subject:
             facts["subject"] = ctx.subject
@@ -741,12 +891,15 @@ class HopsworksAgentExecutor(AgentExecutor):
 
 
 class _Artifacts:
-    """The artifacts of one task, and the rule the SDK enforces on them.
+    """The artifacts of one task, and the rules on them.
 
     The first chunk of an artifact id is sent with ``append: false``, which
-    creates it; every later chunk appends.
+    creates it; a later chunk appends unless the author said otherwise, and
+    ``append: false`` on an artifact that exists replaces it, as A2A defines.
     The SDK refuses an append to an id it has not seen, so the executor keeps
     that rule rather than the author.
+    A part whose media type the caller did not accept is left out, emitted or
+    returned alike, and the artifact's name is reported as dropped.
     """
 
     def __init__(self, updater: TaskUpdater, accepted: list[str]):
@@ -755,6 +908,8 @@ class _Artifacts:
         self._seen: set[str] = set()
         self._closed: set[str] = set()
         self._streamed = ""
+        #: Names of the artifacts the caller's accepted media types left out.
+        self.dropped: list[str] = []
 
     async def _text(self, delta: str) -> None:
         if not delta:
@@ -766,10 +921,14 @@ class _Artifacts:
         part = _to_part(payload["part"])
         if part is None:
             return
+        if not self._takes(payload["part"]):
+            self._drop(payload["name"])
+            return
         await self._send(
             payload["id"],
             payload["name"],
             [part],
+            append=bool(payload.get("append")),
             last=bool(payload.get("last")),
             description=payload.get("description"),
         )
@@ -777,35 +936,47 @@ class _Artifacts:
     async def _finish(self, response: ChatResponse) -> None:
         """Close the reply artifact and send the rest: media parts and named artifacts."""
         text = _text_of(response)
-        if RESPONSE_ARTIFACT_ID in self._seen:
-            # the handler's final text may add to the streamed draft; a text
-            # that rewrites it cannot be taken back, and rides in the metadata
-            rest = (
-                text[len(self._streamed) :] if text.startswith(self._streamed) else ""
-            )
-            await self._send(
-                RESPONSE_ARTIFACT_ID, "response", [Part(text=rest)], last=True
-            )
-        else:
+        if RESPONSE_ARTIFACT_ID not in self._seen:
             # created even when empty, so a client always finds the reply
             await self._send(
                 RESPONSE_ARTIFACT_ID, "response", [Part(text=text)], last=True
             )
+        elif text.startswith(self._streamed):
+            # the handler's final text adds to the streamed draft, or is it
+            rest = text[len(self._streamed) :]
+            await self._send(
+                RESPONSE_ARTIFACT_ID, "response", [Part(text=rest)], last=True
+            )
+        else:
+            # the final text rewrites the draft: the artifact is replaced
+            await self._send(
+                RESPONSE_ARTIFACT_ID,
+                "response",
+                [Part(text=text)],
+                append=False,
+                last=True,
+            )
         for index, part in enumerate(response.message.content):
             if part.type == "text":
                 continue
-            proto = _to_part(part.model_dump())
-            if proto is None or not self._takes(part):
-                continue
             name = getattr(part, "name", None) or f"{part.type}-{index + 1}"
+            proto = _to_part(part.model_dump())
+            if proto is None:
+                continue
+            if not self._takes(part):
+                self._drop(name)
+                continue
             await self._send(name, name, [proto], last=True)
         for artifact in response.artifacts:
-            parts = [
-                proto
-                for part in artifact.parts
-                if self._takes(part)
-                and (proto := _to_part(part.model_dump())) is not None
-            ]
+            parts = []
+            for part in artifact.parts:
+                proto = _to_part(part.model_dump())
+                if proto is None:
+                    continue
+                if not self._takes(part):
+                    self._drop(artifact.name)
+                    continue
+                parts.append(proto)
             if not parts and artifact.parts:
                 continue
             await self._send(
@@ -821,10 +992,17 @@ class _Artifacts:
 
     def _takes(self, part: Any) -> bool:
         """Whether the caller accepts a part's media type; everything, when it said nothing."""
-        media_type = getattr(part, "media_type", None)
+        if isinstance(part, dict):
+            media_type = part.get("media_type")
+        else:
+            media_type = getattr(part, "media_type", None)
         if not self._accepted or not media_type:
             return True
         return _essence(media_type) in self._accepted
+
+    def _drop(self, name: str) -> None:
+        if name not in self.dropped:
+            self.dropped.append(name)
 
     async def _send(
         self,
@@ -832,6 +1010,7 @@ class _Artifacts:
         name: str,
         parts: list[Part],
         *,
+        append: bool | None = None,
         last: bool = False,
         description: str | None = None,
     ) -> None:
@@ -842,12 +1021,16 @@ class _Artifacts:
             artifact_id=artifact_id,
             name=name,
             metadata=metadata,
-            append=not first,
+            # the first chunk creates; afterwards the author's word, which is
+            # to append unless given, and replaces when False
+            append=False if first else (True if append is None else append),
             last_chunk=last,
         )
         self._seen.add(artifact_id)
         if last:
             self._closed.add(artifact_id)
+        else:
+            self._closed.discard(artifact_id)
 
 
 # ── helpers ──────────────────────────────────────────────────────────────
@@ -975,13 +1158,123 @@ def _referenced(task: Task) -> dict[str, Any]:
     }
 
 
+@dataclass
+class _Pinned:
+    """Where a fetch actually connects: the address checked, with the name kept for TLS and ``Host``."""
+
+    url: str
+    host: str
+    host_header: str
+
+
+def _internal_allowed() -> tuple[set[str], list[Any]]:
+    """The internal hosts and networks the platform allowed, from the environment."""
+    hosts: set[str] = set()
+    networks: list[Any] = []
+    for entry in (os.environ.get(INTERNAL_ALLOW_ENV) or "").split(","):
+        entry = entry.strip().lower()
+        if not entry:
+            continue
+        try:
+            networks.append(ipaddress.ip_network(entry, strict=False))
+        except ValueError:
+            hosts.add(entry)
+    return hosts, networks
+
+
+def _address_blocked(address: Any) -> bool:
+    """Whether an address is not a public unicast destination."""
+    mapped = getattr(address, "ipv4_mapped", None)
+    if mapped is not None:
+        address = mapped
+    return (
+        not address.is_global
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_multicast
+        or address.is_reserved
+        or address.is_unspecified
+    )
+
+
+def _resolve(host: str, port: int) -> list[str]:
+    """The addresses a hostname resolves to now, as the connection will see them."""
+    return [
+        str(info[4][0])
+        for info in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    ]
+
+
+def _pin(url: str) -> _Pinned:
+    """Resolve a URL's host once, check every address, and pin the fetch to one.
+
+    Checking a name and then letting the client resolve it again lets an
+    answer that changes between the two reach an address the check refused.
+    The request therefore goes to the address checked, with the hostname kept
+    for certificate verification and the ``Host`` header.
+    Public addresses are allowed; a private, loopback, link-local or metadata
+    address only when the platform listed the host or its network.
+
+    Raises:
+        AgentError: The URL is not HTTPS or HTTP, its host does not resolve,
+            or resolves to an address the agent must not reach.
+    """
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme not in ("http", "https") or not host:
+        raise AgentError(
+            "The URL part is not an http(s) URL.", "unsupported_content", 422
+        )
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    allowed_hosts, allowed_networks = _internal_allowed()
+    try:
+        addresses = _resolve(host, port)
+    except OSError as err:
+        raise AgentError(
+            f"The URL part's host could not be resolved: {host}",
+            "unsupported_content",
+            422,
+        ) from err
+    chosen: str | None = None
+    for raw in addresses:
+        address = ipaddress.ip_address(raw.split("%", 1)[0])
+        internal = host in allowed_hosts or any(
+            address in network for network in allowed_networks
+        )
+        if _address_blocked(address) and not internal:
+            raise AgentError(
+                f"The URL part's host resolves to an address the agent must not "
+                f"reach: {host}",
+                "unsupported_content",
+                422,
+            )
+        chosen = chosen or raw
+    if chosen is None:
+        raise AgentError(
+            f"The URL part's host resolves to nothing: {host}",
+            "unsupported_content",
+            422,
+        )
+    literal = f"[{chosen}]" if ":" in chosen else chosen
+    pinned = parsed._replace(netloc=f"{literal}:{port}")
+    default_port = port == (443 if parsed.scheme == "https" else 80)
+    host_header = host if default_port else f"{host}:{port}"
+    return _Pinned(url=urlunparse(pinned), host=host, host_header=host_header)
+
+
 def _fetch(url: str) -> tuple[str | None, bytes]:
-    """Fetch an allowed URL part: no redirects, bounded, in a thread."""
+    """Fetch an allowed URL part: pinned to the checked address, no redirects, bounded, in a thread."""
     import httpx  # noqa: PLC0415
 
+    target = _pin(url)
     with (
         httpx.Client(follow_redirects=False, timeout=30.0) as client,
-        client.stream("GET", url) as response,
+        client.stream(
+            "GET",
+            target.url,
+            headers={"Host": target.host_header},
+            extensions={"sni_hostname": target.host},
+        ) as response,
     ):
         if response.status_code != 200:
             raise AgentError(
@@ -1002,7 +1295,3 @@ def _fetch(url: str) -> tuple[str | None, bytes]:
             chunks.append(chunk)
         media_type = response.headers.get("content-type")
         return (_essence(media_type) if media_type else None), b"".join(chunks)
-
-
-def _iter_tasks(tasks: Iterable[Task]) -> list[dict[str, Any]]:  # pragma: no cover
-    return [_referenced(task) for task in tasks]
