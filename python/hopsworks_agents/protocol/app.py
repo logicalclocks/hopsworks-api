@@ -1629,8 +1629,11 @@ class AgentApp(FastAPI):
         """
         self._draining = True
         keepers = {task for task in _DETACHED if not task.done()}
-        runs = list(self._a2a.executor.runs.values()) if self._a2a is not None else []
-        pending = keepers | {run.task for run in runs if not run.task.done()}
+        # every A2A execution accepted so far, running or queued behind a
+        # context lock: a queued one that gets its turn now fails as shutdown
+        # instead of starting, so the set cannot grow behind the wait
+        executions = self._a2a._running() if self._a2a is not None else set()
+        pending = keepers | executions
         if not pending:
             return
         import os  # noqa: PLC0415
@@ -1642,9 +1645,10 @@ class AgentApp(FastAPI):
         _, late = await asyncio.wait(pending, timeout=window)
         if not late:
             return
-        for run in runs:
-            if run.task in late:
-                run._abort()
+        if self._a2a is not None:
+            for run in list(self._a2a.executor.runs.values()):
+                if not run.task.done():
+                    run._abort()
         for task in late & keepers:
             task.cancel()
         # the executors report the abort and settle their turns; give them a moment

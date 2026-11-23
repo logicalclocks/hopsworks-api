@@ -1287,6 +1287,120 @@ class TestReviewRoundOne:
         run(scenario())
 
 
+class TestReviewRoundTwo:
+    """What the second review found: queued and paused tasks must stay bounded."""
+
+    def test_the_drain_fails_a_task_queued_behind_a_context_lock(self, monkeypatch):
+        from hopsworks_agents.protocol.a2a import A2AConfig
+
+        monkeypatch.setenv("HOPSWORKS_AGENT_TASK_DRAIN_SECONDS", "0.1")
+        started = asyncio.Event()
+        ran = []
+        app = AgentApp(a2a=A2AConfig(serialize_context=True))
+
+        @app.chat
+        async def chat(request, ctx):
+            ran.append(request.text)
+            started.set()
+            await asyncio.sleep(10)
+            return "late"
+
+        async def scenario():
+            client, _ = await connect(app, polling=True)
+            first = task_of(
+                await send(
+                    client,
+                    user_message("first", context_id="one"),
+                    return_immediately=True,
+                )
+            )
+            await asyncio.wait_for(started.wait(), 2)
+            second = task_of(
+                await send(
+                    client,
+                    user_message("second", context_id="one"),
+                    return_immediately=True,
+                )
+            )
+            await asyncio.sleep(0.05)
+            await app._drain()
+            states = {}
+            for task in (first, second):
+                got = task
+                for _ in range(100):
+                    got = await client.get_task(GetTaskRequest(id=task.id))
+                    if state_name(got) not in (
+                        "TASK_STATE_WORKING",
+                        "TASK_STATE_SUBMITTED",
+                    ):
+                        break
+                    await asyncio.sleep(0.02)
+                states[task.id] = (state_name(got), hopsworks_of(got.status.message))
+            # the running one was cut short, the queued one never started
+            for state, facts in states.values():
+                assert state == "TASK_STATE_FAILED"
+                assert facts["status"] == "executor_shutdown"
+                assert facts["retryable"] is True
+            assert ran == ["first"]
+            assert not app._a2a._running()
+
+        run(scenario())
+
+    def test_paused_tasks_count_toward_the_store_budget(self):
+        from hopsworks_agents.protocol.a2a import A2AConfig
+
+        app = AgentApp(a2a=A2AConfig(max_tasks=2))
+
+        @app.chat
+        async def chat(request, ctx):
+            answer = ctx.interrupt("Go on?", key="go", reason="confirmation")
+            return f"answered: {answer.payload}"
+
+        async def scenario():
+            client, _ = await connect(app)
+            tasks = [
+                task_of(await send(client, user_message("q", context_id=f"c{i}")))
+                for i in range(3)
+            ]
+            assert all(state_name(t) == "TASK_STATE_INPUT_REQUIRED" for t in tasks)
+            store = app._pending_store()
+            # the oldest paused task is gone, and so is its open question
+            with pytest.raises(Exception, match="(?i)not found|TaskNotFound"):
+                await client.get_task(GetTaskRequest(id=tasks[0].id))
+            assert store._get(f"c0/{tasks[0].id}") is None
+            assert store._get(f"c2/{tasks[2].id}") is not None
+            # the newest paused task still answers
+            done = task_of(
+                await send(
+                    client, user_message("yes", context_id="c2", task_id=tasks[2].id)
+                )
+            )
+            assert state_name(done) == "TASK_STATE_COMPLETED"
+            assert text_of(artifact(done, "response")) == "answered: yes"
+
+        run(scenario())
+
+    def test_a_task_accepted_after_the_drain_began_does_not_start(self):
+        ran = []
+        app = echo_app()
+        original = app._chat_handler
+
+        @app.chat
+        async def chat(request, ctx):
+            ran.append(request.text)
+            return await original(request, ctx) if original else "ok"
+
+        async def scenario():
+            client, _ = await connect(app)
+            app._draining = True
+            task = task_of(await send(client, user_message("q")))
+            assert state_name(task) == "TASK_STATE_FAILED"
+            assert hopsworks_of(task.status.message)["status"] == "executor_shutdown"
+            assert ran == []
+
+        run(scenario())
+
+
 class TestUrlPinning:
     """An allowed URL part is fetched at the address that was checked, never re-resolved."""
 

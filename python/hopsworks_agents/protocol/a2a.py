@@ -67,6 +67,8 @@ from .models import (
 
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from a2a.server.context import ServerCallContext
     from a2a.server.events import EventQueue
 
@@ -90,6 +92,10 @@ HOPSWORKS_EXTENSION_URI = "https://hopsworks.ai/a2a/extensions/hopsworks/v1"
 RESPONSE_ARTIFACT_ID = "response"
 #: How long the handler keeps an interrupted task in memory before a follow-up
 #: recreates it from the store; the question itself expires by our own rule.
+# a task waiting on a person: kept like a finished one, within the store budget
+PAUSED_TASK_STATES = frozenset(
+    {TaskState.TASK_STATE_INPUT_REQUIRED, TaskState.TASK_STATE_AUTH_REQUIRED}
+)
 INTERRUPTED_TASK_TIMEOUT_S = 15 * 60
 #: The most an allowed URL part may be when fetched for the handler.
 MAX_FETCHED_BYTES = 20 * 1024 * 1024
@@ -169,29 +175,43 @@ class A2AConfig:
 
 
 class _BoundedTaskStore(TaskStore):
-    """The SDK's in-memory store, with finished tasks dropped past a budget.
+    """The SDK's in-memory store, with settled tasks dropped past a budget.
 
     The SDK's store keeps every task for ever; a long-running replica would
-    hold every reply and artifact it ever produced.
-    Finished tasks are kept newest-first within a count and a byte budget; a
-    task still running, paused or being read is never dropped.
+    hold every reply and artifact it ever produced, and every question nobody
+    answered.
+    Settled tasks, finished or paused on a question, are kept newest-first
+    within a count and a byte budget; a task still running or being read is
+    never dropped.
+    A paused task dropped this way takes its open question with it, through
+    ``on_drop``, so an answer that arrives later is refused rather than
+    resumed against a task that is gone.
     """
 
-    def __init__(self, max_tasks: int, max_bytes: int):
+    def __init__(
+        self,
+        max_tasks: int,
+        max_bytes: int,
+        on_drop: Callable[[Task], Awaitable[None]] | None = None,
+    ):
         self._store = InMemoryTaskStore()
         self._max_tasks = max(1, max_tasks)
         self._max_bytes = max(1, max_bytes)
-        # finished tasks in save order, each with its size and the context that
+        self._on_drop = on_drop
+        # settled tasks in save order, each with its size and the context that
         # may delete it (the store scopes every operation by owner)
-        self._finished: OrderedDict[str, tuple[int, ServerCallContext]] = OrderedDict()
+        self._settled: OrderedDict[str, tuple[int, ServerCallContext]] = OrderedDict()
         self._bytes = 0
 
     async def save(self, task: Task, context: ServerCallContext) -> None:
         await self._store.save(task, context)
         self._forget(task.id)
-        if task.status.state in TERMINAL_TASK_STATES:
+        if (
+            task.status.state in TERMINAL_TASK_STATES
+            or task.status.state in PAUSED_TASK_STATES
+        ):
             size = task.ByteSize()
-            self._finished[task.id] = (size, context)
+            self._settled[task.id] = (size, context)
             self._bytes += size
             await self._evict()
 
@@ -206,20 +226,28 @@ class _BoundedTaskStore(TaskStore):
         self._forget(task_id)
 
     def _forget(self, task_id: str) -> None:
-        entry = self._finished.pop(task_id, None)
+        entry = self._settled.pop(task_id, None)
         if entry is not None:
             self._bytes -= entry[0]
 
     async def _evict(self) -> None:
-        while self._finished and (
-            len(self._finished) > self._max_tasks or self._bytes > self._max_bytes
+        while self._settled and (
+            len(self._settled) > self._max_tasks or self._bytes > self._max_bytes
         ):
-            task_id, (size, context) = self._finished.popitem(last=False)
+            task_id, (size, context) = self._settled.popitem(last=False)
             self._bytes -= size
             try:
+                dropped = await self._store.get(task_id, context)
                 await self._store.delete(task_id, context)
             except Exception:  # noqa: BLE001 -- already gone is fine
-                _logger.debug("could not drop finished task %s", task_id, exc_info=True)
+                _logger.debug("could not drop settled task %s", task_id, exc_info=True)
+                continue
+            if (
+                dropped is not None
+                and dropped.status.state in PAUSED_TASK_STATES
+                and self._on_drop is not None
+            ):
+                await self._on_drop(dropped)
 
 
 class A2AServer:
@@ -236,7 +264,7 @@ class A2AServer:
         # In memory, bounded: tasks are per replica and gone with the pod.
         # Durable stores on the project's online database are the next phase.
         self.task_store = _BoundedTaskStore(
-            self.config.max_tasks, self.config.max_task_bytes
+            self.config.max_tasks, self.config.max_task_bytes, on_drop=self._dropped
         )
         self.handler = DefaultRequestHandlerV2(
             agent_executor=self.executor,
@@ -307,8 +335,25 @@ class A2AServer:
         }
 
     def _running(self) -> set[asyncio.Task]:
-        """The tasks of the turns running now, for the drain on shutdown."""
-        return {run.task for run in self.executor.runs.values() if not run.task.done()}
+        """The executions accepted and not yet over, for the drain on shutdown.
+
+        Every execution, not only the turns whose handler runs: one queued
+        behind a context lock has been accepted too, and would otherwise start
+        after the drain looked.
+        """
+        return {task for task in self.executor._executing if not task.done()}
+
+    async def _dropped(self, task: Task) -> None:
+        """A paused task left the store: its open question goes with it."""
+        key = f"{task.context_id}/{task.id}"
+        try:
+            await asyncio.to_thread(self._app._pending_store()._clear, key)
+        except Exception:  # noqa: BLE001 -- best effort, the record expires on its own
+            _logger.debug(
+                "could not clear the question of dropped task %s",
+                task.id,
+                exc_info=True,
+            )
 
     def _input_modes(self) -> list[str]:
         app = self._app
@@ -473,6 +518,11 @@ class HopsworksAgentExecutor(AgentExecutor):
                 AgentError("No chat handler registered.", "not_implemented", 501),
             )
             return
+        if app._draining:
+            # accepted after the pod was told to stop: nothing starts outside
+            # the drain budget, and the caller is told to resend
+            await self._shutdown(updater, None)
+            return
         try:
             request, replayed = await self._to_request(context)
         except AgentError as err:
@@ -498,6 +548,12 @@ class HopsworksAgentExecutor(AgentExecutor):
         lock = self._context_locks.setdefault(key, asyncio.Lock())
         async with lock:
             try:
+                if app._draining:
+                    # its turn came after the drain began: a running turn was
+                    # given the budget, a queued one does not start
+                    await app._settle_pending(ctx, answered=False)
+                    await self._shutdown(updater, None)
+                    return
                 await self._turn(context, updater, ctx, headers)
             finally:
                 if not lock.locked() or not lock._waiters:  # noqa: SLF001
