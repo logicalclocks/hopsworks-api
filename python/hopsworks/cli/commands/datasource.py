@@ -283,7 +283,20 @@ def connector_create_jdbc(
 @click.option("--bucket", required=True, help="S3 bucket name.")
 @click.option("--access-key", help="AWS access key ID.")
 @_secret_option("s3", "--secret-key", "AWS secret access key.")
-@click.option("--region", help="AWS region.")
+@click.option(
+    "--region",
+    help="AWS region. With --endpoint it defaults to us-east-1, which stores without regions accept.",
+)
+@click.option(
+    "--endpoint",
+    help="S3-compatible store as http(s)://host[:port], e.g. MinIO or Dell ECS. "
+    "Needs --access-key and --secret-key.",
+)
+@click.option(
+    "--path-style-access",
+    is_flag=True,
+    help="Name the bucket in the URL path instead of the host; most S3-compatible stores need it.",
+)
 @click.option("--description", default="", help="Free-form description.")
 @click.pass_context
 def connector_create_s3(
@@ -293,6 +306,8 @@ def connector_create_s3(
     access_key: str | None,
     secret_key: str | None,
     region: str | None,
+    endpoint: str | None,
+    path_style_access: bool,
     description: str,
 ) -> None:
     """Register an S3 connector.
@@ -304,6 +319,8 @@ def connector_create_s3(
         access_key: AWS access key.
         secret_key: AWS secret key.
         region: AWS region.
+        endpoint: S3-compatible store, or None for AWS.
+        path_style_access: Whether to address the bucket in the URL path.
         description: Description.
     """
     body = {
@@ -319,6 +336,10 @@ def connector_create_s3(
         body["secretKey"] = secret_key
     if region:
         body["region"] = region
+    if endpoint:
+        body["endpoint"] = endpoint
+    if path_style_access:
+        body["pathStyleAccess"] = True
     _create_connector(ctx, body)
 
 
@@ -2931,7 +2952,7 @@ def _create_connector(ctx: click.Context, body: dict[str, Any]) -> None:
     from hopsworks_common.core import rest
 
     try:
-        rest._send_request(
+        stored = rest._send_request(
             "POST",
             rest._project_path(
                 "featurestores", getattr(fs, "id", None), "storageconnectors"
@@ -2940,4 +2961,11 @@ def _create_connector(ctx: click.Context, body: dict[str, Any]) -> None:
         )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Create failed: {exc}") from exc
+    # A cluster that predates S3-compatible storage drops the endpoint and creates an AWS data source.
+    if body.get("endpoint") and not (stored or {}).get("endpoint"):
+        raise click.ClickException(
+            f"Connector {body['name']} was created without its endpoint, so it targets AWS S3: "
+            "the Hopsworks cluster predates S3-compatible storage. "
+            "Upgrade Hopsworks to 5.3 or later before using --endpoint."
+        )
     output.success("✓ Created connector %s", body["name"])

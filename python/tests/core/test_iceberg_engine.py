@@ -13,6 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+import os
 import sys
 from unittest import mock
 
@@ -1694,13 +1695,12 @@ class TestPyIcebergEngine:
         assert "namenode load balancer" in str(e.value)
         assert "contact your system administrator" in str(e.value.__cause__)
 
-    def test_get_pyiceberg_properties_gcs_sets_credentials_env(
-        self, mocker, monkeypatch
-    ):
+    def test_get_pyiceberg_properties_gcs_sets_credentials_env(self, mocker):
         # Arrange
         from hsfs import storage_connector as sc
 
-        monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
+        mocker.patch.dict(os.environ)
+        os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
         fg = _make_fg()
         connector = mocker.Mock()
         connector.type = sc.StorageConnector.GCS
@@ -1716,8 +1716,6 @@ class TestPyIcebergEngine:
         # Assert
         # GCS auth goes through the application-default chain; without this
         # env var the client stalls probing the GCP metadata server
-        import os
-
         assert props == {}
         assert os.environ["GOOGLE_APPLICATION_CREDENTIALS"] == "/tmp/key.json"
 
@@ -1745,6 +1743,219 @@ class TestPyIcebergEngine:
             "adls.client-secret": "secret",
             "adls.tenant-id": "tenant",
         }
+
+    @pytest.mark.parametrize(
+        ("endpoint", "path_style", "expected_endpoint_props"),
+        [
+            (None, None, {}),
+            (
+                "https://s3.example.com:9021",
+                True,
+                {
+                    "s3.endpoint": "https://s3.example.com:9021",
+                    "s3.force-virtual-addressing": "false",
+                    "py-io-impl": "hsfs.core.iceberg_file_io._WhenRequiredChecksumFileIO",
+                },
+            ),
+            (
+                "http://minio.example.com:9000",
+                None,
+                {
+                    "s3.endpoint": "http://minio.example.com:9000",
+                    "s3.force-virtual-addressing": "true",
+                    "py-io-impl": "hsfs.core.iceberg_file_io._WhenRequiredChecksumFileIO",
+                },
+            ),
+        ],
+    )
+    def test_get_pyiceberg_properties_s3(
+        self, mocker, endpoint, path_style, expected_endpoint_props
+    ):
+        from hsfs import storage_connector as sc
+
+        mocker.patch.dict(os.environ)
+        environment = dict(os.environ)
+        fg = _make_fg()
+        fg.storage_connector = sc.S3Connector(
+            id=1,
+            name="s3",
+            featurestore_id=1,
+            bucket="landing",
+            access_key="ak",
+            secret_key="sk",
+            region="us-east-1",
+            endpoint=endpoint,
+            path_style_access=path_style,
+        )
+        iceberg_engine = _make_engine(mocker, fg=fg, spark_session=_NO_SPARK)
+
+        props = iceberg_engine._get_pyiceberg_properties()
+
+        assert props == {
+            "s3.access-key-id": "ak",
+            "s3.secret-access-key": "sk",
+            "s3.region": "us-east-1",
+            **expected_endpoint_props,
+        }
+        assert dict(os.environ) == environment
+
+    @pytest.mark.skipif(not HAS_PYICEBERG, reason="pyiceberg not installed")
+    def test_endpoint_file_io_is_what_pyiceberg_loads(self):
+        from hsfs.core import iceberg_file_io
+        from hsfs.core.iceberg_engine import _WHEN_REQUIRED_CHECKSUM_FILE_IO
+        from pyiceberg.io import load_file_io
+
+        io = load_file_io(
+            {"py-io-impl": _WHEN_REQUIRED_CHECKSUM_FILE_IO}, "s3://landing/fg"
+        )
+
+        assert type(io) is iceberg_file_io._WhenRequiredChecksumFileIO
+
+    @pytest.mark.skipif(not HAS_PYICEBERG, reason="pyiceberg not installed")
+    def test_endpoint_file_io_sets_checksum_variables_only_while_building_s3_fs(
+        self, mocker
+    ):
+        from hsfs.core import iceberg_file_io
+
+        mocker.patch.dict(
+            os.environ, {"AWS_REQUEST_CHECKSUM_CALCULATION": "when_supported"}
+        )
+        os.environ.pop("AWS_RESPONSE_CHECKSUM_VALIDATION", None)
+        seen = {}
+
+        def build(self, netloc):
+            seen["request"] = os.environ.get("AWS_REQUEST_CHECKSUM_CALCULATION")
+            seen["response"] = os.environ.get("AWS_RESPONSE_CHECKSUM_VALIDATION")
+            raise OSError("unreachable store")
+
+        mocker.patch(
+            "pyiceberg.io.pyarrow.PyArrowFileIO._initialize_s3_fs",
+            autospec=True,
+            side_effect=build,
+        )
+
+        with pytest.raises(OSError, match="unreachable store"):
+            iceberg_file_io._WhenRequiredChecksumFileIO()._initialize_s3_fs("landing")
+
+        assert seen == {"request": "when_supported", "response": "when_required"}
+        assert os.environ["AWS_REQUEST_CHECKSUM_CALCULATION"] == "when_supported"
+        assert "AWS_RESPONSE_CHECKSUM_VALIDATION" not in os.environ
+
+    @pytest.mark.skipif(not HAS_PYICEBERG, reason="pyiceberg not installed")
+    def test_endpoint_file_io_keeps_a_value_set_while_it_builds(self, mocker):
+        from hsfs.core import iceberg_file_io
+
+        mocker.patch.dict(os.environ)
+        os.environ.pop("AWS_REQUEST_CHECKSUM_CALCULATION", None)
+        os.environ.pop("AWS_RESPONSE_CHECKSUM_VALIDATION", None)
+
+        def build(self, netloc):
+            # Another thread, or the caller, sets its own value meanwhile.
+            os.environ["AWS_RESPONSE_CHECKSUM_VALIDATION"] = "when_supported"
+            return "fs"
+
+        mocker.patch(
+            "pyiceberg.io.pyarrow.PyArrowFileIO._initialize_s3_fs",
+            autospec=True,
+            side_effect=build,
+        )
+
+        fs = iceberg_file_io._WhenRequiredChecksumFileIO()._initialize_s3_fs("landing")
+
+        assert fs == "fs"
+        assert "AWS_REQUEST_CHECKSUM_CALCULATION" not in os.environ
+        assert os.environ["AWS_RESPONSE_CHECKSUM_VALIDATION"] == "when_supported"
+
+    @pytest.mark.skipif(not HAS_PYICEBERG, reason="pyiceberg not installed")
+    def test_endpoint_file_io_builds_a_nested_filesystem(self, mocker):
+        from hsfs.core import iceberg_file_io
+
+        mocker.patch.dict(os.environ)
+        os.environ.pop("AWS_REQUEST_CHECKSUM_CALCULATION", None)
+        os.environ.pop("AWS_RESPONSE_CHECKSUM_VALIDATION", None)
+        io = iceberg_file_io._WhenRequiredChecksumFileIO()
+        calls = []
+
+        def build(self, netloc):
+            calls.append(os.environ.get("AWS_REQUEST_CHECKSUM_CALCULATION"))
+            if len(calls) == 1:
+                io._initialize_s3_fs("other")
+            return "fs"
+
+        mocker.patch(
+            "pyiceberg.io.pyarrow.PyArrowFileIO._initialize_s3_fs",
+            autospec=True,
+            side_effect=build,
+        )
+
+        io._initialize_s3_fs("landing")
+
+        assert calls == ["when_required", "when_required"]
+        assert "AWS_REQUEST_CHECKSUM_CALCULATION" not in os.environ
+
+    @pytest.mark.skipif(not HAS_PYICEBERG, reason="pyiceberg not installed")
+    @pytest.mark.parametrize(
+        ("endpoint", "write_options", "expected"),
+        [
+            (
+                "https://s3.example.com:9021",
+                {"iceberg.catalog": "prod", "iceberg.catalog.uri": "http://rest:8181"},
+                {
+                    "py-io-impl": "hsfs.core.iceberg_file_io._WhenRequiredChecksumFileIO",
+                    "uri": "http://rest:8181",
+                },
+            ),
+            (
+                "https://s3.example.com:9021",
+                {"iceberg.catalog": "prod", "iceberg.catalog.py-io-impl": "my.FileIO"},
+                {"py-io-impl": "my.FileIO"},
+            ),
+            (
+                None,
+                {"iceberg.catalog": "prod", "iceberg.catalog.uri": "http://rest:8181"},
+                {"uri": "http://rest:8181"},
+            ),
+        ],
+    )
+    def test_write_pyiceberg_dataset_catalog_endpoint_file_io(
+        self, mocker, endpoint, write_options, expected
+    ):
+        import pyarrow as pa
+        from hsfs import storage_connector as sc
+
+        fg = _make_fg(primary_key=["pk"])
+        fg.storage_connector = sc.S3Connector(
+            id=1,
+            name="s3",
+            featurestore_id=1,
+            bucket="landing",
+            access_key="ak",
+            secret_key="sk",
+            region="us-east-1",
+            endpoint=endpoint,
+            path_style_access=True,
+        )
+        iceberg_engine = _make_engine(mocker, fg=fg, spark_session=_NO_SPARK)
+        catalog = mocker.MagicMock()
+        catalog.table_exists.return_value = True
+        table = catalog.load_table.return_value
+        table.schema.return_value.as_arrow.return_value = pa.schema([])
+        table.upsert.return_value = mocker.Mock(rows_inserted=1, rows_updated=0)
+        load_catalog_mock = mocker.patch(
+            "pyiceberg.catalog.load_catalog", return_value=catalog
+        )
+        arrow_table = pa.table({"pk": pa.array([1], type=pa.int64())})
+        mocker.patch.object(
+            iceberg_engine, "_prepare_arrow_table", return_value=arrow_table
+        )
+        mocker.patch.object(iceberg_engine, "_pyiceberg_snapshots", return_value=[])
+        mocker.patch.object(iceberg_engine, "_build_fg_commit")
+
+        iceberg_engine._write_pyiceberg_dataset(
+            mocker.Mock(), write_options=write_options, operation="upsert"
+        )
+
+        load_catalog_mock.assert_called_once_with("prod", **expected)
 
     def test_pyiceberg_write_supported(self, mocker):
         # Arrange

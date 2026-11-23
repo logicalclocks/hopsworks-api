@@ -357,6 +357,20 @@ class TestDataSourceError:
             == "ORA-00942: table or view does not exist"
         )
 
+    def test_endpoint_refusal_is_reported_without_the_host(self):
+        import pyarrow.flight
+
+        error = pyarrow.flight.FlightServerError(
+            "The S3 endpoint host ip6-localhost resolves to a loopback, link-local or "
+            "unspecified address.. Detail: Failed"
+        )
+        message = arrow_flight_client._data_source_error(error)
+        assert message == (
+            "The data source's S3 endpoint resolves to a loopback, link-local or "
+            "unspecified address, which Hopsworks does not connect to."
+        )
+        assert "ip6-localhost" not in message
+
     def test_other_errors_keep_the_generic_message(self):
         import pyarrow.flight
 
