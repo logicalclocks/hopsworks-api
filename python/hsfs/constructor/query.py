@@ -192,15 +192,18 @@ class Query:
 
                 if fs_query.pushdown_query is not None:
                     engine_instance = engine._get_instance()
-                    if engine_instance._is_source_pushdown_supported():
+                    if not engine_instance._is_source_pushdown_supported():
+                        _logger.debug(
+                            "The query can be pushed down to its source, but the current engine "
+                            "cannot execute it. Reading each feature group separately instead."
+                        )
+                    elif fs_query._pushdown_options() is None:
+                        _logger.info(fs_query._pushdown_options_message())
+                    else:
                         return (
                             engine_instance._register_pushdown_query(fs_query),
                             online_conn,
                         )
-                    _logger.debug(
-                        "The query can be pushed down to its source, but the current engine "
-                        "cannot execute it. Reading each feature group separately instead."
-                    )
 
                 sql_query = self._to_string(fs_query, online)
                 # Register on demand feature groups as temporary tables

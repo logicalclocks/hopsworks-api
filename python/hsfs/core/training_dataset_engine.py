@@ -15,6 +15,7 @@
 #
 from __future__ import annotations
 
+import logging
 import warnings
 
 from hsfs import engine, training_dataset_feature
@@ -23,6 +24,9 @@ from hsfs.core import (
     tags_api,
     training_dataset_api,
 )
+
+
+_logger = logging.getLogger(__name__)
 
 
 class TrainingDatasetEngine:
@@ -108,7 +112,10 @@ class TrainingDatasetEngine:
         if fs_query.pushdown_query is not None:
             engine_instance = engine._get_instance()
             if engine_instance._is_source_pushdown_supported():
-                return engine_instance._register_pushdown_query(fs_query)
+                if fs_query._pushdown_options() is None:
+                    _logger.info(fs_query._pushdown_options_message())
+                else:
+                    return engine_instance._register_pushdown_query(fs_query)
 
         # The offline queries could be referencing temporary tables
         # like external feature groups/hudi feature groups
