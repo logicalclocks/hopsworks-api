@@ -83,9 +83,9 @@ class FeatureGroupLookback:
         if end is not None:
             start_ms = _convert_event_time_to_timestamp(start)
             end_ms = _convert_event_time_to_timestamp(end)
-            if start_ms >= end_ms:
+            if start_ms > end_ms:
                 raise ValueError(
-                    f"FeatureGroupLookback `start` ({start!r}) must be strictly earlier "
+                    f"FeatureGroupLookback `start` ({start!r}) must not be later "
                     f"than `end` ({end!r})."
                 )
         self._key = normalized_key
