@@ -254,7 +254,7 @@
 | python/hopsworks\_common/engine/git\_engine.py                                   |       40 |        1 |     98% |        65 |
 | python/hopsworks\_common/env\_var.py                                             |       75 |        6 |     92% |106, 112, 120, 147, 150, 158 |
 | python/hopsworks\_common/environment.py                                          |      216 |        9 |     96% |68, 75, 87, 398-399, 599, 642, 745, 748 |
-| python/hopsworks\_common/execution.py                                            |      181 |       18 |     90% |161, 167, 173, 179, 185, 191, 223, 228, 263, 309, 322, 362, 427, 430, 433, 438-446 |
+| python/hopsworks\_common/execution.py                                            |      181 |       18 |     90% |161, 167, 173, 179, 185, 191, 241, 246, 281, 327, 340, 380, 445, 448, 451, 456-464 |
 | python/hopsworks\_common/git\_commit.py                                          |       53 |       26 |     51% |40-49, 53-60, 66, 72, 78, 84, 90, 93, 96, 99 |
 | python/hopsworks\_common/git\_file\_status.py                                    |       37 |       15 |     59% |34-36, 40-45, 51, 69, 75, 78, 81, 84 |
 | python/hopsworks\_common/git\_op\_execution.py                                   |       54 |       25 |     54% |44-52, 56-57, 62, 67, 72, 77, 82, 87, 92, 97, 102, 107-114 |
