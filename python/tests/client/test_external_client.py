@@ -20,11 +20,13 @@ import shutil
 import stat
 import sys
 import tempfile
+from urllib.parse import urlparse
 
 import pytest
 from hopsworks_common import constants
 from hopsworks_common.client.external import Client
 from hopsworks_common.constants import CLIENT
+from hopsworks_common.project import Project
 
 
 # Windows doesn't support Unix-style file permissions
@@ -62,6 +64,39 @@ class TestExternalClient:
             client._cert_folder = cert_folder_base
 
         return client
+
+    def test_replace_public_host_set(self, mocker, monkeypatch):
+        monkeypatch.setenv("HOPSWORKS_PUBLIC_HOST", "public.hopsworks.ai")
+        client = self._create_client(tempfile.gettempdir(), mocker)
+
+        url = client._replace_public_host(
+            urlparse("https://test.hopsworks.ai:443/p/123")
+        )
+
+        assert url.geturl() == "https://public.hopsworks.ai/p/123"
+
+    @pytest.mark.parametrize("value", [None, ""])
+    def test_replace_public_host_unset_or_empty(self, mocker, monkeypatch, value):
+        if value is None:
+            monkeypatch.delenv("HOPSWORKS_PUBLIC_HOST", raising=False)
+        else:
+            monkeypatch.setenv("HOPSWORKS_PUBLIC_HOST", value)
+        client = self._create_client(tempfile.gettempdir(), mocker)
+
+        url = client._replace_public_host(
+            urlparse("https://test.hopsworks.ai:443/p/123")
+        )
+
+        assert url.geturl() == "https://test.hopsworks.ai:443/p/123"
+
+    def test_project_get_url_uses_public_host(self, mocker, monkeypatch):
+        monkeypatch.setenv("HOPSWORKS_PUBLIC_HOST", "public.hopsworks.ai")
+        client = self._create_client(tempfile.gettempdir(), mocker)
+        mocker.patch("hopsworks_common.client._get_instance", return_value=client)
+
+        assert Project(project_id=7, project_name="p").get_url() == (
+            "https://public.hopsworks.ai/p/7"
+        )
 
     def test_certificate_paths_are_in_cert_folder(self, mocker):
         """Test that certificate file paths are in cert_folder directory."""
