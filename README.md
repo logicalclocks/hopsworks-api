@@ -200,7 +200,7 @@
 | python/hopsworks\_common/core/constants.py                                       |       38 |        2 |     95% |     67-68 |
 | python/hopsworks\_common/core/costs\_api.py                                      |       35 |        0 |    100% |           |
 | python/hopsworks\_common/core/dataset.py                                         |       31 |       14 |     55% |33-37, 41-44, 48, 52, 56, 60, 64 |
-| python/hopsworks\_common/core/dataset\_api.py                                    |      390 |      213 |     45% |108-170, 224, 233, 240, 245, 248-282, 306-372, 394, 419-422, 425, 494-498, 528, 543-544, 558, 571-573, 587, 632, 637, 647-655, 704, 730-739, 767-785, 811-829, 847-870, 902-921, 942-959, 975-990, 1006-1010, 1039-1091, 1110, 1134, 1158-1170, 1184-1194, 1220-1221 |
+| python/hopsworks\_common/core/dataset\_api.py                                    |      392 |      208 |     47% |108-170, 224, 233, 240, 245, 248-282, 306-372, 394, 419-422, 425, 494-498, 528, 543-544, 558, 571-573, 587, 632, 637, 647-655, 704, 771-789, 815-833, 851-874, 906-925, 946-963, 979-994, 1010-1014, 1043-1095, 1114, 1138, 1162-1174, 1188-1198, 1224-1225 |
 | python/hopsworks\_common/core/env\_var\_api.py                                   |       59 |        1 |     98% |       254 |
 | python/hopsworks\_common/core/environment\_api.py                                |       73 |       14 |     81% |164-169, 202-207, 273-283 |
 | python/hopsworks\_common/core/execution\_api.py                                  |       75 |       19 |     75% |68, 95-106, 111-117, 125-134, 137-147, 150-160 |
@@ -272,7 +272,7 @@
 | python/hopsworks\_common/request\_metrics.py                                     |      110 |       14 |     87% |113, 151-164 |
 | python/hopsworks\_common/search\_results.py                                      |      421 |       40 |     90% |61, 110, 116, 122, 156-172, 253-262, 600, 606, 612, 618, 648, 660, 666, 684, 690, 696, 702, 822 |
 | python/hopsworks\_common/secret.py                                               |       61 |       11 |     82% |61, 80, 86, 92, 98, 110, 113, 116, 119-121 |
-| python/hopsworks\_common/semantic\_layer.py                                      |      508 |       16 |     97% |123-125, 170, 187, 218, 328, 360, 481, 484, 499, 517, 562, 602, 653, 1520 |
+| python/hopsworks\_common/semantic\_layer.py                                      |      508 |       16 |     97% |123-125, 170, 187, 218, 328, 360, 481, 484, 499, 517, 562, 603, 654, 1521 |
 | python/hopsworks\_common/spark\_connect\_utils.py                                |       38 |        4 |     89% |66-67, 103-104 |
 | python/hopsworks\_common/tag.py                                                  |      110 |        7 |     94% |73, 143, 172, 193, 205, 220, 223 |
 | python/hopsworks\_common/tracing.py                                              |       96 |        5 |     95% |70-74, 210 |
@@ -547,7 +547,7 @@
 | python/hsml/utils/schema/tensor.py                                               |        8 |        0 |    100% |           |
 | python/hsml/utils/schema/tensor\_schema.py                                       |       34 |        0 |    100% |           |
 | python/hsml/version.py                                                           |        2 |        2 |      0% |     17-22 |
-| **TOTAL**                                                                        | **62506** | **13464** | **78%** |           |
+| **TOTAL**                                                                        | **62508** | **13459** | **78%** |           |
 
 
 ## Setup coverage badge
