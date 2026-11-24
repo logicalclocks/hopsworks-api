@@ -16,6 +16,9 @@
 
 from unittest import mock
 
+import pytest
+from hopsworks_common.client.exceptions import JobExecutionException
+from hopsworks_common.engine.execution_engine import ExecutionEngine
 from hopsworks_common.execution import Execution
 from hsfs.core import execution
 
@@ -220,3 +223,146 @@ class TestExecutionPerTable:
         )
 
         assert ex.files_progress is None
+
+
+class TestExecutionAttemptLogs:
+    RERUN_RESPONSE = {
+        "id": 7,
+        "rerunCount": 2,
+        "stdoutPath": "/Projects/p/Logs/Python/j/7/stdout.log",
+        "stderrPath": "/Projects/p/Logs/Python/j/7/stderr.log",
+        "attempts": [
+            {
+                "attempt": 1,
+                "stdoutPath": "/Projects/p/Logs/Python/j/7/attempt-1/stdout.log",
+                "stderrPath": "/Projects/p/Logs/Python/j/7/attempt-1/stderr.log",
+            },
+            # a Spark-style attempt: no stdout file
+            {
+                "attempt": 2,
+                "stderrPath": "/Projects/p/Logs/Python/j/7/attempt-2/stderr.log",
+            },
+        ],
+    }
+
+    def _execution(self):
+        return Execution.from_response_json(self.RERUN_RESPONSE, job=mock.Mock())
+
+    def test_attempts_are_parsed_from_the_response(self):
+        ex = self._execution()
+
+        assert [a["attempt"] for a in ex.attempts] == [1, 2]
+        assert (
+            ex.attempts[0]["stdout_path"]
+            == "/Projects/p/Logs/Python/j/7/attempt-1/stdout.log"
+        )
+
+    def test_attempts_empty_when_never_rerun(self):
+        assert Execution(id=1, job=mock.Mock()).attempts == []
+
+    def test_latest_attempt_uses_the_execution_paths(self):
+        ex = self._execution()
+
+        expected = (ex.stdout_path, ex.stderr_path)
+        assert ExecutionEngine._attempt_log_paths(ex, None) == expected
+        assert ExecutionEngine._attempt_log_paths(ex, 3) == expected
+
+    def test_earlier_attempt_uses_its_own_paths(self):
+        ex = self._execution()
+
+        assert ExecutionEngine._attempt_log_paths(ex, 1) == (
+            "/Projects/p/Logs/Python/j/7/attempt-1/stdout.log",
+            "/Projects/p/Logs/Python/j/7/attempt-1/stderr.log",
+        )
+        assert ExecutionEngine._attempt_log_paths(ex, 2) == (
+            None,
+            "/Projects/p/Logs/Python/j/7/attempt-2/stderr.log",
+        )
+
+    @pytest.mark.parametrize("attempt", [0, 4])
+    def test_unknown_attempt_is_refused(self, attempt):
+        with pytest.raises(JobExecutionException, match="attempts 1 to 3"):
+            ExecutionEngine._attempt_log_paths(self._execution(), attempt)
+
+    def _engine(self, fresh, existing=None):
+        """An engine whose backend returns `fresh` and holds the `existing` files (all by default)."""
+        engine = ExecutionEngine()
+        engine._execution_api = mock.Mock()
+        engine._execution_api._get.return_value = fresh
+        engine._dataset_api = mock.Mock()
+        engine._dataset_api.exists.side_effect = lambda path: (
+            existing is None or path in existing
+        )
+        engine._dataset_api.download.side_effect = lambda path, *_, **__: path
+        return engine
+
+    def test_download_logs_fetches_the_chosen_attempt(self, tmp_path):
+        ex = self._execution()
+        ex._job.name = "j"
+        engine = self._engine(fresh=ex)
+
+        out, err = engine._download_logs(ex, str(tmp_path), attempt=1)
+
+        assert out == "/Projects/p/Logs/Python/j/7/attempt-1/stdout.log"
+        assert err == "/Projects/p/Logs/Python/j/7/attempt-1/stderr.log"
+        assert [d.name.split("_")[0] for d in tmp_path.iterdir()] == [
+            "logs-job-j-exec-7-attempt-1"
+        ]
+
+    def test_explicit_attempt_is_resolved_against_the_backend_not_a_stale_object(
+        self, tmp_path
+    ):
+        # fetched before anyone re-ran it: still believes it is on its first attempt
+        stale = Execution(
+            id=7,
+            stdout_path="/Projects/p/Logs/Python/j/7/stdout.log",
+            stderr_path="/Projects/p/Logs/Python/j/7/stderr.log",
+            job=mock.Mock(),
+        )
+        stale._job.name = "j"
+        fresh = self._execution()
+        fresh._job.name = "j"
+        engine = self._engine(fresh=fresh)
+
+        out, _ = engine._download_logs(stale, str(tmp_path), attempt=1)
+
+        engine._execution_api._get.assert_called_once_with(stale._job, 7)
+        assert out == "/Projects/p/Logs/Python/j/7/attempt-1/stdout.log"
+        # attempt 3 exists by now although the stale object has never heard of it
+        out, _ = engine._download_logs(stale, str(tmp_path), attempt=3)
+        assert out == "/Projects/p/Logs/Python/j/7/stdout.log"
+
+    def test_default_download_does_not_refetch(self, tmp_path):
+        ex = self._execution()
+        ex._job.name = "j"
+        engine = self._engine(fresh=ex)
+
+        engine._download_logs(ex, str(tmp_path))
+
+        engine._execution_api._get.assert_not_called()
+
+    def test_earlier_attempt_with_no_files_is_an_error(self, tmp_path):
+        ex = self._execution()
+        ex._job.name = "j"
+        engine = self._engine(fresh=ex, existing=set())
+
+        with pytest.raises(JobExecutionException, match="No log files were kept"):
+            engine._download_logs(ex, str(tmp_path), attempt=1)
+
+    def test_earlier_attempt_with_one_stream_returns_none_for_the_other(self, tmp_path):
+        ex = self._execution()
+        ex._job.name = "j"
+        engine = self._engine(fresh=ex)
+
+        out, err = engine._download_logs(ex, str(tmp_path), attempt=2)
+
+        assert out is None
+        assert err == "/Projects/p/Logs/Python/j/7/attempt-2/stderr.log"
+
+    def test_latest_attempt_without_files_still_returns_nones(self, tmp_path):
+        # the latest attempt's logs may simply not be archived yet
+        ex = self._execution()
+        ex._job.name = "j"
+        engine = self._engine(fresh=ex, existing=set())
+
+        assert engine._download_logs(ex, str(tmp_path), attempt=3) == (None, None)
