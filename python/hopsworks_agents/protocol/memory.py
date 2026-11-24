@@ -43,7 +43,12 @@ from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
 
-from .pending import _ManagedPendingBase, _PendingQuestions, _ProcessPending
+from .pending import (
+    _context_filter,
+    _ManagedPendingBase,
+    _PendingQuestions,
+    _ProcessPending,
+)
 
 
 log = logging.getLogger(__name__)
@@ -771,7 +776,8 @@ class InMemoryAgentMemory(ChatMemory):
             self._starts.pop(conversation_id, None)
             self._subjects.pop(conversation_id, None)
             self._active_at.pop(conversation_id, None)
-        self._pending._clear(conversation_id)
+        # the conversation's own record and those of its A2A tasks
+        self._pending._clear_context(conversation_id)
 
 
 class ManagedMemoryService(ChatMemory):
@@ -1548,11 +1554,16 @@ class ManagedMemoryService(ChatMemory):
                         )
                     )
                 if self._pending_table is not None:
-                    # it holds the paused request, the message among it
+                    # it holds the paused request, the message among it: the
+                    # conversation's own record and those of its A2A tasks,
+                    # which are keyed under the context (see pending.py)
                     conn.execute(
                         self._mine(
                             self._pending_table.delete().where(
-                                self._pending_table.c.conversation_id == conversation_id
+                                _context_filter(
+                                    self._pending_table.c.conversation_id,
+                                    conversation_id,
+                                )
                             ),
                             self._pending_table,
                         )

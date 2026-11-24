@@ -11,7 +11,7 @@ import uuid
 from typing import Annotated, Any, Literal
 
 from hopsworks_apigen import public
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 # The wire protocol, and the version of the Hopsworks extensions carried on it.
@@ -22,6 +22,11 @@ PROTOCOL_VERSION = "2.0"
 @public
 def new_conversation_id() -> str:
     return f"conv_{uuid.uuid4().hex}"
+
+
+def _printable(value: str) -> bool:
+    """Whether an id carries no control character (the A2A task-key separator among them)."""
+    return all(ord(ch) >= 32 and ch != "\x7f" for ch in value)
 
 
 @public
@@ -193,6 +198,17 @@ class ChatRequest(BaseModel):
     # Required, except on a request that resumes an interrupted turn: that one
     # replays the message the turn was asked with, which the agent kept.
     message: ChatMessage | None = None
+
+    @field_validator("conversation_id")
+    @classmethod
+    def _no_control_characters(cls, value: str | None) -> str | None:
+        # A control character separates a context id from a task id in the key
+        # of an A2A task's pending record (pending.TASK_KEY_SEPARATOR): kept out
+        # of conversation ids, no conversation can name a task's record.
+        if value is not None and not _printable(value):
+            raise ValueError("conversation_id may not carry control characters")
+        return value
+
     # End-user identity, used to key durable per-user memory. CLIENT-ASSERTED:
     # the chat transport authenticates with a project-wide serving key, so
     # anyone holding it can claim any subject — and because `subject` keys both

@@ -30,6 +30,8 @@ import json
 import logging
 import os
 import socket
+import threading
+import time
 from collections import OrderedDict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -41,16 +43,24 @@ from a2a.server.agent_execution import (
     RequestContext,
     SimpleRequestContextBuilder,
 )
+from a2a.server.context import ServerCallContext
 from a2a.server.request_handlers import DefaultRequestHandlerV2
+from a2a.server.request_handlers.response_helpers import agent_card_to_dict
 from a2a.server.routes import create_jsonrpc_routes, create_rest_routes
 from a2a.server.routes.fastapi_routes import add_a2a_routes_to_fastapi
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.server.tasks.task_store import TaskStore
-from a2a.types import AgentCard, Message, Part, Task, TaskState
-from a2a.utils.constants import TERMINAL_TASK_STATES, TransportProtocol
+from a2a.types import AgentCard, Message, Part, Role, Task, TaskState
+from a2a.utils.constants import (
+    PROTOCOL_VERSION_0_3,
+    TERMINAL_TASK_STATES,
+    TransportProtocol,
+)
+from a2a.utils.errors import InvalidParamsError, UnsupportedOperationError
 from fastapi import Request  # noqa: TC002 -- FastAPI resolves the annotation at runtime
 from fastapi.responses import JSONResponse
 from google.protobuf.json_format import MessageToDict, ParseDict
+from starlette.routing import Mount
 
 from .context import Interrupted  # noqa: F401 -- re-raised through the run
 from .models import (
@@ -63,13 +73,14 @@ from .models import (
     TextContent,
     UrlContent,
     _part_for,
+    _printable,
 )
+from .pending import _task_key
 
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from a2a.server.context import ServerCallContext
     from a2a.server.events import EventQueue
 
     from .app import AgentApp, _TurnRun
@@ -99,6 +110,11 @@ PAUSED_TASK_STATES = frozenset(
 INTERRUPTED_TASK_TIMEOUT_S = 15 * 60
 #: The most an allowed URL part may be when fetched for the handler.
 MAX_FETCHED_BYTES = 20 * 1024 * 1024
+#: The most a fetch of an allowed URL part may take, whole: a host that drips
+#: bytes would otherwise hold the turn through the whole size cap.
+FETCH_DEADLINE_S = 30.0
+#: How long one operation of a fetch (connect, a read) may take.
+FETCH_OPERATION_TIMEOUT_S = 10.0
 #: Internal hosts or networks an allowed URL part may resolve to, besides public
 #: addresses: comma-separated hostnames or CIDRs, set by the platform. The same
 #: list the push sender honours.
@@ -165,13 +181,27 @@ class A2AConfig:
         serialize_context: Run the tasks of one `contextId` one at a time, in the order they arrived, instead of concurrently.
             A second task waits as `SUBMITTED` until the first reaches a terminal or interrupted state.
             Per replica: two replicas serving the same context do not coordinate until the durable stores land.
-        max_tasks: How many finished tasks the in-memory store keeps; the oldest are dropped first.
+        max_tasks: How many settled tasks the in-memory store keeps, finished or paused on a question; the oldest are dropped first.
         max_task_bytes: How much the kept tasks may hold together, artifacts included, before the oldest are dropped.
+        task_store: Where tasks are kept. `"memory"`, the only value this release: in the process, per replica, gone with the pod.
+            The durable store on the project's online database is the next phase, and an agent written against `"memory"` keeps A2A when a deployment has no database.
     """
 
     serialize_context: bool = False
     max_tasks: int = DEFAULT_MAX_TASKS
     max_task_bytes: int = DEFAULT_MAX_TASK_BYTES
+    task_store: str = "memory"
+
+    def __post_init__(self) -> None:
+        if self.task_store not in TASK_STORES:
+            raise ValueError(
+                f"task_store must be one of {sorted(TASK_STORES)}, "
+                f"not {self.task_store!r}"
+            )
+
+
+#: The task stores this release can serve: the in-process one.
+TASK_STORES = frozenset({"memory"})
 
 
 class _BoundedTaskStore(TaskStore):
@@ -181,11 +211,14 @@ class _BoundedTaskStore(TaskStore):
     hold every reply and artifact it ever produced, and every question nobody
     answered.
     Settled tasks, finished or paused on a question, are kept newest-first
-    within a count and a byte budget; a task still running or being read is
-    never dropped.
+    within a count and a byte budget; a task still running is not settled and
+    so never dropped.
     A paused task dropped this way takes its open question with it, through
     ``on_drop``, so an answer that arrives later is refused rather than
-    resumed against a task that is gone.
+    resumed against a task that is gone; dropped between a follow-up's
+    admission and its re-read, the follow-up fails the task the same way.
+    Of the call context a task was saved under, only what the store needs to
+    delete it is kept (the owner and the tenant), not the request's headers.
     """
 
     def __init__(
@@ -211,7 +244,7 @@ class _BoundedTaskStore(TaskStore):
             or task.status.state in PAUSED_TASK_STATES
         ):
             size = task.ByteSize()
-            self._settled[task.id] = (size, context)
+            self._settled[task.id] = (size, _owner_only(context))
             self._bytes += size
             await self._evict()
 
@@ -263,6 +296,13 @@ class A2AServer:
         self.executor = HopsworksAgentExecutor(app, self.config)
         # In memory, bounded: tasks are per replica and gone with the pod.
         # Durable stores on the project's online database are the next phase.
+        # Said in the log on a deployment, where it is what an operator who
+        # scaled the agent out would otherwise find out from a lost task.
+        _logger.log(
+            logging.WARNING if os.environ.get("DEPLOYMENT_ID") else logging.INFO,
+            "A2A tasks are kept in memory, per replica: a task is read, "
+            "cancelled or answered on the replica that runs it, and lost with it",
+        )
         self.task_store = _BoundedTaskStore(
             self.config.max_tasks, self.config.max_task_bytes, on_drop=self._dropped
         )
@@ -270,7 +310,7 @@ class A2AServer:
             agent_executor=self.executor,
             task_store=self.task_store,
             agent_card=self._card(self._public_url() or "http://localhost"),
-            request_context_builder=SimpleRequestContextBuilder(
+            request_context_builder=_RequestChecks(
                 should_populate_referred_tasks=True, task_store=self.task_store
             ),
             validate_input_modes=True,
@@ -283,11 +323,7 @@ class A2AServer:
         @app.get(CARD_PATH)
         async def agent_card(request: Request) -> JSONResponse:
             base = self._public_url() or _base_url(request)
-            return JSONResponse(
-                MessageToDict(
-                    self._card(base), always_print_fields_with_no_presence=True
-                )
-            )
+            return JSONResponse(self._card_dict(base))
 
         # The REST routes come with a mount at /{tenant} for tenant-scoped
         # paths. One deployment is one agent and tenants are ignored, and the
@@ -298,7 +334,7 @@ class A2AServer:
             for route in create_rest_routes(
                 self.handler, path_prefix=REST_PREFIX, enable_v0_3_compat=True
             )
-            if type(route).__name__ != "Mount"
+            if not isinstance(route, Mount)
         ]
         add_a2a_routes_to_fastapi(
             app,
@@ -345,15 +381,7 @@ class A2AServer:
 
     async def _dropped(self, task: Task) -> None:
         """A paused task left the store: its open question goes with it."""
-        key = f"{task.context_id}/{task.id}"
-        try:
-            await asyncio.to_thread(self._app._pending_store()._clear, key)
-        except Exception:  # noqa: BLE001 -- best effort, the record expires on its own
-            _logger.debug(
-                "could not clear the question of dropped task %s",
-                task.id,
-                exc_info=True,
-            )
+        await self.executor._forget_questions(task)
 
     def _input_modes(self) -> list[str]:
         app = self._app
@@ -388,6 +416,9 @@ class A2AServer:
             "name": app._agent_name,
             "description": app._agent_description or app._agent_name,
             "version": app._agent_version,
+            # the same URLs serve the 0.3 protocol too (a request without
+            # the A2A-Version header is taken for it), and a 0.3 client finds
+            # the agent only through interfaces of its own version
             "supportedInterfaces": [
                 {
                     "url": base + RPC_PATH,
@@ -398,6 +429,16 @@ class A2AServer:
                     "url": base + REST_PREFIX,
                     "protocolBinding": TransportProtocol.HTTP_JSON,
                     "protocolVersion": A2A_PROTOCOL_VERSION,
+                },
+                {
+                    "url": base + RPC_PATH,
+                    "protocolBinding": TransportProtocol.JSONRPC,
+                    "protocolVersion": PROTOCOL_VERSION_0_3,
+                },
+                {
+                    "url": base + REST_PREFIX,
+                    "protocolBinding": TransportProtocol.HTTP_JSON,
+                    "protocolVersion": PROTOCOL_VERSION_0_3,
                 },
             ],
             "provider": {
@@ -452,6 +493,95 @@ class A2AServer:
             ],
         }
         return ParseDict(card, AgentCard())
+
+    def _card_dict(self, base_url: str) -> dict[str, Any]:
+        """The card as served: every 1.0 field, present even when false, plus the 0.3 fields.
+
+        A 0.3 client reads ``url``, ``preferredTransport`` and
+        ``protocolVersion`` at the top of the card; the SDK derives them from
+        the 0.3 interfaces and adds them where the 1.0 card has nothing.
+        """
+        card = self._card(base_url)
+        served = MessageToDict(card, always_print_fields_with_no_presence=True)
+        _merge_missing(served, agent_card_to_dict(card))
+        return served
+
+
+def _merge_missing(into: dict[str, Any], extra: dict[str, Any]) -> None:
+    """Add what ``extra`` has and ``into`` lacks, key by key, into nested dicts too."""
+    for key, value in extra.items():
+        if key not in into:
+            into[key] = value
+        elif isinstance(value, dict) and isinstance(into[key], dict):
+            _merge_missing(into[key], value)
+
+
+def _owner_only(context: ServerCallContext) -> ServerCallContext:
+    """What the task store scopes by, without the request's headers and the rest of its state."""
+    return ServerCallContext(user=context.user, tenant=context.tenant)
+
+
+class _RequestChecks(SimpleRequestContextBuilder):
+    """The request context, after the refusals that must come before any task event.
+
+    The SDK answers an error raised here as the named JSON-RPC error and
+    touches no task; one raised by the executor fails the task instead. So
+    what spec 4.3 and 4.5 refuse as ``InvalidParamsError`` is checked here:
+    a message not from the user, a context id no record could be keyed by,
+    and a follow-up that answers a question the paused task did not ask or
+    leaves one unanswered.
+    """
+
+    async def build(
+        self,
+        context: ServerCallContext,
+        params: Any = None,
+        task_id: str | None = None,
+        context_id: str | None = None,
+        task: Task | None = None,
+    ) -> RequestContext:
+        message = params.message if params is not None else None
+        if message is not None:
+            if message.role != Role.ROLE_USER:
+                raise InvalidParamsError(
+                    message="Only messages with role ROLE_USER are accepted."
+                )
+            if context_id and not _printable(context_id):
+                raise InvalidParamsError(
+                    message="The contextId may not carry control characters."
+                )
+            # the handler builds the context before it reads the task, so a
+            # follow-up's task is read here
+            current = task
+            if current is None and task_id and self._task_store is not None:
+                current = await self._task_store.get(task_id, context)
+            if current is not None and current.status.state in PAUSED_TASK_STATES:
+                await self._check_answers(message, current, context)
+        return await super().build(
+            context,
+            params=params,
+            task_id=task_id,
+            context_id=context_id,
+            task=task,
+        )
+
+    async def _check_answers(
+        self, message: Message, task: Task, context: ServerCallContext
+    ) -> None:
+        """A follow-up must answer every open question of the paused task, and nothing else."""
+        open_questions = _open_questions(task)
+        asked = {str(q.get("id")) for q in open_questions}
+        answered = {a.interrupt_id for a in _answers(message, open_questions)}
+        if answered - asked:
+            raise InvalidParamsError(
+                message="The message answers questions this task was not asked: "
+                + ", ".join(sorted(answered - asked))
+            )
+        if asked - answered:
+            raise InvalidParamsError(
+                message="The message leaves these questions unanswered: "
+                + ", ".join(sorted(asked - answered))
+            )
 
 
 def _base_url(request: Request) -> str:
@@ -643,13 +773,17 @@ class HopsworksAgentExecutor(AgentExecutor):
                     )
                     await self._fail(updater, failure, trace_id, response=response)
                     return
-                await updater.complete(
-                    updater.new_agent_message(
-                        [Part(text=_text_of(response))],
-                        metadata=_hopsworks(
-                            self._facts(ctx, response, trace_id, artifacts.dropped)
-                        ),
-                    )
+                # the facts ride on the final message and on the event, so
+                # they are on the task itself as well as on its status
+                facts = _hopsworks(
+                    self._facts(ctx, response, trace_id, artifacts.dropped)
+                )
+                await updater.update_status(
+                    TaskState.TASK_STATE_COMPLETED,
+                    message=updater.new_agent_message(
+                        [Part(text=_text_of(response))], metadata=facts
+                    ),
+                    metadata=facts,
                 )
             except asyncio.CancelledError:
                 # CancelTask, or the pod being told to stop: the SDK writes the
@@ -666,18 +800,64 @@ class HopsworksAgentExecutor(AgentExecutor):
                     await app._finalize_turn(ctx, completed)
                 else:
                     await run._close(completed)
+                    run.finished.set()
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         """Stop the task's turn: the handler is interrupted at its next ``await``.
 
-        A resumed turn running the action a person approved is left to finish
-        instead, as it is when its client hangs up, and only the task is
-        cancelled.
+        A resumed turn is running the action a person approved (a refund, a
+        delete), possibly in a thread a cancel would not stop; it is left to
+        finish, and the cancel waits for it and is then refused, as
+        ``TaskNotCancelableError``: the task ends in the state the action
+        earned, never as ``CANCELED`` over an action that completed. (Refused
+        before the turn ended, the SDK would fail the task.)
+        A paused task has no turn to stop: its open question goes with it, so
+        a late answer is refused rather than resumed.
         The SDK records ``CANCELED`` once the producer has stopped.
+
+        Raises:
+            UnsupportedOperationError: The task was a resumed turn, which has
+                now finished; the SDK answers ``TaskNotCancelableError``.
         """
         run = self.runs.get(context.task_id or "")
         if run is not None:
+            if run.ctx._claimed and not run.task.done():
+                await run.finished.wait()
+                await self._stored_as_terminal(context)
+                raise UnsupportedOperationError(
+                    message="The task ran an action a person approved, which "
+                    "has finished; it was not cancelled."
+                )
             run._hangup()
+            return
+        current = context.current_task
+        if current is not None and current.status.state in PAUSED_TASK_STATES:
+            # no turn runs: the executor records the cancel itself
+            await self._forget_questions(current)
+            await TaskUpdater(
+                event_queue, current.id, current.context_id or ""
+            ).cancel()
+
+    async def _stored_as_terminal(self, context: RequestContext) -> None:
+        """Wait until the task's terminal state is in the store, so a refusal does not land before it."""
+        store = self._app._a2a.task_store if self._app._a2a is not None else None
+        if store is None or context.call_context is None:
+            return
+        for _ in range(500):
+            task = await store.get(context.task_id or "", context.call_context)
+            if task is None or task.status.state in TERMINAL_TASK_STATES:
+                return
+            await asyncio.sleep(0.01)
+
+    async def _forget_questions(self, task: Task) -> None:
+        """Clear a paused task's open question: it is being cancelled or dropped."""
+        key = _task_key(task.context_id, task.id)
+        try:
+            await asyncio.to_thread(self._app._pending_store()._clear, key)
+        except Exception:  # noqa: BLE001 -- best effort, the record expires on its own
+            _logger.debug(
+                "could not clear the question of task %s", task.id, exc_info=True
+            )
 
     # ── from an A2A message to a turn ────────────────────────────────────
 
@@ -693,10 +873,7 @@ class HopsworksAgentExecutor(AgentExecutor):
             raise AgentError("The request carries no message.", "no_message", 422)
         hopsworks = _hopsworks_of(message)
         current = context.current_task
-        if current is not None and current.status.state in (
-            TaskState.TASK_STATE_INPUT_REQUIRED,
-            TaskState.TASK_STATE_AUTH_REQUIRED,
-        ):
+        if current is not None and current.status.state in PAUSED_TASK_STATES:
             # A follow-up to a paused task: the answers replay the request the
             # turn paused on, as a resume does on the other protocols.
             answers = _answers(message, _open_questions(current))
@@ -781,8 +958,14 @@ class HopsworksAgentExecutor(AgentExecutor):
         host = (urlparse(url).hostname or "").lower()
         if not host or host not in self._app._fetch_urls:
             return UrlContent(url=url, media_type=media_type, name=name)
+        # The fetch runs in a thread, which a cancel cannot interrupt: it is
+        # told to stop instead, and stops at its next chunk.
+        stop = threading.Event()
         try:
-            fetched_type, payload = await asyncio.to_thread(_fetch, url)
+            fetched_type, payload = await asyncio.to_thread(_fetch, url, stop)
+        except asyncio.CancelledError:
+            stop.set()
+            raise
         except AgentError:
             raise
         except Exception as err:  # noqa: BLE001 -- said to the caller
@@ -825,17 +1008,19 @@ class HopsworksAgentExecutor(AgentExecutor):
         """Refused before the handler ran.
 
         A new task is ``REJECTED`` with the reason.
-        A follow-up that answers a paused task wrongly leaves the task paused,
-        asked again with the reason in front, so one bad answer does not end
-        the task; a question that expired fails it, as it does on every
-        protocol.
+        A follow-up that answers a question the paused task did not ask, or
+        leaves one unanswered, was refused as ``InvalidParamsError`` before
+        this ran (``_RequestChecks``), with the task left paused.
+        A question that expired fails the task, as it does on every protocol,
+        and so does a paused task whose record is gone (the pod restarted, or
+        the task was dropped past the store's budget): asked again, it could
+        never be answered.
+        Anything else leaves the task paused, asked again with the reason in
+        front, so a store that could not be read does not end the task.
         """
         current = context.current_task
-        paused = current is not None and current.status.state in (
-            TaskState.TASK_STATE_INPUT_REQUIRED,
-            TaskState.TASK_STATE_AUTH_REQUIRED,
-        )
-        if paused and err.code == "interrupt_expired":
+        paused = current is not None and current.status.state in PAUSED_TASK_STATES
+        if paused and err.code in ("interrupt_expired", "nothing_to_resume"):
             await self._fail(updater, err, None)
             return
         if paused:
@@ -961,7 +1146,8 @@ class _Artifacts:
     def __init__(self, updater: TaskUpdater, accepted: list[str]):
         self._updater = updater
         self._accepted = {_essence(m) for m in accepted}
-        self._seen: set[str] = set()
+        # the artifacts sent so far, by id, with the name their author gave
+        self._seen: dict[str, str] = {}
         self._closed: set[str] = set()
         self._streamed = ""
         #: Names of the artifacts the caller's accepted media types left out.
@@ -1043,8 +1229,8 @@ class _Artifacts:
                 description=artifact.description,
             )
         # an artifact the handler streamed and never closed ends with the task
-        for artifact_id in sorted(self._seen - self._closed):
-            await self._send(artifact_id, artifact_id, [], last=True)
+        for artifact_id in sorted(set(self._seen) - self._closed):
+            await self._send(artifact_id, self._seen[artifact_id], [], last=True)
 
     def _takes(self, part: Any) -> bool:
         """Whether the caller accepts a part's media type; everything, when it said nothing."""
@@ -1082,7 +1268,7 @@ class _Artifacts:
             append=False if first else (True if append is None else append),
             last_chunk=last,
         )
-        self._seen.add(artifact_id)
+        self._seen[artifact_id] = name
         if last:
             self._closed.add(artifact_id)
         else:
@@ -1097,7 +1283,8 @@ def _hopsworks(facts: dict[str, Any]) -> dict[str, Any]:
 
 
 def _hopsworks_of(message: Message) -> dict[str, Any]:
-    metadata = MessageToDict(message).get("metadata") or {}
+    # the metadata alone: converting the whole message would base64 every raw part
+    metadata = MessageToDict(message.metadata) if message.HasField("metadata") else {}
     hopsworks = metadata.get("hopsworks")
     return hopsworks if isinstance(hopsworks, dict) else {}
 
@@ -1110,7 +1297,7 @@ def _headers(context: RequestContext) -> dict[str, str]:
 
 def _pending_key(context: RequestContext) -> str:
     """Where a task's questions are recorded: the task, since a context may hold several."""
-    return f"{context.context_id or ''}/{context.task_id or ''}"
+    return _task_key(context.context_id or "", context.task_id or "")
 
 
 def _text_of(response: ChatResponse) -> str:
@@ -1179,9 +1366,9 @@ def _answers(
             data = MessageToDict(part).get("data")
             if not isinstance(data, dict):
                 continue
+            # every key, the ones that name no open question included: the
+            # resume check refuses those, as the protocol asks
             for key, payload in data.items():
-                if key not in open_ids and open_ids:
-                    continue
                 if isinstance(payload, dict) and payload.get("$cancelled") is True:
                     answers.append(ResumeAnswer(interrupt_id=key, status="cancelled"))
                 else:
@@ -1238,19 +1425,40 @@ def _internal_allowed() -> tuple[set[str], list[Any]]:
     return hosts, networks
 
 
-def _address_blocked(address: Any) -> bool:
-    """Whether an address is not a public unicast destination."""
+#: Cloud metadata services, refused by address as well as by class: the IPv6
+#: one is a unique-local address, which an allowlist could otherwise admit.
+_METADATA_ADDRESSES = frozenset(
+    {ipaddress.ip_address("169.254.169.254"), ipaddress.ip_address("fd00:ec2::254")}
+)
+
+
+def _on_platform() -> bool:
+    """Whether this is a deployment rather than a local run: the platform sets ``DEPLOYMENT_ID``."""
+    return bool(os.environ.get("DEPLOYMENT_ID"))
+
+
+def _unmapped(address: Any) -> Any:
     mapped = getattr(address, "ipv4_mapped", None)
-    if mapped is not None:
-        address = mapped
+    return mapped if mapped is not None else address
+
+
+def _never_reached(address: Any) -> bool:
+    """An address no fetch may reach, listed or not: loopback, link-local (the cloud metadata services among them), multicast, reserved, unspecified."""
+    address = _unmapped(address)
     return (
-        not address.is_global
-        or address.is_loopback
+        address.is_loopback
         or address.is_link_local
         or address.is_multicast
         or address.is_reserved
         or address.is_unspecified
+        or address in _METADATA_ADDRESSES
     )
+
+
+def _address_blocked(address: Any) -> bool:
+    """Whether an address is not a public unicast destination."""
+    address = _unmapped(address)
+    return not address.is_global or _never_reached(address)
 
 
 def _resolve(host: str, port: int) -> list[str]:
@@ -1268,18 +1476,27 @@ def _pin(url: str) -> _Pinned:
     answer that changes between the two reach an address the check refused.
     The request therefore goes to the address checked, with the hostname kept
     for certificate verification and the ``Host`` header.
-    Public addresses are allowed; a private, loopback, link-local or metadata
-    address only when the platform listed the host or its network.
+    The policy is the push sender's: HTTPS only, HTTP for a local run; public
+    addresses allowed; loopback, link-local, multicast, reserved and cloud
+    metadata addresses refused whatever the platform listed, except loopback
+    in a local run; a private address only when the platform listed the host
+    or its network (the cluster's own services, say).
 
     Raises:
-        AgentError: The URL is not HTTPS or HTTP, its host does not resolve,
-            or resolves to an address the agent must not reach.
+        AgentError: The URL is not HTTPS (or HTTP, locally), its host does not
+            resolve, or resolves to an address the agent must not reach.
     """
     parsed = urlparse(url)
     host = (parsed.hostname or "").lower()
-    if parsed.scheme not in ("http", "https") or not host:
+    platform = _on_platform()
+    schemes = ("https",) if platform else ("http", "https")
+    if parsed.scheme not in schemes or not host:
         raise AgentError(
-            "The URL part is not an http(s) URL.", "unsupported_content", 422
+            "The URL part is not an https URL."
+            if platform
+            else "The URL part is not an http(s) URL.",
+            "unsupported_content",
+            422,
         )
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
     allowed_hosts, allowed_networks = _internal_allowed()
@@ -1294,13 +1511,21 @@ def _pin(url: str) -> _Pinned:
     chosen: str | None = None
     for raw in addresses:
         address = ipaddress.ip_address(raw.split("%", 1)[0])
+        local_loopback = not platform and _unmapped(address).is_loopback
+        if _never_reached(address) and not local_loopback:
+            raise AgentError(
+                f"The URL part's host resolves to an address the agent never "
+                f"reaches: {host}",
+                "unsupported_content",
+                422,
+            )
         internal = host in allowed_hosts or any(
             address in network for network in allowed_networks
         )
-        if _address_blocked(address) and not internal:
+        if _address_blocked(address) and not internal and not local_loopback:
             raise AgentError(
-                f"The URL part's host resolves to an address the agent must not "
-                f"reach: {host}",
+                f"The URL part's host resolves to a private address the platform "
+                f"did not list: {host}",
                 "unsupported_content",
                 422,
             )
@@ -1318,13 +1543,36 @@ def _pin(url: str) -> _Pinned:
     return _Pinned(url=urlunparse(pinned), host=host, host_header=host_header)
 
 
-def _fetch(url: str) -> tuple[str | None, bytes]:
-    """Fetch an allowed URL part: pinned to the checked address, no redirects, bounded, in a thread."""
+def _fetch(
+    url: str,
+    stop: threading.Event | None = None,
+    deadline: float = FETCH_DEADLINE_S,
+) -> tuple[str | None, bytes]:
+    """Fetch an allowed URL part: pinned to the checked address, no redirects, bounded in size and time, in a thread.
+
+    ``deadline`` bounds the whole fetch, not one read: a host that drips
+    bytes would otherwise hold the turn through the whole size cap.
+    ``stop`` is set by the turn when it is cancelled, which a thread cannot be.
+    """
     import httpx  # noqa: PLC0415
+
+    started = time.monotonic()
+
+    def check() -> None:
+        if stop is not None and stop.is_set():
+            raise AgentError(
+                "The URL part's fetch was cancelled.", "unsupported_content", 422
+            )
+        if time.monotonic() - started > deadline:
+            raise AgentError(
+                "The URL part took too long to fetch.", "unsupported_content", 422
+            )
 
     target = _pin(url)
     with (
-        httpx.Client(follow_redirects=False, timeout=30.0) as client,
+        httpx.Client(
+            follow_redirects=False, timeout=FETCH_OPERATION_TIMEOUT_S
+        ) as client,
         client.stream(
             "GET",
             target.url,
@@ -1332,6 +1580,7 @@ def _fetch(url: str) -> tuple[str | None, bytes]:
             extensions={"sni_hostname": target.host},
         ) as response,
     ):
+        check()
         if response.status_code != 200:
             raise AgentError(
                 f"The URL part answered {response.status_code}.",
@@ -1341,6 +1590,7 @@ def _fetch(url: str) -> tuple[str | None, bytes]:
         chunks: list[bytes] = []
         size = 0
         for chunk in response.iter_bytes():
+            check()
             size += len(chunk)
             if size > MAX_FETCHED_BYTES:
                 raise AgentError(

@@ -18,6 +18,7 @@ from a2a.types import (
     SendMessageRequest,
     TaskState,
 )
+from a2a.utils.errors import InvalidParamsError, TaskNotCancelableError
 from fastapi.testclient import TestClient
 from google.protobuf.json_format import MessageToDict, ParseDict
 from hopsworks_agents.protocol import (
@@ -28,6 +29,7 @@ from hopsworks_agents.protocol import (
     Artifact,
     TextContent,
 )
+from hopsworks_agents.protocol.pending import _task_key
 
 
 BASE = "http://agent.test"
@@ -131,14 +133,22 @@ class TestAgentCard:
         assert card["name"] == "Churn analyst"
         assert card["version"] == "2.1.0"
         # interface URLs come from the request when nothing fixed the base
-        assert [i["url"] for i in card["supportedInterfaces"]] == [
+        current = [
+            i for i in card["supportedInterfaces"] if i["protocolVersion"] == "1.0"
+        ]
+        assert [i["url"] for i in current] == [
             "http://testserver/a2a",
             "http://testserver/a2a/rest",
         ]
-        assert [i["protocolBinding"] for i in card["supportedInterfaces"]] == [
-            "JSONRPC",
-            "HTTP+JSON",
+        assert [i["protocolBinding"] for i in current] == ["JSONRPC", "HTTP+JSON"]
+        # the same URLs as 0.3 interfaces, and the 0.3 fields a 0.3 client reads
+        legacy = [
+            i for i in card["supportedInterfaces"] if i["protocolVersion"] == "0.3"
         ]
+        assert [i["url"] for i in legacy] == [i["url"] for i in current]
+        assert card["url"] == "http://testserver/a2a"
+        assert card["preferredTransport"] == "JSONRPC"
+        assert card["protocolVersion"] == "0.3"
         assert card["capabilities"]["streaming"] is True
         assert card["capabilities"]["extensions"][0]["uri"].startswith(
             "https://hopsworks.ai/a2a/extensions/hopsworks/"
@@ -704,7 +714,9 @@ class TestUrlParts:
     def test_an_allowed_host_is_fetched_into_a_file(self, monkeypatch):
         import hopsworks_agents.protocol.a2a as a2a_module
 
-        monkeypatch.setattr(a2a_module, "_fetch", lambda url: ("text/csv", b"a,b"))
+        monkeypatch.setattr(
+            a2a_module, "_fetch", lambda url, stop=None: ("text/csv", b"a,b")
+        )
         seen = {}
         app = AgentApp(
             fetch_urls=["files.test"], input_media_types=["text/plain", "text/csv"]
@@ -800,22 +812,33 @@ class TestHumanInTheLoop:
 
         run(scenario())
 
-    def test_an_answer_to_the_wrong_question_keeps_the_task_paused(self):
+    def test_an_answer_to_a_question_not_asked_is_refused(self):
+        """Spec 4.5: unknown ids are ``InvalidParamsError``, and the task stays paused."""
+
         async def scenario():
             client, _ = await connect(self.refund_app())
             task = task_of(await send(client, user_message("refund", context_id="c1")))
-            again = task_of(
-                await send(
-                    client,
-                    user_message(
-                        parts=[data_part({"other": {"approved": True}})],
-                        context_id="c1",
-                        task_id=task.id,
-                    ),
-                )
-            )
-            assert state_name(again) == "TASK_STATE_INPUT_REQUIRED"
-            assert "answers none" in text_of(again.status.message)
+            wrong = [
+                # only an id that was never asked
+                {"other": {"approved": True}},
+                # the right id next to one that was never asked
+                {"refund-42": {"approved": True}, "never-asked": "boom"},
+                # nothing answered at all
+                {},
+            ]
+            for answers in wrong:
+                with pytest.raises(InvalidParamsError):
+                    await send(
+                        client,
+                        user_message(
+                            parts=[data_part(answers)],
+                            context_id="c1",
+                            task_id=task.id,
+                        ),
+                    )
+                still = await client.get_task(GetTaskRequest(id=task.id))
+                assert state_name(still) == "TASK_STATE_INPUT_REQUIRED"
+                assert text_of(still.status.message) == "Refund 40 EUR?"
             # and the right answer still works
             done = task_of(
                 await send(
@@ -991,11 +1014,7 @@ class TestTasks:
                 await send(client, user_message("second", context_id="conv"))
             )
             assert text_of(artifact(second, "response")) == "2 before"
-            # the reply goes out before the turn is closed in the store
-            for _ in range(100):
-                if len(await asyncio.to_thread(memory.get, "conv")) == 4:
-                    break
-                await asyncio.sleep(0.02)
+            # the turn is closed in the store before the terminal event goes out
 
         run(scenario())
         assert [t["content"] for t in memory.get("conv")] == [
@@ -1367,8 +1386,8 @@ class TestReviewRoundTwo:
             # the oldest paused task is gone, and so is its open question
             with pytest.raises(Exception, match="(?i)not found|TaskNotFound"):
                 await client.get_task(GetTaskRequest(id=tasks[0].id))
-            assert store._get(f"c0/{tasks[0].id}") is None
-            assert store._get(f"c2/{tasks[2].id}") is not None
+            assert store._get(_task_key("c0", tasks[0].id)) is None
+            assert store._get(_task_key("c2", tasks[2].id)) is not None
             # the newest paused task still answers
             done = task_of(
                 await send(
@@ -1439,11 +1458,606 @@ class TestUrlPinning:
     def test_an_allowed_internal_network_is_fetched(self, monkeypatch):
         import hopsworks_agents.protocol.a2a as a2a_module
 
+        monkeypatch.setenv("DEPLOYMENT_ID", "42")
         monkeypatch.setattr(a2a_module, "_resolve", lambda host, port: ["10.0.0.5"])
         monkeypatch.setenv(a2a_module.INTERNAL_ALLOW_ENV, "10.0.0.0/8, other.test")
         pinned = a2a_module._pin("https://files.test:8443/x.csv")
         assert pinned.url == "https://10.0.0.5:8443/x.csv"
         assert pinned.host_header == "files.test:8443"
-        # a listed hostname is allowed whatever it resolves to
+        # a listed hostname is allowed on a private address
+        monkeypatch.setattr(a2a_module, "_resolve", lambda host, port: ["10.1.2.3"])
+        assert a2a_module._pin("https://other.test/x").url == "https://10.1.2.3:443/x"
+
+    def test_the_platform_refuses_what_no_list_may_admit(self, monkeypatch):
+        """Spec 4.7: loopback, link-local and metadata are refused listed or not; HTTPS only."""
+        import hopsworks_agents.protocol.a2a as a2a_module
+
+        monkeypatch.setenv("DEPLOYMENT_ID", "42")
+        monkeypatch.setenv(
+            a2a_module.INTERNAL_ALLOW_ENV, "127.0.0.0/8, 169.254.0.0/16, other.test"
+        )
+        refused = {
+            "https://files.test/x": "127.0.0.1",
+            "https://other.test/x": "127.0.0.1",
+            "https://files.test/x?meta": "169.254.169.254",
+            "https://files.test/x?v6": "fd00:ec2::254",
+        }
+        for url, address in refused.items():
+            monkeypatch.setattr(a2a_module, "_resolve", lambda h, p, a=address: [a])
+            with pytest.raises(AgentError, match="never reaches"):
+                a2a_module._pin(url)
+        # an unlisted private address, and http, are refused as well
+        monkeypatch.setattr(a2a_module, "_resolve", lambda host, port: ["10.0.0.5"])
+        with pytest.raises(AgentError, match="did not list"):
+            a2a_module._pin("https://files.test/x")
+        with pytest.raises(AgentError, match="not an https URL"):
+            a2a_module._pin("http://files.test/x")
+
+    def test_a_local_run_may_fetch_from_localhost_over_http(self, monkeypatch):
+        import hopsworks_agents.protocol.a2a as a2a_module
+
+        monkeypatch.delenv("DEPLOYMENT_ID", raising=False)
+        monkeypatch.delenv(a2a_module.INTERNAL_ALLOW_ENV, raising=False)
         monkeypatch.setattr(a2a_module, "_resolve", lambda host, port: ["127.0.0.1"])
-        assert a2a_module._pin("http://other.test/x").url == "http://127.0.0.1:80/x"
+        assert (
+            a2a_module._pin("http://localhost:8000/x").url == "http://127.0.0.1:8000/x"
+        )
+        # but not from the metadata service, or an unlisted private address
+        monkeypatch.setattr(
+            a2a_module, "_resolve", lambda host, port: ["169.254.169.254"]
+        )
+        with pytest.raises(AgentError, match="never reaches"):
+            a2a_module._pin("http://meta.test/x")
+        monkeypatch.setattr(a2a_module, "_resolve", lambda host, port: ["10.0.0.5"])
+        with pytest.raises(AgentError, match="did not list"):
+            a2a_module._pin("http://files.test/x")
+
+
+class TestReviewRoundThree:
+    """What the third review found: records, cancels, refusals, the card for 0.3 clients, the fetch policy."""
+
+    def refund_app(self, **interrupt):
+        app = AgentApp()
+
+        @app.chat
+        async def chat(request, ctx):
+            answer = ctx.interrupt("Refund 40 EUR?", key="refund-42", **interrupt)
+            return f"refunded: {answer.payload}"
+
+        return app
+
+    async def pause(self, client, context_id="c1"):
+        task = task_of(
+            await send(client, user_message("refund", context_id=context_id))
+        )
+        assert state_name(task) == "TASK_STATE_INPUT_REQUIRED"
+        return task
+
+    @staticmethod
+    def answer(context_id, task_id, payload="yes"):
+        return user_message(
+            parts=[data_part({"refund-42": payload})],
+            context_id=context_id,
+            task_id=task_id,
+        )
+
+    def test_erasing_a_conversation_takes_its_tasks_questions_with_it(self, tmp_path):
+        from hopsworks_agents.protocol import ManagedMemoryService
+
+        memory = ManagedMemoryService(
+            url=f"sqlite:///{tmp_path}/m.db", table_name="agent_memory_messages_e"
+        )
+        app = AgentApp(memory=memory)
+
+        @app.chat
+        async def chat(request, ctx):
+            answer = ctx.interrupt("Refund 40 EUR?", key="refund-42")
+            return f"refunded: {answer.payload}"
+
+        async def scenario():
+            client, _ = await connect(app)
+            # a context whose id would match more than itself in a naive LIKE
+            erased = await self.pause(client, "c%")
+            kept = await self.pause(client, "cx")
+            store = app._pending_store()
+            assert store._get(_task_key("c%", erased.id)) is not None
+            http = httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url=BASE
+            )
+            assert (await http.delete("/v1/conversations/c%25")).status_code == 204
+            assert store._get(_task_key("c%", erased.id)) is None
+            assert store._get(_task_key("cx", kept.id)) is not None
+            # a late answer to the erased task fails it rather than resuming it
+            failed = task_of(await send(client, self.answer("c%", erased.id)))
+            assert state_name(failed) == "TASK_STATE_FAILED"
+            assert hopsworks_of(failed.status.message)["status"] == "nothing_to_resume"
+            done = task_of(await send(client, self.answer("cx", kept.id)))
+            assert state_name(done) == "TASK_STATE_COMPLETED"
+
+        run(scenario())
+
+    def test_the_process_store_erases_a_contexts_task_records_too(self):
+        from hopsworks_agents.protocol.pending import _ProcessPending
+
+        store = _ProcessPending()
+        store._put("conv", "own", _far())
+        store._put(_task_key("conv", "t1"), "task", _far())
+        store._put(_task_key("conversation", "t2"), "other context", _far())
+        store._clear_context("conv")
+        assert store._get("conv") is None
+        assert store._get(_task_key("conv", "t1")) is None
+        assert store._get(_task_key("conversation", "t2")) is not None
+
+    def test_cancelling_a_paused_task_clears_its_question(self):
+        app = self.refund_app()
+
+        async def scenario():
+            client, _ = await connect(app)
+            task = await self.pause(client)
+            store = app._pending_store()
+            assert store._get(_task_key("c1", task.id)) is not None
+            cancelled = await client.cancel_task(CancelTaskRequest(id=task.id))
+            assert state_name(cancelled) == "TASK_STATE_CANCELED"
+            assert store._get(_task_key("c1", task.id)) is None
+
+        run(scenario())
+
+    def test_a_cancel_of_a_resumed_turn_is_refused(self):
+        app = AgentApp()
+        finished = asyncio.Event()
+
+        @app.chat
+        async def chat(request, ctx):
+            answer = ctx.interrupt("Refund 40 EUR?", key="refund-42")
+            # the approved action: not stopped by a cancel
+            await asyncio.sleep(0.3)
+            finished.set()
+            return f"refunded: {answer.payload}"
+
+        async def scenario():
+            client, _ = await connect(app)
+            task = await self.pause(client)
+            resumed = task_of(
+                await send(client, self.answer("c1", task.id), return_immediately=True)
+            )
+            assert state_name(resumed) in ("TASK_STATE_SUBMITTED", "TASK_STATE_WORKING")
+            with pytest.raises(TaskNotCancelableError):
+                await client.cancel_task(CancelTaskRequest(id=task.id))
+            await asyncio.wait_for(finished.wait(), 2)
+            got = task
+            for _ in range(100):
+                got = await client.get_task(GetTaskRequest(id=task.id))
+                if state_name(got) == "TASK_STATE_COMPLETED":
+                    break
+                await asyncio.sleep(0.02)
+            assert state_name(got) == "TASK_STATE_COMPLETED"
+            assert text_of(artifact(got, "response")) == "refunded: yes"
+
+        run(scenario())
+
+    def test_an_expired_question_fails_the_task(self):
+        app = self.refund_app(expires_in=0.05)
+
+        async def scenario():
+            client, _ = await connect(app)
+            task = await self.pause(client)
+            await asyncio.sleep(0.1)
+            failed = task_of(await send(client, self.answer("c1", task.id)))
+            assert state_name(failed) == "TASK_STATE_FAILED"
+            assert hopsworks_of(failed.status.message)["status"] == "interrupt_expired"
+
+        run(scenario())
+
+    def test_a_paused_task_whose_record_is_gone_fails(self):
+        app = self.refund_app()
+
+        async def scenario():
+            client, _ = await connect(app)
+            task = await self.pause(client)
+            # the pod restarted, or the record was dropped
+            app._pending_store()._clear(_task_key("c1", task.id))
+            failed = task_of(await send(client, self.answer("c1", task.id)))
+            assert state_name(failed) == "TASK_STATE_FAILED"
+            assert hopsworks_of(failed.status.message)["status"] == "nothing_to_resume"
+            # and that is final: a second answer is a message to a terminal task
+            with pytest.raises(Exception, match="(?i)terminal"):
+                await send(client, self.answer("c1", task.id))
+
+        run(scenario())
+
+    def test_a_message_from_an_agent_role_is_refused(self):
+        async def scenario():
+            client, _ = await connect(echo_app())
+            message = user_message("hi")
+            message.role = Role.ROLE_AGENT
+            with pytest.raises(InvalidParamsError):
+                await send(client, message)
+
+        run(scenario())
+
+    def test_a_context_id_with_a_control_character_is_refused(self):
+        app = echo_app()
+
+        async def scenario():
+            client, _ = await connect(app)
+            with pytest.raises(InvalidParamsError):
+                await send(client, user_message("hi", context_id="a\x1fb"))
+
+        run(scenario())
+        http = TestClient(app)
+        chat = http.post(
+            "/v1/chat",
+            json={
+                "conversation_id": "a\x1fb",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "hi"}],
+                },
+            },
+        )
+        assert chat.status_code == 422
+        agui = http.post(
+            "/v1/run",
+            json={
+                "threadId": "a\x1fb",
+                "runId": "r1",
+                "messages": [{"id": "m1", "role": "user", "content": "hi"}],
+                "tools": [],
+                "context": [],
+                "state": {},
+                "forwardedProps": {},
+            },
+        )
+        assert agui.status_code == 422
+
+    def test_a_0_3_client_finds_and_calls_the_agent(self):
+        """Section 7: a request without the version header speaks the 0.3 protocol."""
+        http = TestClient(echo_app())
+        card = http.get("/.well-known/agent-card.json").json()
+        assert card["url"].endswith("/a2a")
+        assert card["protocolVersion"] == "0.3"
+        reply = http.post(
+            card["url"],
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "message/send",
+                "params": {
+                    "message": {
+                        "kind": "message",
+                        "messageId": "m-03",
+                        "role": "user",
+                        "parts": [{"kind": "text", "text": "hello"}],
+                    }
+                },
+            },
+        ).json()
+        task = reply["result"]
+        assert task["kind"] == "task"
+        assert task["status"]["state"] == "completed"
+        assert task["artifacts"][0]["parts"][0]["text"] == "echo: hello"
+
+    def test_json_rpc_and_rest_errors_are_the_named_ones(self):
+        http = TestClient(echo_app(), headers={"A2A-Version": "1.0"})
+        missing = http.post(
+            "/a2a",
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "GetTask",
+                "params": {"id": "nope"},
+            },
+        ).json()
+        assert missing["error"]["code"] == -32001
+        assert http.get("/a2a/rest/tasks/nope").status_code == 404
+        unknown = http.post(
+            "/a2a",
+            json={"jsonrpc": "2.0", "id": 2, "method": "NoSuchMethod", "params": {}},
+        ).json()
+        assert unknown["error"]["code"] == -32601
+
+    def test_the_closing_chunk_keeps_the_artifacts_name(self):
+        app = AgentApp()
+
+        @app.chat
+        async def chat(request, ctx):
+            await ctx.emit_artifact(
+                "Quarterly report", TextContent(text="q1"), artifact_id="rep-1"
+            )
+            return "ok"
+
+        async def scenario():
+            client, _ = await connect(app, streaming=True)
+            events = await send(client, user_message("q"))
+            chunks = [
+                e.artifact_update
+                for e in events
+                if e.HasField("artifact_update")
+                and e.artifact_update.artifact.artifact_id == "rep-1"
+            ]
+            assert [c.artifact.name for c in chunks] == ["Quarterly report"] * 2
+            assert chunks[-1].last_chunk is True
+
+        run(scenario())
+
+    def test_tool_calls_are_working_statuses_under_the_extension(self):
+        app = AgentApp(tool_events=True)
+
+        @app.chat
+        async def chat(request, ctx):
+            await ctx._emit_tool_call(
+                "search", "done", "t1", args={"q": "churn"}, result={"hits": 2}
+            )
+            return "ok"
+
+        async def scenario():
+            client, _ = await connect(app, streaming=True)
+            events = await send(client, user_message("q"))
+            calls = [
+                hopsworks_of(e.status_update.status.message)["tool_call"]
+                for e in events
+                if e.HasField("status_update")
+                and "tool_call" in hopsworks_of(e.status_update.status.message)
+            ]
+            assert len(calls) == 1
+            assert calls[0]["name"] == "search"
+            # arguments and results travel as bounded text, as on AG-UI
+            assert json.loads(calls[0]["args"]) == {"q": "churn"}
+            assert json.loads(calls[0]["result"]) == {"hits": 2}
+
+        run(scenario())
+
+    def test_list_tasks_pages_and_filters(self):
+        async def scenario():
+            client, _ = await connect(echo_app())
+            ids = {
+                task_of(await send(client, user_message(f"q{i}", context_id="p"))).id
+                for i in range(3)
+            }
+            task_of(await send(client, user_message("elsewhere", context_id="o")))
+            first = await client.list_tasks(
+                ListTasksRequest(context_id="p", page_size=2)
+            )
+            assert len(first.tasks) == 2 and first.next_page_token
+            second = await client.list_tasks(
+                ListTasksRequest(
+                    context_id="p", page_size=2, page_token=first.next_page_token
+                )
+            )
+            assert len(second.tasks) == 1 and not second.next_page_token
+            assert {t.id for t in [*first.tasks, *second.tasks]} == ids
+            completed = await client.list_tasks(
+                ListTasksRequest(context_id="p", status=TaskState.TASK_STATE_COMPLETED)
+            )
+            assert len(completed.tasks) == 3
+            failed = await client.list_tasks(
+                ListTasksRequest(context_id="p", status=TaskState.TASK_STATE_FAILED)
+            )
+            assert failed.tasks == []
+
+        run(scenario())
+
+    def test_the_callers_trace_is_continued(self):
+        from hopsworks_agents.protocol.tracing import install_baggage_propagation
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+        from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+            InMemorySpanExporter,
+        )
+
+        exporter = InMemorySpanExporter()
+        provider = TracerProvider()
+        provider.add_span_processor(SimpleSpanProcessor(exporter))
+        install_baggage_propagation(provider)
+        app = echo_app(tracing=False)
+        app.tracer_provider = provider
+        trace_id = "4bf92f3577b34da6a3ce929d0e0e4736"
+
+        async def scenario():
+            client, _ = await connect(
+                app, headers={"traceparent": f"00-{trace_id}-00f067aa0ba902b7-01"}
+            )
+            task = task_of(await send(client, user_message("q")))
+            assert hopsworks_of(task.status.message)["trace_id"] == trace_id
+            # on the task itself too, from the final status event
+            assert MessageToDict(task.metadata)["hopsworks"]["trace_id"] == trace_id
+
+        run(scenario())
+        span = exporter.get_finished_spans()[-1]
+        assert format(span.get_span_context().trace_id, "032x") == trace_id
+
+    def test_without_the_sdk_an_agui_agent_keeps_working(self):
+        """In a fresh interpreter with no a2a-sdk: the manifest says so, chat still answers."""
+        import subprocess
+        import sys
+
+        script = """
+import json, sys
+sys.modules["a2a"] = None
+from fastapi.testclient import TestClient
+from hopsworks_agents.protocol import AgentApp
+app = AgentApp()
+@app.chat
+async def chat(request):
+    return "still here"
+http = TestClient(app)
+out = {
+    "a2a": http.get("/.well-known/hopsworks-agent.json").json()["capabilities"]["custom"]["hopsworks"]["a2a"],
+    "card": http.get("/.well-known/agent-card.json").status_code,
+    "chat": http.post("/v1/chat", json={"message": {"role": "user", "content": [{"type": "text", "text": "hi"}]}}).json()["message"]["content"][0]["text"],
+}
+try:
+    AgentApp(a2a=True)
+    out["explicit"] = "built"
+except ModuleNotFoundError:
+    out["explicit"] = "refused"
+print(json.dumps(out))
+"""
+        done = subprocess.run(
+            [sys.executable, "-c", script], capture_output=True, text=True, timeout=120
+        )
+        assert done.returncode == 0, done.stderr
+        out = json.loads(done.stdout.strip().splitlines()[-1])
+        assert out["a2a"] == {"enabled": False, "reason": "sdk_missing"}
+        assert out["card"] == 404
+        assert out["chat"] == "still here"
+        assert out["explicit"] == "refused"
+
+    def test_task_store_memory_is_the_only_store(self):
+        from hopsworks_agents.protocol.a2a import A2AConfig
+
+        app = AgentApp(a2a=A2AConfig(task_store="memory"))
+        manifest = TestClient(app).get("/.well-known/hopsworks-agent.json").json()
+        assert manifest["capabilities"]["custom"]["hopsworks"]["a2a"]["task_store"] == (
+            "memory"
+        )
+        with pytest.raises(ValueError, match="task_store"):
+            A2AConfig(task_store="rondb")
+
+    def test_a_fetch_refuses_redirects_oversized_bodies_and_slow_hosts(
+        self, monkeypatch
+    ):
+        import hopsworks_agents.protocol.a2a as a2a_module
+
+        monkeypatch.delenv("DEPLOYMENT_ID", raising=False)
+        monkeypatch.setattr(a2a_module, "MAX_FETCHED_BYTES", 16)
+        with _drip_server() as base:
+            assert a2a_module._fetch(f"{base}/small") == ("text/plain", b"ok")
+            with pytest.raises(AgentError, match="answered 302"):
+                a2a_module._fetch(f"{base}/redirect")
+            with pytest.raises(AgentError, match="larger"):
+                a2a_module._fetch(f"{base}/big")
+            with pytest.raises(AgentError, match="too long"):
+                a2a_module._fetch(f"{base}/slow", deadline=0.3)
+            import threading
+
+            stop = threading.Event()
+            stop.set()
+            with pytest.raises(AgentError, match="cancelled"):
+                a2a_module._fetch(f"{base}/slow", stop=stop)
+
+    def test_the_stop_signal_starts_the_drain_on_a_real_server(self, tmp_path):
+        """A SIGTERM to a real uvicorn: the budget runs from the signal, not from the lifespan's end."""
+        import os
+        import signal
+        import socket
+        import subprocess
+        import sys
+        import threading
+        import time
+
+        script = tmp_path / "agent.py"
+        script.write_text(
+            "import asyncio, sys\n"
+            "import uvicorn\n"
+            "from hopsworks_agents.protocol import AgentApp\n"
+            "app = AgentApp()\n"
+            "@app.chat\n"
+            "async def chat(request, ctx):\n"
+            "    await asyncio.sleep(30)\n"
+            "    return 'late'\n"
+            "uvicorn.run(app, host='127.0.0.1', port=int(sys.argv[1]), "
+            "log_level='warning')\n"
+        )
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+        env = dict(os.environ, HOPSWORKS_AGENT_TASK_DRAIN_SECONDS="1")
+        proc = subprocess.Popen([sys.executable, str(script), str(port)], env=env)
+        base = f"http://127.0.0.1:{port}"
+        try:
+            for _ in range(200):
+                try:
+                    if httpx.get(f"{base}/health", timeout=1).status_code == 200:
+                        break
+                except httpx.HTTPError:
+                    time.sleep(0.1)
+            else:
+                pytest.fail("the server did not come up")
+
+            outcome = {}
+
+            def blocking_send():
+                async def call():
+                    async with httpx.AsyncClient(base_url=base, timeout=30) as http:
+                        card = await A2ACardResolver(http, base).get_agent_card()
+                        client = ClientFactory(
+                            ClientConfig(httpx_client=http, streaming=False)
+                        ).create(card)
+                        outcome["task"] = task_of(await send(client, user_message("q")))
+
+                try:
+                    asyncio.run(call())
+                except Exception as err:  # noqa: BLE001 -- asserted below
+                    outcome["error"] = err
+
+            caller = threading.Thread(target=blocking_send)
+            caller.start()
+            time.sleep(1.0)
+            signalled = time.monotonic()
+            proc.send_signal(signal.SIGTERM)
+            caller.join(timeout=20)
+            answered = time.monotonic() - signalled
+            assert "error" not in outcome, outcome.get("error")
+            task = outcome["task"]
+            assert state_name(task) == "TASK_STATE_FAILED"
+            assert hopsworks_of(task.status.message)["status"] == "executor_shutdown"
+            # the one-second budget, not the handler's thirty seconds
+            assert answered < 10
+            # uvicorn re-raises the signal it captured once it has stopped
+            assert proc.wait(timeout=20) in (0, -signal.SIGTERM)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+
+
+def _far():
+    from datetime import timedelta
+
+    from hopsworks_agents.protocol.pending import _utcnow
+
+    return _utcnow() + timedelta(days=1)
+
+
+class _drip_server:  # noqa: N801 -- a context manager
+    """A local HTTP server for the fetch tests: a redirect, a big body, a slow drip."""
+
+    def __enter__(self):
+        import threading
+        import time
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_GET(self):  # noqa: N802 -- the stdlib's name
+                if self.path == "/redirect":
+                    self.send_response(302)
+                    self.send_header("Location", "/small")
+                    self.end_headers()
+                    return
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain")
+                if self.path == "/slow":
+                    self.send_header("Transfer-Encoding", "chunked")
+                    self.end_headers()
+                    for _ in range(20):
+                        self.wfile.write(b"1\r\nx\r\n")
+                        self.wfile.flush()
+                        time.sleep(0.1)
+                    self.wfile.write(b"0\r\n\r\n")
+                    return
+                body = b"ok" if self.path == "/small" else b"x" * 64
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        self._server = HTTPServer(("127.0.0.1", 0), Handler)
+        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+        self._thread.start()
+        return f"http://127.0.0.1:{self._server.server_address[1]}"
+
+    def __exit__(self, *exc):
+        self._server.shutdown()
+        self._server.server_close()

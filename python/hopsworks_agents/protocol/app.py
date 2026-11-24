@@ -129,7 +129,7 @@ class AgentApp(FastAPI):
         allow_cors: bool = True,
         eval_per_request: bool = False,
         memory_routes: bool = True,
-        a2a: bool | A2AConfig = True,
+        a2a: bool | A2AConfig | None = None,
         skills: list[AgentSkill] | None = None,
         public_url: str | None = None,
         fetch_urls: list[str] | None = None,
@@ -159,8 +159,13 @@ class AgentApp(FastAPI):
         self._input_media_types = input_media_types
         self._output_media_types = output_media_types
         # Set when the pod was told to stop: /ready says so, and turns still
-        # running get the drain window to finish (see _drain).
+        # running get the drain window to finish (see _drain). The window is
+        # counted from the stop signal when it reached the process (see
+        # _install_stop_handlers), else from the lifespan's shutdown.
         self._draining = False
+        self._drain_deadline: float | None = None
+        self._drain_watchdog: asyncio.Task | None = None
+        self._stop_handlers: list[tuple[int, Any]] = []
         # Records which conversation was with whom, for anyone later holding a
         # customer key and no way to find their conversations. Constructed
         # unconditionally but connects nothing until something identifies a
@@ -224,6 +229,22 @@ class AgentApp(FastAPI):
         # Verifies a claimed run with Hopsworks before a turn is treated as an
         # evaluation; see evaluation.py for why a bare header is not enough.
         self._eval_verifier = RunVerifier()
+
+        # The stop signal starts the drain budget; the lifespan's shutdown is
+        # where the turns still running are waited for. Registered before the
+        # span flush below, since FastAPI runs shutdown handlers in order and
+        # a drained turn's spans must be flushed after it ends.
+        @self.on_event("startup")
+        async def _watch_for_stop() -> None:  # pragma: no cover - lifespan hook
+            self._install_stop_handlers()
+
+        @self.on_event("shutdown")
+        async def _drain_turns() -> None:  # pragma: no cover - lifespan hook
+            try:
+                await self._drain()
+            finally:
+                self._restore_stop_handlers()
+
         # tracing: None auto-detects from the platform-injected OTLP endpoint
         # env var (set iff tracing is enabled on the deployment)
         self.tracer_provider = setup_tracing(self.framework, enabled=tracing)
@@ -281,18 +302,29 @@ class AgentApp(FastAPI):
         self._register_routes()
 
         # A2A: the Agent Card and the JSON-RPC and REST bindings, on the same
-        # turn pipeline. Off removes them all; nothing else changes.
+        # turn pipeline. Off removes them all; nothing else changes. Unsaid,
+        # it is on when the a2a-sdk package is there and off, with a line in
+        # the log and the manifest, when it is not: an environment that
+        # upgraded hopsworks without the agents extra keeps its AG-UI agent.
         self._a2a: Any = None
-        if a2a:
-            from .a2a import A2AConfig, A2AServer
+        self._a2a_missing = False
+        if a2a is None or a2a:
+            try:
+                from .a2a import A2AConfig, A2AServer
+            except ModuleNotFoundError as err:
+                if a2a is not None or (err.name or "").split(".")[0] != "a2a":
+                    raise
+                self._a2a_missing = True
+                import logging  # noqa: PLC0415
 
-            self._a2a = A2AServer(
-                self, a2a if isinstance(a2a, A2AConfig) else A2AConfig()
-            )
-
-        @self.on_event("shutdown")
-        async def _drain_turns() -> None:  # pragma: no cover - lifespan hook
-            await self._drain()
+                logging.getLogger(__name__).warning(
+                    "a2a-sdk is not installed, so this agent serves no Agent Card "
+                    "and no A2A routes; install hopsworks[agents] to serve A2A"
+                )
+            else:
+                self._a2a = A2AServer(
+                    self, a2a if isinstance(a2a, A2AConfig) else A2AConfig()
+                )
 
     # ── handler decorators ────────────────────────────────────────────────
 
@@ -415,6 +447,8 @@ class AgentApp(FastAPI):
             # SDK from one that opted out.
             "a2a": self._a2a._capabilities()
             if self._a2a is not None
+            else {"enabled": False, "reason": "sdk_missing"}
+            if self._a2a_missing
             else {"enabled": False},
             "streaming": streaming,
             # protocol-level statement that history is server-side. The
@@ -896,14 +930,36 @@ class AgentApp(FastAPI):
         shared = self.memory._pending_questions() if self.memory is not None else None
         return shared if shared is not None else self._local_pending
 
+    @staticmethod
+    def _conversation_key(conversation_id: str | None) -> str | None:
+        """A conversation's own pending key: its id, once it is known to name no task's record.
+
+        Raises:
+            AgentError: The id carries a control character, which only a task's
+                key may (``pending.TASK_KEY_SEPARATOR``).
+        """
+        from .models import _printable  # noqa: PLC0415
+
+        if conversation_id and not _printable(conversation_id):
+            raise AgentError(
+                "The conversation id may not carry control characters.",
+                "invalid_request",
+                422,
+            )
+        return conversation_id
+
     async def _check_resume(
         self,
-        conversation_id: str | None,
+        pending_key: str | None,
         answers: list[ResumeAnswer],
         run_id: str | None,
     ) -> ChatRequest | None:
         """The paused request a resume replays, with every answer it has, after checking and claiming it.
 
+        The record is the one under ``pending_key``: the conversation's own on
+        the chat and AG-UI routes, a task's over A2A, where one context may
+        hold several paused tasks (``pending._task_key``); the turn settles
+        the same key when it ends.
         The replay is the request the turn paused on, not the resume's own: the
         handler is asked the same thing again, with the same context, metadata,
         state and history, and only the answers are new. A client answering a
@@ -932,7 +988,7 @@ class AgentApp(FastAPI):
             return None
         store = self._pending_store()
         try:
-            pending = await asyncio.to_thread(store._get, conversation_id or "")
+            pending = await asyncio.to_thread(store._get, pending_key or "")
         except Exception as err:  # noqa: BLE001 -- said to the client, retryable
             raise AgentError(
                 "The agent could not read what this conversation is waiting on.",
@@ -990,7 +1046,7 @@ class AgentApp(FastAPI):
             )
         try:
             claimed = await asyncio.to_thread(
-                store._claim, conversation_id or "", pending.version
+                store._claim, pending_key or "", pending.version
             )
         except Exception as err:  # noqa: BLE001
             raise AgentError(
@@ -1149,7 +1205,9 @@ class AgentApp(FastAPI):
                 )
             try:
                 replay = await self._check_resume(
-                    request.conversation_id, request.resume, request.run_id
+                    self._conversation_key(request.conversation_id),
+                    request.resume,
+                    request.run_id,
                 )
             except AgentError as err:
                 return _error_response(err)
@@ -1237,7 +1295,7 @@ class AgentApp(FastAPI):
                 )
             try:
                 replay = await self._check_resume(
-                    run.thread_id,
+                    self._conversation_key(run.thread_id),
                     [_resume_answer(entry) for entry in run.resume or []],
                     run.run_id or None,
                 )
@@ -1615,6 +1673,97 @@ class AgentApp(FastAPI):
                 else:
                     await run._close(completed)
 
+    def _drain_window(self) -> float:
+        """How long the turns still running get once the pod is told to stop."""
+        import os  # noqa: PLC0415
+
+        try:
+            return float(os.environ.get("HOPSWORKS_AGENT_TASK_DRAIN_SECONDS", "600"))
+        except ValueError:
+            return 600.0
+
+    def _install_stop_handlers(self) -> None:
+        """Start the drain budget at the stop signal, not at the lifespan's end.
+
+        uvicorn closes the listener at SIGTERM and runs the lifespan's shutdown
+        only once every open connection has ended, so a budget that began
+        there would begin after the time it is meant to bound: a blocking
+        ``SendMessage`` or a stream would hold the process for as long as its
+        handler ran. The handler chains to the server's own, which is what
+        stops serving; the drain's deadline is counted from here, and a
+        watchdog aborts what is still running when it passes, which ends the
+        connections the server waits for.
+        Main thread only, where a signal handler can be set; a server driven
+        from elsewhere (a test client) keeps the lifespan's drain.
+        """
+        import signal  # noqa: PLC0415
+        import threading  # noqa: PLC0415
+
+        if threading.current_thread() is not threading.main_thread():
+            return
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            try:
+                previous = signal.getsignal(sig)
+            except (ValueError, OSError):
+                continue
+
+            def handler(signum: int, frame: Any, previous: Any = previous) -> None:
+                loop.call_soon_threadsafe(self._begin_drain)
+                if callable(previous):
+                    previous(signum, frame)
+
+            try:
+                signal.signal(sig, handler)
+            except (ValueError, OSError):
+                continue
+            self._stop_handlers.append((sig, previous))
+
+    def _restore_stop_handlers(self) -> None:
+        import contextlib  # noqa: PLC0415
+        import signal  # noqa: PLC0415
+
+        for sig, previous in self._stop_handlers:
+            with contextlib.suppress(ValueError, OSError, TypeError):
+                signal.signal(sig, previous)
+        self._stop_handlers.clear()
+
+    def _begin_drain(self) -> None:
+        """The pod was told to stop: take no new work, and start the budget.
+
+        Called on the event loop. The deadline is kept for ``_drain``, and a
+        watchdog aborts the turns still running when it passes, so that a
+        request held open by one of them ends and the server can reach the
+        lifespan's shutdown.
+        """
+        if self._draining:
+            return
+        self._draining = True
+        self._drain_deadline = asyncio.get_running_loop().time() + self._drain_window()
+        self._drain_watchdog = asyncio.create_task(self._abort_at_deadline())
+
+    async def _abort_at_deadline(self) -> None:
+        loop = asyncio.get_running_loop()
+        deadline = self._drain_deadline or loop.time()
+        await asyncio.sleep(max(0.0, deadline - loop.time()))
+        await self._abort_turns()
+
+    async def _abort_turns(self) -> None:
+        """The budget is spent: cut the handlers still running short, and let them report it."""
+        late = {task for task in _DETACHED if not task.done()}
+        if self._a2a is not None:
+            for run in list(self._a2a.executor.runs.values()):
+                if not run.task.done():
+                    run._abort()
+            late |= self._a2a._running()
+        for task in late & _DETACHED:
+            task.cancel()
+        # the executors report the abort and settle their turns; give them a moment
+        if late:
+            await asyncio.wait(late, timeout=5)
+        if self._a2a is not None:
+            await self._a2a.executor._settled(timeout=5)
+
     async def _drain(self) -> None:
         """Let the turns still running finish before the process exits.
 
@@ -1622,12 +1771,18 @@ class AgentApp(FastAPI):
         A2A task sent with ``returnImmediately``) has no request the server waits
         for, so the lifespan's shutdown is the last point at which it can be
         given time.
-        ``HOPSWORKS_AGENT_TASK_DRAIN_SECONDS`` (default 600) bounds that; a turn
-        still running at the deadline is aborted: its handler is cancelled, its
-        turn abandoned in the store, and an A2A task fails with
-        ``executor_shutdown`` so the caller knows to resend.
+        ``HOPSWORKS_AGENT_TASK_DRAIN_SECONDS`` (default 600) bounds that, from
+        the stop signal when the process saw it (``_begin_drain``) and from
+        here otherwise; a turn still running at the deadline is aborted: its
+        handler is cancelled, its turn abandoned in the store, and an A2A task
+        fails with ``executor_shutdown`` so the caller knows to resend.
         """
-        self._draining = True
+        loop = asyncio.get_running_loop()
+        if not self._draining:
+            self._draining = True
+            self._drain_deadline = loop.time() + self._drain_window()
+        if self._drain_watchdog is not None and not self._drain_watchdog.done():
+            self._drain_watchdog.cancel()
         keepers = {task for task in _DETACHED if not task.done()}
         # every A2A execution accepted so far, running or queued behind a
         # context lock: a queued one that gets its turn now fails as shutdown
@@ -1636,25 +1791,11 @@ class AgentApp(FastAPI):
         pending = keepers | executions
         if not pending:
             return
-        import os  # noqa: PLC0415
-
-        try:
-            window = float(os.environ.get("HOPSWORKS_AGENT_TASK_DRAIN_SECONDS", "600"))
-        except ValueError:
-            window = 600.0
-        _, late = await asyncio.wait(pending, timeout=window)
+        remaining = max(0.0, (self._drain_deadline or loop.time()) - loop.time())
+        _, late = await asyncio.wait(pending, timeout=remaining)
         if not late:
             return
-        if self._a2a is not None:
-            for run in list(self._a2a.executor.runs.values()):
-                if not run.task.done():
-                    run._abort()
-        for task in late & keepers:
-            task.cancel()
-        # the executors report the abort and settle their turns; give them a moment
-        await asyncio.wait(late, timeout=5)
-        if self._a2a is not None:
-            await self._a2a.executor._settled(timeout=5)
+        await self._abort_turns()
 
 
 # Turns settled after their client hung up, held so the loop keeps them.
@@ -1689,6 +1830,9 @@ class _TurnRun:
         self.final: ChatResponse | None = None
         self.answered: ChatResponse | None = None
         self.detached = False
+        #: Set once the turn has been reported and closed: what a cancel that
+        #: must let the turn finish waits for.
+        self.finished = asyncio.Event()
         self._closed = False
         #: The pod is stopping and the handler was cut short: what ``done`` then means.
         self.aborted = False

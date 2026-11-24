@@ -122,6 +122,8 @@ POLYMORPHISM_FALLBACK_QUALNAMES: set[str] = {
     "_BoundedTaskStore.get",
     "_BoundedTaskStore.list",
     "_BoundedTaskStore.delete",
+    # The request checks extend the SDK's ``SimpleRequestContextBuilder``.
+    "_RequestChecks.build",
 }
 
 # Third-party-API-mirroring re-exports: symbols that intentionally mirror an
