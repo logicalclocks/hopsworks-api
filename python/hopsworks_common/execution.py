@@ -199,12 +199,30 @@ class Execution:
     @public
     @property
     def attempts(self) -> list[dict]:
-        """Log files of the attempts before the current one, oldest first.
+        """The attempts before the current one, oldest first: how each ended and where its logs are.
 
-        Each re-run sets the previous attempt's log files aside.
-        An entry has the keys `attempt` (counted from 1), `logs_path` (the attempt's directory), `stdout_path` and `stderr_path`; a path is missing when that attempt did not leave the file.
+        Each re-run sets the previous attempt's log files aside and records its outcome.
+        An entry has the keys:
+
+        - `attempt`: the attempt's number, counted from 1.
+        - `state` and `final_status`: how the attempt ended, with the same values as [`state`][hopsworks_common.execution.Execution.state] and [`final_status`][hopsworks_common.execution.Execution.final_status].
+        - `start_time` and `stop_time`: when it ran, in milliseconds since the epoch.
+        - `logs_path` (the attempt's directory), `stdout_path` and `stderr_path`.
+
+        Only `attempt` is always there.
+        A path is missing when the attempt did not leave the file, and a time when it did not get that far.
+        An attempt that was set aside by a Hopsworks version that did not record outcomes has no `state`, `final_status` or `start_time`.
+        The current attempt is not in the list: its outcome is the execution's own `state` and `final_status`.
+
         The list is as of when this object was fetched.
         Empty for an execution that was never re-run.
+
+        Example: Print how every attempt of an execution ended
+            ```python
+            for attempt in execution.attempts:
+                print(attempt["attempt"], attempt.get("final_status", "not recorded"))
+            print(execution.rerun_count + 1, execution.final_status)
+            ```
         """
         return self._attempts or []
 
