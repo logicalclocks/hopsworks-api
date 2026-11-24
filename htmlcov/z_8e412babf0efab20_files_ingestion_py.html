@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_8e412babf0efab20_glue_catalog_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.17.3">coverage.py v7.17.3</a>,
-            created at 2026-11-23 16:47 +0000
+            created at 2026-11-24 13:14 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -615,7 +615,7 @@
     <p class="pln"><span class="n"><a id="t533" href="#t533">533</a></span><span class="t">        <span class="str">&quot;&quot;&quot;Start a run of the job, creating the job first if it has not been saved.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t534" href="#t534">534</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t535" href="#t535">535</a></span><span class="t"><span class="str">        A run in which some files failed to copy ends as `FAILED` by design, with the successful copies kept; when awaiting, such a run is returned like any other instead of raising, so its</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t536" href="#t536">536</a></span><span class="t"><span class="str">        [`files_progress`][hopsworks.execution.Execution.files_progress]</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t536" href="#t536">536</a></span><span class="t"><span class="str">        [`files_progress`][hopsworks_common.execution.Execution.files_progress]</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t537" href="#t537">537</a></span><span class="t"><span class="str">        can be read for the counters and the failed files.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t538" href="#t538">538</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t539" href="#t539">539</a></span><span class="t"><span class="str">        Parameters:</span>&nbsp;</span><span class="r"></span></p>
@@ -645,7 +645,7 @@
     <p class="run"><span class="n"><a id="t563" href="#t563">563</a></span><span class="t">    <span class="op">@</span><span class="nam">public</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t564" href="#t564">564</a></span><span class="t">    <span class="op">@</span><span class="nam">property</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t565" href="#t565">565</a></span><span class="t">    <span class="key">def</span> <span class="nam">last_stats</span><span class="op">(</span><span class="nam">self</span><span class="op">)</span> <span class="op">-&gt;</span> <span class="nam">dict</span><span class="op">[</span><span class="nam">str</span><span class="op">,</span> <span class="nam">Any</span><span class="op">]</span> <span class="op">|</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t566" href="#t566">566</a></span><span class="t">        <span class="str">&quot;&quot;&quot;The `filesProgress` of the most recent execution, as [`Execution.files_progress`][hopsworks.execution.Execution.files_progress] describes it: `status`, `listed`, `copied`, `updated`, `skipped`, `deleted`, `failed`, `oversized`, `unsupported`, `bytesCopied`, `failedFiles`, `auditFile`, `auditPath` and more; `None` before the first run and while the latest run has not written its result yet.&quot;&quot;&quot;</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t566" href="#t566">566</a></span><span class="t">        <span class="str">&quot;&quot;&quot;The `filesProgress` of the most recent execution, as [`Execution.files_progress`][hopsworks_common.execution.Execution.files_progress] describes it: `status`, `listed`, `copied`, `updated`, `skipped`, `deleted`, `failed`, `oversized`, `unsupported`, `bytesCopied`, `failedFiles`, `auditFile`, `auditPath` and more; `None` before the first run and while the latest run has not written its result yet.&quot;&quot;&quot;</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t567" href="#t567">567</a></span><span class="t">        <span class="key">if</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_job</span> <span class="key">is</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t568" href="#t568">568</a></span><span class="t">            <span class="key">return</span> <span class="key">None</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t569" href="#t569">569</a></span><span class="t">        <span class="key">from</span> <span class="nam">hopsworks_common</span><span class="op">.</span><span class="nam">core</span><span class="op">.</span><span class="nam">job_api</span> <span class="key">import</span> <span class="nam">JobApi</span>&nbsp;</span><span class="r"></span></p>
@@ -741,7 +741,7 @@
             <a class="nav" href="z_8e412babf0efab20_glue_catalog_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.17.3">coverage.py v7.17.3</a>,
-            created at 2026-11-23 16:47 +0000
+            created at 2026-11-24 13:14 +0000
         </p>
     </div>
 </footer>
