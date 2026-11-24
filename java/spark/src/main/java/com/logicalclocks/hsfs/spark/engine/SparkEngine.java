@@ -32,6 +32,7 @@ import static org.apache.spark.sql.functions.struct;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -45,6 +46,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeoutException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -53,6 +55,7 @@ import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.SchemaParseException;
 import org.apache.commons.io.FileUtils;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.spark.SparkFiles;
 import org.apache.spark.sql.Column;
@@ -144,6 +147,9 @@ public class SparkEngine extends EngineBase {
 
   @Getter
   private SparkSession sparkSession;
+
+  // Bucket name to the endpoint of the store this session uses it with, "" for AWS S3.
+  private final Map<String, String> s3BucketStores = new ConcurrentHashMap<>();
 
   private SparkEngine() {
     sparkSession = SparkSession.builder()
@@ -501,7 +507,7 @@ public class SparkEngine extends EngineBase {
       throw new FeatureStoreException("dataFormat is not specified.");
     }
 
-    setupConnectorHadoopConf(storageConnector);
+    setupConnectorHadoopConf(storageConnector, location);
 
     // Table formats that handle their own directory layout/partitioning are read from the
     // location directly; appending a /** glob would make the reader look for a non-existent
@@ -809,15 +815,35 @@ public class SparkEngine extends EngineBase {
 
   public void setupConnectorHadoopConf(StorageConnector storageConnector)
       throws IOException, FeatureStoreException {
+    setupConnectorHadoopConf(storageConnector, null);
+  }
+
+  /**
+   * Set up the Hadoop configuration for a data source, before reading or writing {@code location}.
+   *
+   * @param storageConnector the data source's connector; null does nothing
+   * @param location the path read or written, which names the bucket of a Glue data source; may be null
+   * @throws FeatureStoreException the application already uses the bucket name with another store, or a data
+   *     source with an endpoint is given a location in another bucket
+   */
+  public void setupConnectorHadoopConf(StorageConnector storageConnector, String location)
+      throws IOException, FeatureStoreException {
     if (storageConnector == null) {
       return;
     }
 
     switch (storageConnector.getStorageConnectorType()) {
       case S3:
-        setupS3ConnectorHadoopConf((StorageConnector.S3Connector) storageConnector);
+        StorageConnector.S3Connector s3Connector = (StorageConnector.S3Connector) storageConnector;
+        refuseEndpointLocationInAnotherBucket(s3Connector, location);
+        // An AWS data source may read a location in another bucket, which Spark opens with whatever that bucket is
+        // configured for, so the location's bucket is claimed too.
+        claimS3Buckets(s3Connector.getName(), s3Connector.getEndpoint(), s3Connector.getBucket(),
+            s3PathBucket(location));
+        setupS3ConnectorHadoopConf(s3Connector);
         break;
       case GLUE:
+        claimS3Buckets(storageConnector.getName(), null, s3PathBucket(location));
         setupGlueConnectorHadoopConf((StorageConnector.GlueConnector) storageConnector);
         break;
       case ADLS:
@@ -880,6 +906,95 @@ public class SparkEngine extends EngineBase {
       sparkSession.sparkContext().hadoopConfiguration()
           .set(Constants.S3_CONNECTION_USE_SSL,
           storageConnector.sparkOptions().get(Constants.S3_CONNECTION_USE_SSL));
+    }
+    setupS3EndpointHadoopConf(storageConnector);
+  }
+
+  /**
+   * Record which store this application uses the bucket names with, all or none of them. s3a keeps one filesystem
+   * per bucket name for the life of the application, so a second store under the same bucket name would silently
+   * read and write the first one.
+   *
+   * <p>Synchronized, since checking and recording are separate steps that concurrent reads must not interleave.
+   *
+   * @param endpoint the store's endpoint, null or empty for AWS S3
+   * @param buckets the bucket names; null and empty entries are ignored
+   * @throws FeatureStoreException the application already uses one of the bucket names with another store
+   */
+  private synchronized void claimS3Buckets(String dataSourceName, String endpoint, String... buckets)
+      throws FeatureStoreException {
+    String store = Strings.nullToEmpty(endpoint);
+    List<String> named = Arrays.stream(buckets).filter(bucket -> !Strings.isNullOrEmpty(bucket))
+        .collect(Collectors.toList());
+    for (String bucket : named) {
+      String known = s3BucketStores.getOrDefault(bucket, store);
+      if (!known.equals(store)) {
+        throw new FeatureStoreException("Data source '" + dataSourceName + "' uses bucket '"
+            + bucket + "' on " + storeName(store)
+            + ", but this Spark application already uses that bucket name on " + storeName(known)
+            + ". Spark keeps one S3 client per bucket name for as long as its process runs, "
+            + "so use this data source in a new Spark application process, such as a new job run.");
+      }
+    }
+    for (String bucket : named) {
+      s3BucketStores.putIfAbsent(bucket, store);
+    }
+  }
+
+  private static String storeName(String endpoint) {
+    return endpoint.isEmpty() ? "AWS S3" : endpoint;
+  }
+
+  // The endpoint is set for the data source's own bucket only, so another bucket would reach AWS or another store.
+  private static void refuseEndpointLocationInAnotherBucket(StorageConnector.S3Connector storageConnector,
+      String location) throws FeatureStoreException {
+    String bucket = s3PathBucket(location);
+    if (!Strings.isNullOrEmpty(storageConnector.getEndpoint()) && bucket != null
+        && !bucket.equals(storageConnector.getBucket())) {
+      throw new FeatureStoreException("Data source '" + storageConnector.getName() + "' uses its endpoint for bucket '"
+          + storageConnector.getBucket() + "' only, so it cannot use " + location + " in bucket '" + bucket + "'.");
+    }
+  }
+
+  private static String s3PathBucket(String location) {
+    if (Strings.isNullOrEmpty(location)) {
+      return null;
+    }
+    URI uri = new Path(location).toUri();
+    boolean s3 = "s3".equals(uri.getScheme()) || "s3a".equals(uri.getScheme());
+    return s3 ? uri.getAuthority() : null;
+  }
+
+  // Bucket scope only, with the keys and region beside it: the settings above are global, so a later data source
+  // in the same session would otherwise redirect this bucket to its own store or credentials.
+  private void setupS3EndpointHadoopConf(StorageConnector.S3Connector storageConnector)
+      throws IOException, FeatureStoreException {
+    String endpoint = storageConnector.getEndpoint();
+    if (Strings.isNullOrEmpty(endpoint)) {
+      return;
+    }
+    Configuration conf = sparkSession.sparkContext().hadoopConfiguration();
+    String prefix = "fs.s3a.bucket." + storageConnector.getBucket() + ".";
+    conf.set(prefix + "endpoint", endpoint);
+    conf.set(prefix + "path.style.access", String.valueOf(Boolean.TRUE.equals(storageConnector.getPathStyleAccess())));
+    conf.set(prefix + "connection.ssl.enabled", String.valueOf(endpoint.startsWith("https://")));
+    if (!Strings.isNullOrEmpty(storageConnector.getRegion())) {
+      conf.set(prefix + "endpoint.region", storageConnector.getRegion());
+    }
+    if (!Strings.isNullOrEmpty(storageConnector.getAccessKey())) {
+      conf.set(prefix + "access.key", storageConnector.getAccessKey());
+    }
+    if (!Strings.isNullOrEmpty(storageConnector.getSecretKey())) {
+      conf.set(prefix + "secret.key", storageConnector.getSecretKey());
+    }
+    // Without a provider of its own the bucket inherits the global temporary-credentials provider and session token
+    // an IAM-role data source set earlier in the session, and would send that token to this store.
+    boolean hasSessionToken = !Strings.isNullOrEmpty(storageConnector.getSessionToken());
+    conf.set(prefix + "aws.credentials.provider", storageConnector.sparkOptions().getOrDefault(
+        Constants.S3_CREDENTIAL_PROVIDER_ENV,
+        hasSessionToken ? Constants.S3_TEMPORARY_CREDENTIAL_PROVIDER : Constants.S3_SIMPLE_CREDENTIAL_PROVIDER));
+    if (hasSessionToken) {
+      conf.set(prefix + "session.token", storageConnector.getSessionToken());
     }
   }
 

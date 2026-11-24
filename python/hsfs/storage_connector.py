@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import base64
+import copy
 import logging
 import os
 import posixpath
@@ -25,6 +26,7 @@ import warnings
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
+from urllib.parse import urlsplit
 
 import humps
 from cryptography.hazmat.backends import default_backend
@@ -46,6 +48,7 @@ from hsfs.core import (
     data_source_api,
     data_source_credentials_api,
     elasticsearch_api,
+    files_ingestion,
     sharepoint_api,
     sharepoint_sync,
     storage_connector_api,
@@ -103,6 +106,8 @@ class StorageConnector(ABC):
     SHAREPOINT = "SHAREPOINT"
     GMAIL = "GMAIL"
     OUTLOOK = "OUTLOOK"
+    SFTP = "SFTP"
+    GOOGLE_DRIVE = "GOOGLE_DRIVE"
 
     NOT_FOUND_ERROR_CODE = 270042
 
@@ -129,6 +134,8 @@ class StorageConnector(ABC):
         SHAREPOINT: "featurestoreSharePointConnectorDTO",
         GMAIL: "featurestoreGmailConnectorDTO",
         OUTLOOK: "featurestoreOutlookConnectorDTO",
+        SFTP: "featurestoreSftpConnectorDTO",
+        GOOGLE_DRIVE: "featurestoreGoogleDriveConnectorDTO",
         CRM: "featurestoreCRMConnectorDTO",
         GOOGLE_SHEETS: "featurestoreGoogleSheetsConnectorDTO",
         UNITY_CATALOG: "featurestoreUnityCatalogConnectorDTO",
@@ -179,6 +186,8 @@ class StorageConnector(ABC):
         | SharePointConnector
         | GmailConnector
         | OutlookConnector
+        | SftpConnector
+        | GoogleDriveConnector
     ):
         if isinstance(json_dict, list) or "items" in json_dict:
             return cls._from_response_json_list(json_dict)
@@ -247,6 +256,8 @@ class StorageConnector(ABC):
         | SharePointConnector
         | GmailConnector
         | OutlookConnector
+        | SftpConnector
+        | GoogleDriveConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -267,6 +278,10 @@ class StorageConnector(ABC):
 
     def _check_new(self) -> None:
         """Refuse to create the data source when its fields cannot be stored as given."""
+        return
+
+    def _check_stored(self, stored: StorageConnector) -> None:
+        """Refuse a save or update that the backend accepted without storing a field this client sent."""
         return
 
     def to_dict(self) -> dict[str, int | str | None]:
@@ -315,10 +330,13 @@ class StorageConnector(ABC):
         Raises:
             ValueError: If a SQL data source with provided credentials is given a username, password, wallet or wallet password, since each member sets their own with `set_credentials()`.
             hopsworks.client.exceptions.FeatureStoreException: If `tags` are passed to a Hopsworks backend older than 5.3, which cannot store data source tags.
+                Also if an S3 data source has an endpoint, which such a backend cannot store: the request is not sent, or, when the backend's version is unknown, the data source is stored without the endpoint and targets AWS S3.
             hopsworks.client.exceptions.RestAPIError: If a tag that is mandatory for data sources is missing from `tags`, if a tag value does not match its schema, or if the backend encounters another error when handling the request.
         """
         self._check_new()
-        return self._storage_connector_api._create(self, tags)
+        stored = self._storage_connector_api._create(self, tags)
+        self._check_stored(stored)
+        return stored
 
     @public
     def update(self) -> StorageConnector:
@@ -340,9 +358,14 @@ class StorageConnector(ABC):
             The updated storage connector.
 
         Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If an S3 data source has an endpoint and the backend is older than 5.3, which cannot store it: the request is not sent, or, when the backend's version is unknown, the data source is stored without the endpoint and targets AWS S3.
             hopsworks.client.exceptions.RestAPIError: If the data source lacks a tag that is mandatory for data sources, which has to be added with [`add_tag`][hsfs.storage_connector.StorageConnector.add_tag] first, or if the backend encounters another error when handling the request.
         """
-        return self._storage_connector_api._update(self)
+        # The response overwrites this instance, so keep what was sent to compare against it.
+        requested = copy.copy(self)
+        updated = self._storage_connector_api._update(self)
+        requested._check_stored(updated)
+        return updated
 
     @public
     def get_trino_catalog_template(self) -> dict[str, Any]:
@@ -454,6 +477,125 @@ class StorageConnector(ABC):
             featurestore_id=self._featurestore_id,
             scope=scope,
         )
+
+    _FILES_INGESTION_TYPES = ("S3", "GCS", "ADLS", "SFTP", "GOOGLE_DRIVE")
+
+    @public
+    def ingest_files(
+        self,
+        dataset: str,
+        prefix: str = "",
+        include: list[str] | None = None,
+        exclude: list[str] | None = None,
+        mirror_deletions: bool = False,
+        index: bool | str = False,
+        max_file_size_mb: int | None = None,
+        schedule: str | None = None,
+        resources: dict[str, Any] | None = None,
+        name: str | None = None,
+        fail_on_first_error: bool = False,
+        files_per_page: int = 100,
+        copy_workers: int = 4,
+        transform_script: str | None = None,
+        keep_original: bool = False,
+    ) -> files_ingestion.FilesIngestionJob:
+        """Create a job that copies the files under a prefix of this S3, GCS, ADLS, SFTP or Google Drive data source into a dataset.
+
+        The job is created on the server at once; run it with
+        [`FilesIngestionJob.run`][hsfs.core.files_ingestion.FilesIngestionJob.run].
+        Each run lists the prefix, copies new and changed files, keeps unchanged ones and, with `mirror_deletions`, deletes from the dataset the files that are gone from the source.
+        The dataset may exist (the caller must own it) or is created; one files job owns a dataset, so a second job on the same dataset is refused.
+        Per-file failures do not stop the run: the copies that succeeded stay, the run ends as failed, and the execution's `files_progress` lists the failed files.
+        Needs the Data Owner role.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+            fs = project.get_feature_store()
+
+            sc = fs.get_data_source("my_s3").storage_connector
+            job = sc.ingest_files(
+                dataset="acme_docs_handbook",
+                prefix="handbook/2026/",
+                include=["**/*.pdf"],
+                schedule="0 0 2 ? * *",
+                index=True,
+            )
+            execution = job.run(await_termination=True)
+            print(execution.files_progress["copied"], job.last_stats["status"])
+            ```
+
+        Parameters:
+            dataset: Name of the dataset the files are copied into; an existing one you own, or a new one.
+            prefix: Prefix inside the bucket, container, SFTP root path or Drive folder, relative to it, e.g. `"handbook/2026/"`; `""` for everything under it.
+            include: Glob patterns of the files to copy, e.g. `["**/*.pdf"]`; every file when empty.
+            exclude: Glob patterns of the files to skip.
+            mirror_deletions: Delete files from the dataset that are gone from the source, so the dataset equals the prefix after each run.
+            index: `True` to keep a Delta feature group `files_<dataset>` with one row per file, a name to use instead, or `False` for no index.
+            max_file_size_mb: Files larger than this are skipped and counted as oversized; `None` or `0` copies any size.
+            schedule: Quartz cron expression in UTC, seconds first, e.g. `"0 0 2 ? * *"` for daily at 02:00; `None` creates no schedule.
+            resources: Pod resources of a run, e.g. `{"cores": 1, "memory": 2048, "gpus": 0}`.
+            name: Job name; `<connector>_<dataset>_files` with `_` for every character outside letters, digits and `_`, when `None`.
+            fail_on_first_error: Stop a run at the first file that fails instead of copying the rest.
+            files_per_page: Number of files listed per request to the source.
+            copy_workers: Number of files downloaded at the same time, 1 to 16; `1` copies one file at a time. The transform script, when there is one, still runs on one file at a time.
+            transform_script: Path in the project of a `.py` file whose `HopsFileTransformer` runs on every downloaded file before it is stored, such as `Resources/transform.py`; `None` copies the files as they are.
+            keep_original: With a transform script, also store each file as it is in the source; the output of the transform then goes under `_transformed/` in the dataset.
+
+        Returns:
+            The created files ingestion job.
+
+        Raises:
+            ValueError: If this data source is not S3, GCS, ADLS, SFTP or Google Drive, or a setting is invalid.
+            hopsworks.client.exceptions.RestAPIError: If the dataset belongs to another files job, the data source has no usable credentials, or the caller is not a data owner.
+        """
+        if self.type not in self._FILES_INGESTION_TYPES:
+            raise ValueError(
+                f"Data source '{self._name}' is {self.type}; files can only be "
+                "ingested from S3, GCS, ADLS, SFTP or Google Drive data sources."
+            )
+        job = files_ingestion.FilesIngestionJob(
+            self,
+            dataset,
+            prefix=prefix,
+            include=include,
+            exclude=exclude,
+            mirror_deletions=mirror_deletions,
+            index=index,
+            max_file_size_mb=max_file_size_mb,
+            schedule=schedule,
+            resources=resources,
+            name=name,
+            fail_on_first_error=fail_on_first_error,
+            files_per_page=files_per_page,
+            copy_workers=copy_workers,
+            transform_script=transform_script,
+            keep_original=keep_original,
+        )
+        job.save()
+        return job
+
+    @public
+    def get_files_ingestion_jobs(self) -> list[files_ingestion.FilesIngestionJob]:
+        """List the files ingestion jobs of the project that read from this data source.
+
+        Returns:
+            The jobs created with [`ingest_files`][hsfs.storage_connector.StorageConnector.ingest_files] for this data source.
+        """
+        from hopsworks_common.core.job_api import JobApi
+
+        jobs = []
+        for job in JobApi().get_jobs():
+            config = job.config if isinstance(job.config, dict) else {}
+            files_config = config.get("filesConfig") or {}
+            if (
+                config.get("mode") == files_ingestion.MODE_FILES
+                and files_config.get("storageConnectorId") == self._id
+            ):
+                jobs.append(files_ingestion.FilesIngestionJob.from_job(job))
+        return jobs
 
     @public
     @property
@@ -1254,6 +1396,29 @@ class HopsFSConnector(StorageConnector):
 
 @public
 class S3Connector(StorageConnector):
+    """A data source on an S3 bucket, in AWS or in an S3-compatible store.
+
+    Set [`endpoint`][hsfs.storage_connector.S3Connector.endpoint] to use an S3-compatible store such as MinIO, Dell ECS or Ceph.
+    Such a data source needs an access key and a secret key, and cannot use IAM roles.
+    Without a region it gets `us-east-1`, which stores without regions accept.
+
+    Example:
+        ```python
+        sc = hsfs.storage_connector.S3Connector(
+            id=None,
+            name="ecs_landing",
+            featurestore_id=fs.id,
+            bucket="landing",
+            region="us-east-1",
+            access_key="...",
+            secret_key="...",
+            endpoint="https://s3.example.com:9021",
+            path_style_access=True,
+        )
+        sc.save()
+        ```
+    """
+
     type = StorageConnector.S3
 
     def __init__(
@@ -1273,11 +1438,15 @@ class S3Connector(StorageConnector):
         session_token: str | None = None,
         iam_role: str | None = None,
         arguments: dict[str, Any] | None = None,
+        endpoint: str | None = None,
+        path_style_access: bool | None = None,
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
 
         # S3
+        self._endpoint = endpoint
+        self._path_style_access = path_style_access
         self._access_key = access_key
         self._secret_key = secret_key
         self._server_encryption_algorithm = server_encryption_algorithm
@@ -1354,8 +1523,32 @@ class S3Connector(StorageConnector):
 
         These are set using the `Spark Options` field in the UI when creating the connector.
         Example: `{"fs.s3a.endpoint": "s3.eu-west-1.amazonaws.com", "fs.s3a.path.style.access": "true"}`.
+        For an S3-compatible store, set [`endpoint`][hsfs.storage_connector.S3Connector.endpoint] instead, which every Hopsworks client honours.
         """
         return self._arguments
+
+    @public
+    @property
+    def endpoint(self) -> str | None:
+        """The S3-compatible store this data source targets, as `http(s)://host[:port]`.
+
+        `None` means AWS S3.
+        The backend refuses an endpoint without an access key and a secret key, together with an IAM role, or next to the `fs.s3a.endpoint` and `fs.s3a.path.style.access` Spark options it replaces.
+        A data source with an endpoint and no region gets the region `us-east-1`.
+        An update that leaves it `None` keeps the stored endpoint; an empty string removes it.
+        Changing it moves the data source, and the data it already holds stays on the previous store.
+        """
+        return self._endpoint
+
+    @public
+    @property
+    def path_style_access(self) -> bool | None:
+        """Whether requests to the endpoint name the bucket in the URL path instead of the host name.
+
+        Most S3-compatible stores need it, since their host names do not resolve per bucket.
+        It applies only together with an [`endpoint`][hsfs.storage_connector.S3Connector.endpoint], and `None` reads as `False`.
+        """
+        return self._path_style_access
 
     def to_dict(self) -> dict[str, Any]:
         payload = super().to_dict()
@@ -1373,9 +1566,19 @@ class S3Connector(StorageConnector):
                 "arguments": [
                     {"name": k, "value": v} for k, v in self._arguments.items()
                 ],
+                "endpoint": self._endpoint,
+                "pathStyleAccess": self._path_style_access,
             }
         )
         return payload
+
+    def _check_stored(self, stored: StorageConnector) -> None:
+        if self._endpoint and self._endpoint.strip() and not stored._endpoint:
+            raise FeatureStoreException(
+                f"Data source '{self._name}' was saved without its endpoint, so it targets AWS S3: "
+                "the Hopsworks cluster predates S3-compatible storage. "
+                "Upgrade Hopsworks to 5.3 or later before using an endpoint."
+            )
 
     def spark_options(self) -> dict[str, str]:
         return self._arguments
@@ -1401,7 +1604,15 @@ class S3Connector(StorageConnector):
 
     @public
     def connector_options(self) -> dict[str, Any]:
-        """Return options to be passed to an external S3 connector library."""
+        """Return options to be passed to an external S3 connector library.
+
+        The keys follow DuckDB's S3 secret: `endpoint` is a `host[:port]`, `use_ssl` a boolean and `url_style` either `path` or `vhost`.
+        With an [`endpoint`][hsfs.storage_connector.S3Connector.endpoint] set, all three come from it and [`path_style_access`][hsfs.storage_connector.S3Connector.path_style_access].
+        Otherwise they come from the `fs.s3a.endpoint`, `fs.s3a.connection.ssl.enabled` and `fs.s3a.path.style.access` Spark options, when those are set.
+
+        Info: `"false"` in the Spark options takes effect, ~=5.3.0
+            Before 5.3.0, `use_ssl` was the option's string as given and `url_style` was `path` for any value of `fs.s3a.path.style.access`, so `"false"` read as true.
+        """
         self._refetch()
         options = {
             "access_key": self.access_key,
@@ -1409,23 +1620,29 @@ class S3Connector(StorageConnector):
             "session_token": self.session_token,
             "region": self.region,
         }
+        if self.endpoint:
+            parts = urlsplit(self.endpoint)
+            options["endpoint"] = parts.netloc
+            options["use_ssl"] = parts.scheme == "https"
+            options["url_style"] = "path" if self.path_style_access else "vhost"
+            return options
         if not self.arguments:
             return options
+        # Spark's s3a and DuckDB name the same settings differently:
+        # https://hadoop.apache.org/docs/stable/hadoop-aws/tools/hadoop-aws/connecting.html
+        # https://duckdb.org/docs/stable/core_extensions/httpfs/s3api
         if self.arguments.get("fs.s3a.endpoint"):
             options["endpoint"] = self.arguments.get("fs.s3a.endpoint")
         if self.arguments.get("fs.s3a.connection.ssl.enabled"):
-            # use_ssl is used by s3 secrets in duckdb
-            # where as fs.s3a.connection.ssl.enabled is used by spark s3a connector
-            # hadoop : https://hadoop.apache.org/docs/stable/hadoop-aws/tools/hadoop-aws/connecting.html#Low-level_Network.2FHttp_Options
-            # duckdb : https://duckdb.org/docs/stable/core_extensions/httpfs/s3api
-            options["use_ssl"] = self.arguments.get("fs.s3a.connection.ssl.enabled")
+            options["use_ssl"] = (
+                str(self.arguments.get("fs.s3a.connection.ssl.enabled")).lower()
+                == "true"
+            )
         if self.arguments.get("fs.s3a.path.style.access"):
-            # url_style is used by duckdb s3 connector
-            # where as fs.s3a.path.style.access is used by spark s3a connector
-            # hadoop: https://hadoop.apache.org/docs/stable/hadoop-aws/tools/hadoop-aws/connecting.html#Third_party_stores
-            # duckdb: https://duckdb.org/docs/stable/core_extensions/httpfs/s3api
             options["url_style"] = (
-                "path" if self.arguments.get("fs.s3a.path.style.access") else "vhost"
+                "path"
+                if str(self.arguments.get("fs.s3a.path.style.access")).lower() == "true"
+                else "vhost"
             )
         return options
 
@@ -1461,6 +1678,9 @@ class S3Connector(StorageConnector):
 
         Returns:
             `DataFrame`.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: With the Spark engine, if the data source has an endpoint and `path` is in another bucket, or if the Spark application already uses the bucket name with another store.
         """
         if path is None:
             path = ""
@@ -7881,3 +8101,401 @@ class OutlookConnector(_MailSyncMixin, StorageConnector):
             job_name: Name of the sync job.
         """
         self._delete_sync_job(job_name)
+
+
+@public
+class SftpConnector(StorageConnector):
+    """An SFTP server, reached with a password or a private key that stay in Hopsworks.
+
+    The data source backs files ingestion only: [`ingest_files`][hsfs.storage_connector.StorageConnector.ingest_files] copies the files under a prefix of `path` into a dataset.
+    It holds no tables, so it cannot be read through Spark, mounted as a feature group or used as a DLT table source.
+    The credentials are write-only: reading the data source back returns `credentials_set` instead of the password, private key or passphrase, and an update without them keeps the stored ones.
+
+    Example:
+        ```python
+        fs = project.get_feature_store()
+        sftp = SftpConnector(
+            id=None,
+            name="partner_drop",
+            featurestore_id=fs.id,
+            host="sftp.example.com",
+            username="hopsworks",
+            path="/outgoing",
+            private_key=open("id_ed25519").read(),
+        )
+        sftp.save()
+        job = sftp.ingest_files(dataset="partner_drop", prefix="2026/")
+        ```
+    """
+
+    type = StorageConnector.SFTP
+    PASSWORD = "PASSWORD"
+    PRIVATE_KEY = "PRIVATE_KEY"
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int | None,
+        description: str | None = None,
+        host: str | None = None,
+        port: int = 22,
+        username: str | None = None,
+        path: str = "/",
+        auth_type: str | None = None,
+        password: str | None = None,
+        private_key: str | None = None,
+        passphrase: str | None = None,
+        credentials_set: bool | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._host = host
+        self._port = port
+        self._username = username
+        self._path = path
+        if password or private_key or passphrase:
+            self._check_credentials(password, private_key, passphrase)
+        self._password = password
+        self._private_key = private_key
+        self._passphrase = passphrase
+        self._credentials_set = credentials_set
+        self._auth_type = auth_type or self._inferred_auth_type()
+
+    @staticmethod
+    def _check_credentials(
+        password: str | None, private_key: str | None, passphrase: str | None
+    ) -> None:
+        if bool(password) == bool(private_key):
+            raise ValueError("Give exactly one of password and private_key.")
+        if passphrase and not private_key:
+            raise ValueError("A passphrase needs a private_key.")
+
+    def _inferred_auth_type(self) -> str | None:
+        if self._private_key:
+            return self.PRIVATE_KEY
+        if self._password:
+            return self.PASSWORD
+        return None
+
+    @public
+    @property
+    def host(self) -> str | None:
+        """Host name or IP address of the server, without a scheme or a path."""
+        return self._host
+
+    @host.setter
+    def host(self, host: str) -> None:
+        self._host = host
+
+    @public
+    @property
+    def port(self) -> int:
+        """TCP port of the server."""
+        return self._port
+
+    @port.setter
+    def port(self, port: int) -> None:
+        self._port = port
+
+    @public
+    @property
+    def username(self) -> str | None:
+        """User the job logs in as."""
+        return self._username
+
+    @username.setter
+    def username(self, username: str) -> None:
+        self._username = username
+
+    @public
+    @property
+    def path(self) -> str:
+        """Absolute root path on the server; the `prefix` of a files ingestion job is relative to it."""
+        return self._path
+
+    @path.setter
+    def path(self, path: str) -> None:
+        self._path = path
+
+    @public
+    @property
+    def auth_type(self) -> str | None:
+        """`PASSWORD` or `PRIVATE_KEY`; derived from the credential given when not set."""
+        return self._auth_type
+
+    @public
+    @property
+    def credentials_set(self) -> bool | None:
+        """Whether a password or a private key is stored; the credentials themselves are never returned."""
+        return self._credentials_set
+
+    @public
+    def set_credentials(
+        self,
+        password: str | None = None,
+        private_key: str | None = None,
+        passphrase: str | None = None,
+    ) -> None:
+        """Replace the credentials sent by the next [`save`][hsfs.storage_connector.StorageConnector.save] or [`update`][hsfs.storage_connector.StorageConnector.update].
+
+        Exactly one of `password` and `private_key` is given; it also sets `auth_type`.
+
+        Parameters:
+            password: Password of the user, for `PASSWORD` authentication.
+            private_key: PEM-encoded private key of the user, for `PRIVATE_KEY` authentication.
+            passphrase: Passphrase of an encrypted private key.
+
+        Raises:
+            ValueError: If both or neither of `password` and `private_key` are given, or a passphrase comes without a private key.
+        """
+        self._check_credentials(password, private_key, passphrase)
+        self._password = password
+        self._private_key = private_key
+        self._passphrase = passphrase
+        self._auth_type = self._inferred_auth_type()
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "host": self._host,
+                "port": self._port,
+                "username": self._username,
+                "path": self._path,
+                "authType": self._auth_type,
+            }
+        )
+        if self._credentials_set is not None:
+            payload["credentialsSet"] = self._credentials_set
+        for key, value in (
+            ("password", self._password),
+            ("privateKey", self._private_key),
+            ("passphrase", self._passphrase),
+        ):
+            if value:
+                payload[key] = value
+        return payload
+
+    def spark_options(self) -> dict[str, Any]:
+        """Not supported: an SFTP data source is not read through Spark.
+
+        Raises:
+            NotImplementedError: Always.
+        """
+        raise NotImplementedError(
+            "SFTP data sources copy files into a dataset with ingest_files(); they are not read through Spark."
+        )
+
+    @public
+    def prepare_spark(self, path: str | None = None) -> str | None:
+        """Not supported: an SFTP data source is not read through Spark.
+
+        Parameters:
+            path: Not used.
+
+        Raises:
+            NotImplementedError: Always.
+        """
+        raise NotImplementedError(
+            "SFTP data sources copy files into a dataset with ingest_files(); they are not read through Spark."
+        )
+
+    @public
+    def read(
+        self,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str | None = None,
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
+        """Not supported: copy the files into a dataset with `ingest_files()` and read them there.
+
+        Parameters:
+            query: Not used.
+            data_format: Not used.
+            options: Not used.
+            path: Not used.
+            dataframe_type: Not used.
+
+        Raises:
+            NotImplementedError: Always.
+        """
+        raise NotImplementedError(
+            "SFTP data sources copy files into a dataset; use ingest_files() and read the files from the dataset."
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f"SftpConnector(name={self._name!r}, host={self._host!r}, port={self._port!r}, "
+            f"username={self._username!r}, path={self._path!r}, auth_type={self._auth_type!r}, "
+            f"credentials_set={self._credentials_set!r})"
+        )
+
+
+@public
+class GoogleDriveConnector(StorageConnector):
+    """A Google Drive folder, read with a service account whose key is stored in the project.
+
+    The data source backs files ingestion only: [`ingest_files`][hsfs.storage_connector.StorageConnector.ingest_files] copies the files under a prefix of the folder into a dataset.
+    It holds no tables, so it cannot be read through Spark, mounted as a feature group or used as a DLT table source.
+    `key_path` is the HopsFS path of the service account's JSON key, uploaded to the project beforehand as for a GCS data source, e.g. `/Projects/<project>/Resources/key.json`; Hopsworks deletes the key with the data source.
+    The folder, or the shared drive it lives in, must be shared with the service account, whose address is returned as `service_account_email`.
+
+    Example:
+        ```python
+        fs = project.get_feature_store()
+        drive = GoogleDriveConnector(
+            id=None,
+            name="shared_docs",
+            featurestore_id=fs.id,
+            key_path="/Projects/my_project/Resources/drive-sa.json",
+            folder_id="1AbCdEfGhIjKlMnOpQrStUvWxYz",
+            folder_name="Handbook",
+        )
+        drive.save()
+        job = drive.ingest_files(dataset="shared_docs", include=["**/*.pdf"])
+        ```
+    """
+
+    type = StorageConnector.GOOGLE_DRIVE
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int | None,
+        description: str | None = None,
+        key_path: str | None = None,
+        folder_id: str | None = None,
+        folder_name: str | None = None,
+        service_account_email: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._key_path = key_path
+        self._folder_id = folder_id
+        self._folder_name = folder_name
+        self._service_account_email = service_account_email
+
+    @public
+    @property
+    def key_path(self) -> str | None:
+        """HopsFS path of the service account's JSON key, inside the project."""
+        return self._key_path
+
+    @key_path.setter
+    def key_path(self, key_path: str) -> None:
+        self._key_path = key_path
+
+    @public
+    @property
+    def folder_id(self) -> str | None:
+        """ID of the Drive folder the files are read from, the last part of its URL in Drive."""
+        return self._folder_id
+
+    @folder_id.setter
+    def folder_id(self, folder_id: str) -> None:
+        self._folder_id = folder_id
+
+    @public
+    @property
+    def folder_name(self) -> str | None:
+        """Display name of the folder, for people; the folder is found by `folder_id`."""
+        return self._folder_name
+
+    @folder_name.setter
+    def folder_name(self, folder_name: str | None) -> None:
+        self._folder_name = folder_name
+
+    @public
+    @property
+    def service_account_email(self) -> str | None:
+        """Address of the service account the key belongs to, to share the folder with; read from the key by the backend."""
+        return self._service_account_email
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "keyPath": self._key_path,
+                "folderId": self._folder_id,
+                "folderName": self._folder_name,
+            }
+        )
+        if self._service_account_email is not None:
+            payload["serviceAccountEmail"] = self._service_account_email
+        return payload
+
+    def spark_options(self) -> dict[str, Any]:
+        """Not supported: a Google Drive data source is not read through Spark.
+
+        Raises:
+            NotImplementedError: Always.
+        """
+        raise NotImplementedError(
+            "Google Drive data sources copy files into a dataset with ingest_files(); they are not read through Spark."
+        )
+
+    @public
+    def prepare_spark(self, path: str | None = None) -> str | None:
+        """Not supported: a Google Drive data source is not read through Spark.
+
+        Parameters:
+            path: Not used.
+
+        Raises:
+            NotImplementedError: Always.
+        """
+        raise NotImplementedError(
+            "Google Drive data sources copy files into a dataset with ingest_files(); they are not read through Spark."
+        )
+
+    @public
+    def read(
+        self,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str | None = None,
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
+        """Not supported: copy the files into a dataset with `ingest_files()` and read them there.
+
+        Parameters:
+            query: Not used.
+            data_format: Not used.
+            options: Not used.
+            path: Not used.
+            dataframe_type: Not used.
+
+        Raises:
+            NotImplementedError: Always.
+        """
+        raise NotImplementedError(
+            "Google Drive data sources copy files into a dataset; use ingest_files() and read the files from the dataset."
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f"GoogleDriveConnector(name={self._name!r}, folder_id={self._folder_id!r}, "
+            f"folder_name={self._folder_name!r}, key_path={self._key_path!r}, "
+            f"service_account_email={self._service_account_email!r})"
+        )

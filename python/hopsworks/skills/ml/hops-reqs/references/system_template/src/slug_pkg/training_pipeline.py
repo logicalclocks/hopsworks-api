@@ -11,7 +11,10 @@ Three modes, one registration rule each:
 
     hops job deploy <slug>-train training_pipeline.py --env <training.environment> \
         --args "--mode research --bundle Resources/<slug>/runs/<run_id>/bundle.tar.gz \
-                --description 'run 3, e04c7d2: +charges_ratio'" --run --overwrite
+                --description run3_e04c7d2_plus_charges_ratio" --run --overwrite
+
+A job's arguments are split on whitespace and quotes are passed through, so no value may
+contain a space.
 
 The metrics that decide a run come from evaluate.py, never from this file.
 """
@@ -162,15 +165,19 @@ def train(x_train: Any, y_train: Any, system: dict, deadline: float) -> Any:
     The baseline is the simplest model that fits the task. Respect `deadline`
     (a time.monotonic() value) so runs stay comparable within `per_run`.
     """
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler
+
     task = system["requirements"]["problem"]["task"]
     if task == "classification":
         from sklearn.linear_model import LogisticRegression
 
-        model = LogisticRegression(max_iter=1000)
+        # Unscaled, lbfgs can run for minutes on one CPU without converging.
+        model = make_pipeline(StandardScaler(), LogisticRegression(max_iter=1000))
     else:
         from sklearn.linear_model import Ridge
 
-        model = Ridge()
+        model = make_pipeline(StandardScaler(), Ridge())
     model.fit(x_train, y_train.values.ravel() if hasattr(y_train, "values") else y_train)
     if time.monotonic() > deadline:
         raise TimeoutError("training exceeded per_run")
@@ -202,7 +209,11 @@ def short_checks(parts: dict, system: dict, leakage: list[str]) -> list[str]:
 
 
 def _new_training_dataset(fv: Any, system: dict, evaluate: Any) -> int:
-    """Create a training dataset version with the recorded split policy over the data now."""
+    """Create a training dataset version with the recorded split policy over the data now.
+
+    Temporal and grouped versions are in-memory: reading one by version recomputes the same rows
+    from the recorded bounds in seconds, where materializing it is a Spark job of minutes.
+    """
     split = system["training"]["split"]
     if split["kind"] == "temporal":
         bounds = evaluate.split_boundaries(
@@ -213,11 +224,11 @@ def _new_training_dataset(fv: Any, system: dict, evaluate: Any) -> int:
             evaluate.parse_period(system["requirements"]["problem"]["label_maturity"]),
         )
         bounds.pop("label_cutoff")
-        version, _ = fv.create_train_validation_test_split(
-            **bounds, write_options={"wait_for_job": True}
-        )
-        return version
+        fv.train_validation_test_split(**bounds)
+        return fv.get_last_accessed_training_dataset()
     if split["kind"] == "random":
+        # Materialized: an in-memory random split is redrawn on every read, over rows whose
+        # order is not guaranteed, so its parts would not stay frozen.
         version, _ = fv.create_train_validation_test_split(
             validation_size=split["validation_fraction"],
             test_size=split["test_fraction"],
@@ -225,8 +236,8 @@ def _new_training_dataset(fv: Any, system: dict, evaluate: Any) -> int:
             write_options={"wait_for_job": True},
         )
         return version
-    version, _ = fv.create_training_data(write_options={"wait_for_job": True})
-    return version
+    fv.training_data()
+    return fv.get_last_accessed_training_dataset()
 
 
 def _register(

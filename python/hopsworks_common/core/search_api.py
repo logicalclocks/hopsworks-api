@@ -42,6 +42,10 @@ DOC_TYPE_ARG = Literal[
     "MODEL",
     "DEPLOYMENT",
     "AGENT",
+    "DATASET",
+    "METRIC",
+    "SEMANTIC_PROJECT",
+    "SAVED_QUERY",
     "DATASOURCE",
     "ALL",
 ]
@@ -165,7 +169,7 @@ class SearchApi:
         limit: int = 100,
         global_search: bool = False,
     ) -> FeaturestoreSearchResult:
-        """Search for feature groups, feature views, training datasets, features, jobs, apps, models, deployments, agents and data sources.
+        """Search for feature groups, feature views, training datasets, features, jobs, apps, models, deployments, agents, data sources, datasets, and semantic layer metrics, semantic projects and saved queries.
 
         Parameters:
             search_term: The term to search for.
@@ -183,7 +187,7 @@ class SearchApi:
                 If `True`, search over all projects.
 
         Returns:
-            The search results with one list per entity type: feature groups, feature views, training datasets, features, jobs, apps, models, deployments, agents and data sources.
+            The search results with one list per entity type: feature groups, feature views, training datasets, features, jobs, apps, models, deployments, agents, data sources, datasets, metrics, semantic projects and saved queries.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request

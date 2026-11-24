@@ -53,6 +53,7 @@ import boto3
 import hsfs
 import pandas as pd
 import pyarrow as pa
+from botocore.config import Config as BotocoreConfig
 from botocore.response import StreamingBody
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
@@ -700,7 +701,35 @@ class Engine:
         # Connectors without a fixed bucket (e.g. Glue) take it from the path.
         bucket = storage_connector.bucket or location_bucket
 
-        if storage_connector.session_token is not None:
+        endpoint = getattr(storage_connector, "endpoint", None)
+        if endpoint:
+            # Stores such as Dell ECS refuse the flexible checksums botocore 1.36+ sends by default.
+            # Older botocore has neither the options nor the default.
+            checksums = (
+                {
+                    "request_checksum_calculation": "when_required",
+                    "response_checksum_validation": "when_required",
+                }
+                if "request_checksum_calculation" in BotocoreConfig.OPTION_DEFAULTS
+                else {}
+            )
+            s3 = boto3.client(
+                "s3",
+                aws_access_key_id=storage_connector.access_key,
+                aws_secret_access_key=storage_connector.secret_key,
+                aws_session_token=storage_connector.session_token,
+                endpoint_url=endpoint,
+                region_name=storage_connector.region,
+                config=BotocoreConfig(
+                    s3={
+                        "addressing_style": "path"
+                        if storage_connector.path_style_access
+                        else "virtual"
+                    },
+                    **checksums,
+                ),
+            )
+        elif storage_connector.session_token is not None:
             # This is only for AWS IAM role passthrough.
             # We don't need to set the endpoint_url and region here.
             s3 = boto3.client(
@@ -719,23 +748,10 @@ class Engine:
             )
 
         df_list = []
-        object_list = {"is_truncated": True}
-        while object_list.get("is_truncated", False):
-            if "NextContinuationToken" in object_list:
-                object_list = s3.list_objects_v2(
-                    Bucket=bucket,
-                    Prefix=prefix,
-                    MaxKeys=1000,
-                    ContinuationToken=object_list["NextContinuationToken"],
-                )
-            else:
-                object_list = s3.list_objects_v2(
-                    Bucket=bucket,
-                    Prefix=prefix,
-                    MaxKeys=1000,
-                )
-
-            for obj in object_list["Contents"]:
+        list_kwargs = {"Bucket": bucket, "Prefix": prefix, "MaxKeys": 1000}
+        while True:
+            object_list = s3.list_objects_v2(**list_kwargs)
+            for obj in object_list.get("Contents", []):
                 if not self._is_metadata_file(obj["Key"]) and obj["Size"] > 0:
                     obj = s3.get_object(
                         Bucket=bucket,
@@ -745,7 +761,9 @@ class Engine:
                         df_list.append(self._read_polars(data_format, obj["Body"]))
                     else:
                         df_list.append(self._read_pandas(data_format, obj["Body"]))
-        return df_list
+            if not object_list.get("IsTruncated"):
+                return df_list
+            list_kwargs["ContinuationToken"] = object_list["NextContinuationToken"]
 
     def _read_options(
         self, data_format: str | None, provided_options: dict[str, Any] | None

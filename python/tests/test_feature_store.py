@@ -17,6 +17,7 @@
 import warnings
 
 import pytest
+from hopsworks_common.client import exceptions
 from hsfs import feature_group as feature_group_mod
 from hsfs import feature_store as feature_store_mod
 from hsfs import storage_connector
@@ -605,3 +606,27 @@ class TestFeatureStoreDataSourceMandatoryTags:
         fs.create_data_source(connector, tags=tags)
 
         create.assert_called_once_with(connector, tags)
+
+    def test_create_data_source_refuses_a_response_without_the_endpoint(
+        self, mocker, backend_fixtures
+    ):
+        fs = self._fs(mocker, backend_fixtures)
+        connector = storage_connector.S3Connector(
+            id=None,
+            name="ecs",
+            featurestore_id=None,
+            bucket="landing",
+            endpoint="https://s3.example.com:9021",
+        )
+        mocker.patch.object(
+            fs._storage_connector_api,
+            "_create",
+            return_value=storage_connector.S3Connector(
+                id=1, name="ecs", featurestore_id=fs.id, bucket="landing"
+            ),
+        )
+
+        with pytest.raises(
+            exceptions.FeatureStoreException, match="saved without its endpoint"
+        ):
+            fs.create_data_source(connector)

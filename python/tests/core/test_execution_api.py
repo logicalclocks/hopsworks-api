@@ -85,10 +85,10 @@ class TestExecutionApiStart:
         assert body["args"] == "--flag value"
         assert body["envVars"] == {
             "FOO": "bar",
-            "HOPS_END_TIME": end_time.isoformat(),
+            "HOPS_END_TIME": "2026-04-02T00:00:00Z",
         }
-        assert body["logicalDate"] == logical_date.isoformat()
-        assert body["dataIntervalEnd"] == end_time.isoformat()
+        assert body["logicalDate"] == "2026-04-01T00:00:00Z"
+        assert body["dataIntervalEnd"] == "2026-04-02T00:00:00Z"
 
 
 class TestJobApiLaunch:
@@ -195,3 +195,24 @@ class TestExecutionPodLog:
         assert podlog.log == "line1\nline2"
         assert podlog.pod_name == "ingest-table-0"
         assert podlog.container_name == "dlt"
+
+
+class TestStartTimeFormat:
+    def test_a_window_bound_is_utc_with_z_as_the_scheduler_sets_it(self):
+        from datetime import datetime, timedelta, timezone
+
+        from hopsworks_common import util
+        from hopsworks_common.core.execution_api import _to_iso
+
+        stockholm = timezone(timedelta(hours=1))
+        assert (
+            _to_iso(datetime(2026, 2, 20, 1, 0, tzinfo=stockholm))
+            == "2026-02-20T00:00:00Z"
+        )
+        assert _to_iso(datetime(2026, 2, 20)) == "2026-02-20T00:00:00Z"
+        assert (
+            _to_iso(datetime(2026, 2, 20, 0, 0, 0, 123456, tzinfo=timezone.utc))
+            == "2026-02-20T00:00:00.123456Z"
+        )
+        for value in ("2026-02-20T00:00:00Z", "2026-02-20T00:00:00.123456Z"):
+            util._get_timestamp_from_date_string(value)

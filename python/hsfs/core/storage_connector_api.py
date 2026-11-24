@@ -72,8 +72,9 @@ class StorageConnectorApi:
             The created storage connector with its assigned id.
 
         Raises:
-            hopsworks.client.exceptions.FeatureStoreException: If tags are passed to a Hopsworks backend older than 5.3.
+            hopsworks.client.exceptions.FeatureStoreException: If tags are passed to a Hopsworks backend older than 5.3, or an S3 data source with an endpoint, which it cannot store.
         """
+        self._require_endpoint_support(storage_connector_instance)
         body = storage_connector_instance.to_dict()
         tag_list = tag.Tag._normalize(tags)
         if tag_list:
@@ -115,7 +116,11 @@ class StorageConnectorApi:
 
         Returns:
             The updated storage connector.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If an S3 data source has an endpoint and the backend is older than 5.3, which cannot store it.
         """
+        self._require_endpoint_support(storage_connector_instance)
         _client = client._get_instance()
         path_params = [
             "project",
@@ -158,15 +163,39 @@ class StorageConnectorApi:
         return None
 
     @staticmethod
-    def _require_data_source_tags() -> None:
-        # An older backend has no tags field on the connector and ignores unknown JSON properties, so it would create the data source and drop its tags without an error.
+    def _backend_before_5_3() -> str | None:
+        """The backend's version when it predates 5.3, else None, also when the version is unknown."""
         connection = client._get_connection()
         backend_version = connection.backend_version if connection else None
         match = re.match(r"(\d+)\.(\d+)", backend_version or "")
         if match and (int(match.group(1)), int(match.group(2))) < (5, 3):
+            return backend_version
+        return None
+
+    @staticmethod
+    def _require_data_source_tags() -> None:
+        # An older backend has no tags field on the connector and ignores unknown JSON properties, so it would create the data source and drop its tags without an error.
+        backend_version = StorageConnectorApi._backend_before_5_3()
+        if backend_version:
             raise FeatureStoreException(
                 f"Hopsworks {backend_version} cannot store tags on a data source; they need Hopsworks 5.3 or later. "
                 "Create the data source without tags."
+            )
+
+    @staticmethod
+    def _require_endpoint_support(
+        storage_connector_instance: storage_connector.StorageConnector,
+    ) -> None:
+        # An older backend ignores the endpoint fields too, so it would store the data source targeting AWS S3.
+        # The response check after the request still covers a backend whose version the client does not know.
+        endpoint = getattr(storage_connector_instance, "_endpoint", None)
+        if not (endpoint and endpoint.strip()):
+            return
+        backend_version = StorageConnectorApi._backend_before_5_3()
+        if backend_version:
+            raise FeatureStoreException(
+                f"Hopsworks {backend_version} cannot store the endpoint of data source "
+                f"'{storage_connector_instance.name}', so it would target AWS S3; the endpoint needs Hopsworks 5.3 or later."
             )
 
     def _refetch(
