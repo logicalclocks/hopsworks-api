@@ -48,6 +48,40 @@ class TestExecutionApiStart:
         j.name = "my_job"
         return j
 
+    def test_resources_are_sent_in_the_json_body(
+        self, mock_client, mock_from_response, job
+    ):
+        resources = {"resourceConfig": {"memory": 16384, "gpus": 1}}
+
+        ExecutionApi()._start(job, args="--flag value", resources=resources)
+
+        _, kwargs = mock_client._send_request.call_args
+        assert kwargs["headers"] == {"content-type": "application/json"}
+        assert json.loads(kwargs["data"]) == {
+            "args": "--flag value",
+            "resources": resources,
+        }
+
+    def test_resources_without_args_leave_the_args_to_the_job(
+        self, mock_client, mock_from_response, job
+    ):
+        # No "args" key: the backend then runs the job's default arguments.
+        ExecutionApi()._start(job, resources={"spark.executor.memory": 16384})
+
+        _, kwargs = mock_client._send_request.call_args
+        assert json.loads(kwargs["data"]) == {
+            "resources": {"spark.executor.memory": 16384}
+        }
+
+    def test_empty_resources_keep_the_plain_text_start(
+        self, mock_client, mock_from_response, job
+    ):
+        ExecutionApi()._start(job, args="--flag value", resources={})
+
+        _, kwargs = mock_client._send_request.call_args
+        assert kwargs["headers"] == {"content-type": "text/plain"}
+        assert kwargs["data"] == "--flag value"
+
     def test_legacy_args_sets_text_plain_content_type(
         self, mock_client, mock_from_response, job
     ):

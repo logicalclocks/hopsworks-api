@@ -8,6 +8,7 @@ follows the same memoized-session pattern as the rest of the CLI.
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import shutil
 import tempfile
@@ -376,6 +377,15 @@ _UTC_DATETIME = _UtcDateTime(formats=_DT_FORMATS)
     default=None,
     help="ISO timestamp for HOPS_END_TIME (data interval end). Requires --start-time.",
 )
+@click.option(
+    "--resources",
+    default=None,
+    help=(
+        "Resources for this execution alone, as JSON with the compute fields to change, e.g. "
+        '\'{"resourceConfig": {"memory": 16384, "gpus": 1}}\' or '
+        "'{\"spark.executor.memory\": 16384}'. Other fields keep the job's value."
+    ),
+)
 @click.pass_context
 def job_run(
     ctx: click.Context,
@@ -384,6 +394,7 @@ def job_run(
     wait: bool,
     start_time: datetime | None,
     end_time: datetime | None,
+    resources: str | None,
 ) -> None:
     """Start a new one-off execution of ``name``.
 
@@ -399,9 +410,18 @@ def job_run(
         wait: Block until the execution terminates.
         start_time: ISO timestamp for ``HOPS_START_TIME``.
         end_time: ISO timestamp for ``HOPS_END_TIME``.
+        resources: JSON with the compute fields to change for this execution alone.
     """
     if end_time is not None and start_time is None:
         raise click.UsageError("--end-time requires --start-time.")
+    run_resources = None
+    if resources:
+        try:
+            run_resources = json.loads(resources)
+        except ValueError as exc:
+            raise click.UsageError(f"--resources is not valid JSON: {exc}") from exc
+        if not isinstance(run_resources, dict):
+            raise click.UsageError("--resources must be a JSON object.")
     job = _get_job(ctx, name)
     try:
         execution = job.run(
@@ -409,6 +429,7 @@ def job_run(
             await_termination=wait,
             start_time=start_time,
             end_time=end_time,
+            resources=run_resources,
         )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Run failed: {exc}") from exc
@@ -966,6 +987,7 @@ def _execution_to_dict(execution: Any) -> dict[str, Any]:
         "final_status": getattr(execution, "final_status", None),
         "submission_time": getattr(execution, "submission_time", None),
         "duration_s": _duration_s(execution),
+        "resources": getattr(execution, "resources", None),
     }
 
 

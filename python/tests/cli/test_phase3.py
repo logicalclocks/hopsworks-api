@@ -11,6 +11,7 @@ import json
 from datetime import datetime, timezone
 from unittest import mock
 
+import pytest
 from click.testing import CliRunner
 from hopsworks.cli.main import cli
 
@@ -187,8 +188,40 @@ def test_job_run_with_wait(mock_project):
     result = CliRunner().invoke(cli, ["job", "run", "etl", "--wait"])
     assert result.exit_code == 0, result.output
     job.run.assert_called_with(
-        args=None, await_termination=True, start_time=None, end_time=None
+        args=None,
+        await_termination=True,
+        start_time=None,
+        end_time=None,
+        resources=None,
     )
+
+
+def test_job_run_passes_the_resources_of_the_execution(mock_project):
+    api = mock.MagicMock()
+    job = mock.MagicMock()
+    job.run.return_value = mock.MagicMock(id=6, state="INITIALIZING")
+    api.get_job.return_value = job
+    mock_project.get_job_api.return_value = api
+    result = CliRunner().invoke(
+        cli,
+        ["job", "run", "etl", "--resources", '{"resourceConfig": {"memory": 16384}}'],
+    )
+    assert result.exit_code == 0, result.output
+    assert job.run.call_args.kwargs["resources"] == {
+        "resourceConfig": {"memory": 16384}
+    }
+
+
+@pytest.mark.parametrize("value", ["{not json", "[1, 2]"])
+def test_job_run_rejects_resources_that_are_not_a_json_object(mock_project, value):
+    api = mock.MagicMock()
+    job = mock.MagicMock()
+    api.get_job.return_value = job
+    mock_project.get_job_api.return_value = api
+    result = CliRunner().invoke(cli, ["job", "run", "etl", "--resources", value])
+    assert result.exit_code != 0
+    assert "--resources" in result.output
+    job.run.assert_not_called()
 
 
 def test_job_backfill_reads_a_timestamp_without_offset_as_utc(mock_project):

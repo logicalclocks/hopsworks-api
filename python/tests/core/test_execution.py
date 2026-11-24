@@ -38,6 +38,25 @@ class TestExecution:
         assert ex.final_status == "test_final_status"
         assert ex.state == "test_state"
 
+    def test_resources_keep_the_names_of_the_job_configuration(self):
+        # The keys are what Job.run takes back, so they must not be decamelized.
+        resources = {
+            "resourceConfig": {"memory": 16384, "shmSize": 256},
+            "hopsfsMountConfig": {"namenodeConnections": 4},
+        }
+        single = {"id": 1, "rerunCount": 2, "resources": resources, "resourcesId": 9}
+
+        ex = execution.Execution.from_response_json(single, job=mock.Mock())
+        ex_list = execution.Execution.from_response_json(
+            {"count": 2, "items": [single, {"id": 2}]}, job=mock.Mock()
+        )
+
+        assert ex.resources == resources
+        assert ex.rerun_count == 2
+        assert ex_list[0].resources == resources
+        assert ex_list[1].resources is None
+        assert ex.update_from_response_json(single).resources == resources
+
     def test_from_response_json_empty(self, backend_fixtures):
         # Arrange
         json = backend_fixtures["execution"]["get_empty"]["response"]

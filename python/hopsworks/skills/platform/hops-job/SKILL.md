@@ -65,6 +65,23 @@ job.config["resourceConfig"]["memory"] = 4096      # MB; "cores" beside it
 job.save()
 ```
 
+To give one run more (a backfill, a retry after an out-of-memory kill) without
+changing the job, pass the fields to change for that run only. Everything not
+given, and every later run, keeps the job's values:
+
+```python
+job.run(resources={"resourceConfig": {"memory": 16384, "gpus": 1}})
+```
+
+```bash
+hops job run telco-churn-features --resources '{"resourceConfig": {"memory": 16384}}'
+```
+
+The names are those of `job.config`: `resourceConfig` and `hopsfsMountConfig`
+for Python, ingestion and agent jobs, `spark.executor.memory`,
+`spark.executor.instances`, ... for Spark, `workerMemory`, `workerGpus`, ... for
+Ray. `execution.resources` shows what a run was given.
+
 Pick the environment for the job's role: `python-feature-pipeline` (feature
 pipelines), `pandas-training-pipeline` (training). Inference environments (e.g.
 `pandas-inference-pipeline`) are deployment-only and cannot run as jobs.

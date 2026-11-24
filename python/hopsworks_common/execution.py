@@ -47,6 +47,8 @@ class Execution:
         href=None,
         job=None,
         rerun_count=None,
+        resources=None,
+        resources_id=None,
         attempts=None,
         files_progress=None,
         **kwargs,
@@ -54,6 +56,8 @@ class Execution:
         self._id = id
         self._files_progress = files_progress
         self._rerun_count = rerun_count
+        self._resources = resources
+        self._resources_id = resources_id
         self._attempts = attempts
         self._final_status = final_status
         self._state = state
@@ -74,12 +78,17 @@ class Execution:
 
     @staticmethod
     def _decamelize(json_dict):
-        # `filesProgress` is handed to the user as the backend sends it, so its
-        # camelCase keys must survive the decamelization of the rest.
+        # `filesProgress` and `resources` are handed to the user as the backend
+        # sends them, so their camelCase keys must survive the decamelization of
+        # the rest. The keys of `resources` are names of the job configuration
+        # (`resourceConfig`, `spark.executor.memory`), which `Job.run` takes back.
         files_progress = json_dict.get("filesProgress")
+        resources = json_dict.get("resources")
         json_decamelized = humps.decamelize(json_dict)
         if files_progress is not None:
             json_decamelized["files_progress"] = files_progress
+        if resources is not None:
+            json_decamelized["resources"] = resources
         return json_decamelized
 
     @classmethod
@@ -195,6 +204,16 @@ class Execution:
     def rerun_count(self) -> int:
         """How many times this execution was re-run in place after failing."""
         return self._rerun_count or 0
+
+    @public
+    @property
+    def resources(self) -> dict | None:
+        """The resources given for this execution alone, as a partial job configuration.
+
+        Only the fields that were set when the execution was started; every other field was the job's.
+        `None` for an execution that ran with the job's resources.
+        """
+        return self._resources
 
     @public
     @property
