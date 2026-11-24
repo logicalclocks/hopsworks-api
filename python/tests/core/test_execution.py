@@ -257,6 +257,37 @@ class TestExecutionAttemptLogs:
             == "/Projects/p/Logs/Python/j/7/attempt-1/stdout.log"
         )
 
+    def test_attempts_carry_how_each_ended_and_when_it_ran(self):
+        ex = Execution.from_response_json(
+            {
+                "id": 7,
+                "rerunCount": 2,
+                "state": "FINISHED",
+                "finalStatus": "SUCCEEDED",
+                "attempts": [
+                    {
+                        "attempt": 1,
+                        "state": "FAILED",
+                        "finalStatus": "FAILED",
+                        "startTime": 1000,
+                        "stopTime": 9000,
+                    },
+                    # set aside before outcomes were recorded
+                    {"attempt": 2, "stopTime": 12000},
+                ],
+            },
+            job=mock.Mock(),
+        )
+
+        first, second = ex.attempts
+        assert first["state"] == "FAILED"
+        assert first["final_status"] == "FAILED"
+        assert (first["start_time"], first["stop_time"]) == (1000, 9000)
+        assert "final_status" not in second
+        assert second["stop_time"] == 12000
+        # the current attempt is the execution itself
+        assert ex.final_status == "SUCCEEDED"
+
     def test_attempts_empty_when_never_rerun(self):
         assert Execution(id=1, job=mock.Mock()).attempts == []
 
