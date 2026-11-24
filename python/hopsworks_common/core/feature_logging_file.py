@@ -696,12 +696,21 @@ class _Uploader(threading.Thread):
                 backoff = min(600.0, backoff * 2)
 
     def _drain(self, deadline: float) -> bool:
-        """Upload what is ready until the deadline; `True` when nothing is left."""
-        while self._writer._has_ready() and time.monotonic() < deadline:
+        """Upload what is ready until the deadline; `True` when nothing is left.
+
+        Returns only once an upload the thread already started has finished and been counted.
+        """
+        while time.monotonic() < deadline:
+            # Checked under the lock: the thread removes an uploaded chunk before it counts it and
+            # triggers the commit, so an unlocked check can see no chunk while that is still to happen.
             with self.lock:
-                if not self._writer._upload_ready():
-                    time.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
-        return not self._writer._has_ready()
+                if not self._writer._has_ready():
+                    return True
+                uploaded = self._writer._upload_ready()
+            if not uploaded:
+                time.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
+        with self.lock:
+            return not self._writer._has_ready()
 
 
 def _writer_main(options: _FileLogOptions, stdin=None, stdout=None) -> None:
