@@ -2062,6 +2062,13 @@ class Engine:
             [b for b in (storage_connector.bucket, path_bucket) if b],
         )
 
+        # Iceberg opens s3:// manifest paths even when the top-level location uses s3a://.
+        # Spark Connect and already initialized Iceberg catalogs need the mapping at server or driver startup.
+        if not self._is_connect:
+            self._set_hadoop_conf_if_unset(
+                "fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem"
+            )
+
         # The argument arrive here as strings
         if storage_connector.arguments.get(FS_S3_GLOBAL_CONF, "True").lower() == "true":
             # For legacy behaviour set the S3 values at global level
