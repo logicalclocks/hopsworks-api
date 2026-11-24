@@ -1938,43 +1938,11 @@ print(json.dumps(out))
 
     def test_the_stop_signal_starts_the_drain_on_a_real_server(self, tmp_path):
         """A SIGTERM to a real uvicorn: the budget runs from the signal, not from the lifespan's end."""
-        import os
         import signal
-        import socket
-        import subprocess
-        import sys
         import threading
         import time
 
-        script = tmp_path / "agent.py"
-        script.write_text(
-            "import asyncio, sys\n"
-            "import uvicorn\n"
-            "from hopsworks_agents.protocol import AgentApp\n"
-            "app = AgentApp()\n"
-            "@app.chat\n"
-            "async def chat(request, ctx):\n"
-            "    await asyncio.sleep(30)\n"
-            "    return 'late'\n"
-            "uvicorn.run(app, host='127.0.0.1', port=int(sys.argv[1]), "
-            "log_level='warning')\n"
-        )
-        with socket.socket() as probe:
-            probe.bind(("127.0.0.1", 0))
-            port = probe.getsockname()[1]
-        env = dict(os.environ, HOPSWORKS_AGENT_TASK_DRAIN_SECONDS="1")
-        proc = subprocess.Popen([sys.executable, str(script), str(port)], env=env)
-        base = f"http://127.0.0.1:{port}"
-        try:
-            for _ in range(200):
-                try:
-                    if httpx.get(f"{base}/health", timeout=1).status_code == 200:
-                        break
-                except httpx.HTTPError:
-                    time.sleep(0.1)
-            else:
-                pytest.fail("the server did not come up")
-
+        with _real_server(tmp_path, drain_seconds="1") as (proc, base):
             outcome = {}
 
             def blocking_send():
@@ -2006,9 +1974,100 @@ print(json.dumps(out))
             assert answered < 10
             # uvicorn re-raises the signal it captured once it has stopped
             assert proc.wait(timeout=20) in (0, -signal.SIGTERM)
-        finally:
-            if proc.poll() is None:
-                proc.kill()
+
+    def test_a_stream_stays_open_through_the_drain_on_a_real_server(self, tmp_path):
+        """sse-starlette would end the stream at the signal; the caller must see the terminal event."""
+        import signal
+        import threading
+        import time
+
+        with _real_server(tmp_path, drain_seconds="1") as (proc, base):
+            outcome = {}
+
+            def streaming_send():
+                async def call():
+                    async with httpx.AsyncClient(base_url=base, timeout=30) as http:
+                        card = await A2ACardResolver(http, base).get_agent_card()
+                        client = ClientFactory(
+                            ClientConfig(httpx_client=http, streaming=True)
+                        ).create(card)
+                        outcome["events"] = await send(client, user_message("q"))
+
+                try:
+                    asyncio.run(call())
+                except Exception as err:  # noqa: BLE001 -- asserted below
+                    outcome["error"] = err
+
+            caller = threading.Thread(target=streaming_send)
+            caller.start()
+            time.sleep(1.0)
+            signalled = time.monotonic()
+            proc.send_signal(signal.SIGTERM)
+            caller.join(timeout=20)
+            ended = time.monotonic() - signalled
+            assert "error" not in outcome, outcome.get("error")
+            events = outcome["events"]
+            last = events[-1]
+            assert last.HasField("status_update"), events
+            assert (
+                TaskState.Name(last.status_update.status.state) == "TASK_STATE_FAILED"
+            )
+            assert (
+                hopsworks_of(last.status_update.status.message)["status"]
+                == "executor_shutdown"
+            )
+            # the stream outlived the signal for the budget, and no longer
+            assert 0.5 < ended < 10
+            assert proc.wait(timeout=20) in (0, -signal.SIGTERM)
+
+
+class _real_server:  # noqa: N801 -- a context manager
+    """A real uvicorn in a subprocess, serving an agent whose handler sleeps 30 s."""
+
+    def __init__(self, tmp_path, drain_seconds):
+        self._tmp_path = tmp_path
+        self._drain_seconds = drain_seconds
+
+    def __enter__(self):
+        import os
+        import socket
+        import subprocess
+        import sys
+        import time
+
+        script = self._tmp_path / "agent.py"
+        script.write_text(
+            "import asyncio, sys\n"
+            "import uvicorn\n"
+            "from hopsworks_agents.protocol import AgentApp\n"
+            "app = AgentApp()\n"
+            "@app.chat\n"
+            "async def chat(request, ctx):\n"
+            "    await asyncio.sleep(30)\n"
+            "    return 'late'\n"
+            "uvicorn.run(app, host='127.0.0.1', port=int(sys.argv[1]), "
+            "log_level='warning')\n"
+        )
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+        env = dict(os.environ, HOPSWORKS_AGENT_TASK_DRAIN_SECONDS=self._drain_seconds)
+        self._proc = subprocess.Popen([sys.executable, str(script), str(port)], env=env)
+        base = f"http://127.0.0.1:{port}"
+        for _ in range(200):
+            try:
+                if httpx.get(f"{base}/health", timeout=1).status_code == 200:
+                    break
+            except httpx.HTTPError:
+                time.sleep(0.1)
+        else:
+            self._proc.kill()
+            pytest.fail("the server did not come up")
+        return self._proc, base
+
+    def __exit__(self, *exc):
+        if self._proc.poll() is None:
+            self._proc.kill()
 
 
 def _far():

@@ -166,6 +166,7 @@ class AgentApp(FastAPI):
         self._drain_deadline: float | None = None
         self._drain_watchdog: asyncio.Task | None = None
         self._stop_handlers: list[tuple[int, Any]] = []
+        self._streams_follow_drain = False
         # Records which conversation was with whom, for anyone later holding a
         # customer key and no way to find their conversations. Constructed
         # unconditionally but connects nothing until something identifies a
@@ -1701,6 +1702,12 @@ class AgentApp(FastAPI):
 
         if threading.current_thread() is not threading.main_thread():
             return
+        # sse-starlette ends every open stream the moment the server is told
+        # to exit, which would cut a streaming caller off from its terminal
+        # event; the streams are kept through the drain instead, and closed
+        # when it ends (_streams_may_close), as its contract asks.
+        _sse_streams_follow_the_drain(True)
+        self._streams_follow_drain = True
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGTERM, signal.SIGINT):
             try:
@@ -1727,6 +1734,15 @@ class AgentApp(FastAPI):
             with contextlib.suppress(ValueError, OSError, TypeError):
                 signal.signal(sig, previous)
         self._stop_handlers.clear()
+        self._streams_may_close()
+        if self._streams_follow_drain:
+            _sse_streams_follow_the_drain(False)
+            self._streams_follow_drain = False
+
+    def _streams_may_close(self) -> None:
+        """The drain is over: the streams it kept open may end now."""
+        if self._streams_follow_drain:
+            _sse_streams_follow_the_drain(None)
 
     def _begin_drain(self) -> None:
         """The pod was told to stop: take no new work, and start the budget.
@@ -1763,6 +1779,7 @@ class AgentApp(FastAPI):
             await asyncio.wait(late, timeout=5)
         if self._a2a is not None:
             await self._a2a.executor._settled(timeout=5)
+        self._streams_may_close()
 
     async def _drain(self) -> None:
         """Let the turns still running finish before the process exits.
@@ -1794,8 +1811,28 @@ class AgentApp(FastAPI):
         remaining = max(0.0, (self._drain_deadline or loop.time()) - loop.time())
         _, late = await asyncio.wait(pending, timeout=remaining)
         if not late:
+            self._streams_may_close()
             return
         await self._abort_turns()
+
+
+def _sse_streams_follow_the_drain(keep: bool | None) -> None:
+    """Tell sse-starlette whether open streams outlive the exit signal.
+
+    ``True`` keeps them open past the signal, ``None`` lets them close now
+    (the drain is over), ``False`` restores the library's own behaviour.
+    sse-starlette is the SDK's SSE response; without it there is nothing to do.
+    """
+    try:
+        from sse_starlette.sse import AppStatus  # noqa: PLC0415
+    except ImportError:  # pragma: no cover - the agents extra brings it
+        return
+    if keep is True:
+        AppStatus.disable_automatic_graceful_drain()
+    elif keep is None:
+        AppStatus.should_exit = True
+    else:
+        AppStatus.enable_automatic_graceful_drain_mode()
 
 
 # Turns settled after their client hung up, held so the loop keeps them.
