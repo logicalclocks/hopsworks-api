@@ -594,10 +594,11 @@ class SemanticProject:
             self._latest_build = build
             return build
         # One budget for the whole wait, every request included: the server's own wait and the polls.
-        deadline = time.monotonic() + _COMPILE_TIMEOUT_SECONDS
+        start = time.monotonic()
 
         def budget() -> tuple[float, float]:
-            remaining = deadline - time.monotonic()
+            # Elapsed time rather than a deadline: when the clock has not ticked, (t + 600) - t can round above 600.
+            remaining = _COMPILE_TIMEOUT_SECONDS - (time.monotonic() - start)
             if remaining <= 0:
                 raise SemanticLayerException(
                     f"The compile of semantic project '{self._name}' has not ended after "
