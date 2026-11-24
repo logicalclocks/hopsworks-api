@@ -849,7 +849,10 @@ class DatasetApi:
         num_chunks = math.ceil(parquet_length / self.DEFAULT_FLOW_CHUNK_SIZE)
 
         base_params = self._get_flow_base_params(
-            feature_group, num_chunks, parquet_length, self.DEFAULT_FLOW_CHUNK_SIZE
+            util._feature_group_name(feature_group),
+            num_chunks,
+            parquet_length,
+            self.DEFAULT_FLOW_CHUNK_SIZE,
         )
 
         chunk_number = 1
