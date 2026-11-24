@@ -1198,17 +1198,21 @@ class Predictor(DeployableComponent):
     @public
     @property
     def loading_strategy(self) -> str | None:
-        """How the model server reads the model files: `'MOUNT'`, `'RUNAI_STREAMER'` or `'DOWNLOAD'`.
+        """How the model server reads the model files.
 
-        `'MOUNT'` mounts the model files read-only from HopsFS and the model server reads them in place; it is accepted by every model server, and vLLM reads each safetensors file whole into memory before loading it, unless its configuration file sets `safetensors_load_strategy`.
-        `'RUNAI_STREAMER'` mounts the files the same way and vLLM loads them with the Run:ai Model Streamer, which can load faster when the deployment requests several GPUs; it is accepted by vLLM only, on GPUs, for a model with safetensors weights at the top of its files and not with the vLLM-Omni variant.
-        `'DOWNLOAD'` copies the files to the local disk of the pod before the model server starts; it is accepted by every model server.
-        The two mount strategies need the HopsFS CSI driver on the cluster.
+        - `'MOUNT'` lets any model server read the files in place from a read-only HopsFS mount.
+          For plain vLLM, Hopsworks adds `--safetensors-load-strategy eager` by default, so each safetensors file is read into host memory before its tensors are loaded.
+          Hopsworks skips this flag for vLLM-Omni, when the vLLM configuration file sets `safetensors-load-strategy` or enables `enable_multithread_load` in `model-loader-extra-config`, or when Hopsworks cannot read the file.
+        - `'RUNAI_STREAMER'` uses the same mount and loads weights with the Run:ai Model Streamer, which can be faster on several GPUs.
+          It requires plain vLLM on GPUs and safetensors weights at the top level of the model's files.
+        - `'DOWNLOAD'` copies the files to the pod's local disk before the model server starts and works with every model server.
+
+        Both mount strategies require the HopsFS CSI driver on the cluster.
         The values are also available as `PREDICTOR.LOADING_STRATEGY_*` constants in `hsml.constants`.
 
-        `None` lets Hopsworks choose when the deployment is created: `'RUNAI_STREAMER'` for a vLLM deployment that requests GPUs, with the HopsFS CSI driver and a model the streamer can load, `'DOWNLOAD'` otherwise.
-        Setting it to `None` before a save call keeps the stored value unchanged.
-        A saved deployment of a model reports the strategy in effect; a deployment without a model reports `None`.
+        On creation, `None` selects `'RUNAI_STREAMER'` when its requirements are met and `'DOWNLOAD'` otherwise.
+        On update, `None` keeps the stored strategy.
+        A saved model deployment reports the strategy in effect. A deployment without a model reports `None`.
         """
         return self._loading_strategy
 
