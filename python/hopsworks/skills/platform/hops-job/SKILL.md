@@ -105,6 +105,13 @@ the job inserts: `fg.statistics_config = False; fg.update_statistics_config()`.
 Statistics a project needs are computed by a Spark job of their own, scheduled
 where it is wanted.
 
+## Arguments
+
+A job's argument string (`--args`, `defaultArgs`) is split on whitespace and
+quotes are passed through as characters, so `--description 'run 3'` reaches
+the program as `'run`, `3'` and argparse fails. Keep every value free of
+spaces (`run3_baseline`), or put free text in the bundle instead.
+
 ## Windows and backfill
 
 A scheduled program processes one data window per fire. The scheduler sets

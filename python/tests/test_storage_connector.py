@@ -92,6 +92,8 @@ class TestS3Connector:
         assert sc.session_token == "test_session_token"
         assert sc.iam_role == "test_iam_role"
         assert sc.arguments == {"test_name": "test_value"}
+        assert sc.endpoint == "https://s3.example.com:9021"
+        assert sc.path_style_access is True
 
     def test_from_response_json_basic_info(self, backend_fixtures):
         # Arrange
@@ -113,6 +115,173 @@ class TestS3Connector:
         assert sc.session_token is None
         assert sc.iam_role is None
         assert sc.arguments == {}
+        assert sc.endpoint is None
+        assert sc.path_style_access is None
+
+    def test_round_trip_keeps_endpoint_and_path_style(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_s3"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        again = storage_connector.StorageConnector.from_response_json(sc.to_dict())
+
+        assert again.endpoint == "https://s3.example.com:9021"
+        assert again.path_style_access is True
+
+    def test_connector_options_with_endpoint(self, mocker):
+        mocker.patch("hsfs.storage_connector.StorageConnector._refetch")
+        sc = storage_connector.S3Connector(
+            id=1,
+            name="ecs",
+            featurestore_id=1,
+            bucket="landing",
+            region="us-east-1",
+            access_key="ak",
+            secret_key="sk",
+            endpoint="https://s3.example.com:9021",
+            path_style_access=True,
+        )
+
+        options = sc.connector_options()
+
+        assert options["endpoint"] == "s3.example.com:9021"
+        assert options["use_ssl"] is True
+        assert options["url_style"] == "path"
+        assert options["region"] == "us-east-1"
+
+    def test_connector_options_with_http_endpoint_and_virtual_hosts(self, mocker):
+        mocker.patch("hsfs.storage_connector.StorageConnector._refetch")
+        sc = storage_connector.S3Connector(
+            id=1,
+            name="minio",
+            featurestore_id=1,
+            bucket="landing",
+            endpoint="http://minio.example.com:9000",
+        )
+
+        options = sc.connector_options()
+
+        assert options["endpoint"] == "minio.example.com:9000"
+        assert options["use_ssl"] is False
+        assert options["url_style"] == "vhost"
+
+    @pytest.mark.parametrize(
+        ("ssl", "path_style", "use_ssl", "url_style"),
+        [
+            ("true", "true", True, "path"),
+            ("false", "false", False, "vhost"),
+            ("False", "TRUE", False, "path"),
+        ],
+    )
+    def test_connector_options_from_spark_options(
+        self, mocker, ssl, path_style, use_ssl, url_style
+    ):
+        mocker.patch("hsfs.storage_connector.StorageConnector._refetch")
+        sc = storage_connector.S3Connector(
+            id=1,
+            name="legacy",
+            featurestore_id=1,
+            bucket="landing",
+            arguments=[
+                {"name": "fs.s3a.endpoint", "value": "minio:9000"},
+                {"name": "fs.s3a.connection.ssl.enabled", "value": ssl},
+                {"name": "fs.s3a.path.style.access", "value": path_style},
+            ],
+        )
+
+        options = sc.connector_options()
+
+        assert options["endpoint"] == "minio:9000"
+        assert options["use_ssl"] is use_ssl
+        assert options["url_style"] == url_style
+
+    def test_connector_options_without_endpoint_or_spark_options(self, mocker):
+        mocker.patch("hsfs.storage_connector.StorageConnector._refetch")
+        sc = storage_connector.S3Connector(
+            id=1, name="aws", featurestore_id=1, bucket="landing", region="eu-north-1"
+        )
+
+        options = sc.connector_options()
+
+        assert "endpoint" not in options
+        assert "use_ssl" not in options
+        assert "url_style" not in options
+
+    def test_save_refuses_a_response_without_the_endpoint(self, mocker):
+        sc = storage_connector.S3Connector(
+            id=None,
+            name="ecs",
+            featurestore_id=1,
+            bucket="landing",
+            endpoint="https://s3.example.com:9021",
+        )
+        mocker.patch(
+            "hsfs.core.storage_connector_api.StorageConnectorApi._create",
+            return_value=storage_connector.S3Connector(
+                id=1, name="ecs", featurestore_id=1, bucket="landing"
+            ),
+        )
+
+        with pytest.raises(FeatureStoreException, match="saved without its endpoint"):
+            sc.save()
+
+    def test_save_with_tags_sends_them_and_keeps_the_endpoint(self, mocker):
+        sc = storage_connector.S3Connector(
+            id=None,
+            name="ecs",
+            featurestore_id=1,
+            bucket="landing",
+            endpoint="https://s3.example.com:9021",
+        )
+        stored = storage_connector.S3Connector(
+            id=1,
+            name="ecs",
+            featurestore_id=1,
+            bucket="landing",
+            endpoint="https://s3.example.com:9021",
+        )
+        tags = [{"name": "data_owner", "value": "platform"}]
+        create = mocker.patch(
+            "hsfs.core.storage_connector_api.StorageConnectorApi._create",
+            return_value=stored,
+        )
+
+        assert sc.save(tags=tags) is stored
+        create.assert_called_once_with(sc, tags)
+
+    def test_update_refuses_a_response_without_the_endpoint(self, mocker):
+        sc = storage_connector.S3Connector(
+            id=1,
+            name="ecs",
+            featurestore_id=1,
+            bucket="landing",
+            endpoint="https://s3.example.com:9021",
+        )
+
+        def drop_endpoint(instance):
+            instance._endpoint = None
+            return instance
+
+        mocker.patch(
+            "hsfs.core.storage_connector_api.StorageConnectorApi._update",
+            side_effect=drop_endpoint,
+        )
+
+        with pytest.raises(FeatureStoreException, match="saved without its endpoint"):
+            sc.update()
+
+    def test_save_without_endpoint_accepts_any_response(self, mocker):
+        sc = storage_connector.S3Connector(
+            id=None, name="aws", featurestore_id=1, bucket="landing"
+        )
+        stored = storage_connector.S3Connector(
+            id=1, name="aws", featurestore_id=1, bucket="landing"
+        )
+        mocker.patch(
+            "hsfs.core.storage_connector_api.StorageConnectorApi._create",
+            return_value=stored,
+        )
+
+        assert sc.save() is stored
 
     def test_default_path(self, mocker):
         mocker.patch("hsfs.engine._get_instance", return_value=spark.Engine())
@@ -3042,6 +3211,8 @@ class TestStorageConnectorToDict:
         assert d["sessionToken"] == "test_session_token"
         assert d["iamRole"] == "test_iam_role"
         assert d["arguments"] == [{"name": "test_name", "value": "test_value"}]
+        assert d["endpoint"] == "https://s3.example.com:9021"
+        assert d["pathStyleAccess"] is True
 
     def test_s3_to_dict_minimal(self):
         sc = storage_connector.S3Connector(
@@ -3059,6 +3230,8 @@ class TestStorageConnectorToDict:
         assert d["bucket"] == "my-bucket"
         assert d["region"] == "eu-north-1"
         assert d["arguments"] == []
+        assert d["endpoint"] is None
+        assert d["pathStyleAccess"] is None
 
     def test_redshift_to_dict(self, backend_fixtures):
         json = backend_fixtures["storage_connector"]["get_redshift"]["response"]
@@ -4300,6 +4473,282 @@ class TestCRMShopifyConnector:
         assert payload["privateAppPassword"] is None
 
 
+class TestSftpConnector:
+    def test_from_response_json(self, backend_fixtures):
+        sc = storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_sftp"]["response"]
+        )
+
+        assert isinstance(sc, storage_connector.SftpConnector)
+        assert sc.type == "SFTP"
+        assert sc.host == "sftp.example.com"
+        assert sc.port == 2222
+        assert sc.username == "hopsworks"
+        assert sc.path == "/outgoing"
+        assert sc.auth_type == "PRIVATE_KEY"
+        assert sc.credentials_set is True
+        assert sc._password is None
+        assert sc._private_key is None
+        assert sc._passphrase is None
+        assert sc.description == "SFTP connector description"
+
+    def test_from_response_json_basic_info(self, backend_fixtures):
+        sc = storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_sftp_basic_info"]["response"]
+        )
+
+        assert isinstance(sc, storage_connector.SftpConnector)
+        assert sc.host is None
+        assert sc.port == 22
+        assert sc.path == "/"
+        assert sc.auth_type is None
+        assert sc.credentials_set is None
+
+    def test_a_read_round_trips_without_secrets(self, backend_fixtures):
+        sc = storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_sftp"]["response"]
+        )
+
+        assert sc.to_dict() == {
+            "id": 1,
+            "name": "test_sftp",
+            "description": "SFTP connector description",
+            "featurestoreId": 67,
+            "storageConnectorType": "SFTP",
+            "type": "featurestoreSftpConnectorDTO",
+            "host": "sftp.example.com",
+            "port": 2222,
+            "username": "hopsworks",
+            "path": "/outgoing",
+            "authType": "PRIVATE_KEY",
+            "credentialsSet": True,
+        }
+
+    def test_to_dict_sends_the_password_and_derives_the_auth_type(self):
+        sc = storage_connector.SftpConnector(
+            id=None,
+            name="partner",
+            featurestore_id=67,
+            host="sftp.example.com",
+            username="hopsworks",
+            password="pw",
+        )
+
+        payload = sc.to_dict()
+
+        assert payload["type"] == "featurestoreSftpConnectorDTO"
+        assert payload["storageConnectorType"] == "SFTP"
+        assert payload["authType"] == "PASSWORD"
+        assert payload["password"] == "pw"
+        assert payload["port"] == 22 and payload["path"] == "/"
+        assert "privateKey" not in payload and "passphrase" not in payload
+        assert "credentialsSet" not in payload
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"password": "pw", "private_key": "k"},
+            {"passphrase": "pp"},
+            {"password": "pw", "passphrase": "pp"},
+        ],
+    )
+    def test_the_constructor_refuses_inconsistent_credentials(self, kwargs):
+        with pytest.raises(ValueError):
+            storage_connector.SftpConnector(
+                None, "partner", 67, host="h", username="u", **kwargs
+            )
+
+    def test_to_dict_sends_the_private_key_and_its_passphrase(self):
+        sc = storage_connector.SftpConnector(
+            id=None,
+            name="partner",
+            featurestore_id=67,
+            host="sftp.example.com",
+            port=2222,
+            username="hopsworks",
+            path="/outgoing",
+            private_key="-----BEGIN OPENSSH PRIVATE KEY-----\nk\n-----END OPENSSH PRIVATE KEY-----",
+            passphrase="pp",
+        )
+
+        payload = sc.to_dict()
+
+        assert payload["authType"] == "PRIVATE_KEY"
+        assert payload["privateKey"].startswith("-----BEGIN OPENSSH PRIVATE KEY-----")
+        assert payload["passphrase"] == "pp"
+        assert "password" not in payload
+
+    def test_set_credentials_switches_the_auth_type(self, backend_fixtures):
+        sc = storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_sftp"]["response"]
+        )
+
+        sc.set_credentials(password="pw")
+
+        payload = sc.to_dict()
+        assert payload["authType"] == "PASSWORD" and payload["password"] == "pw"
+        assert "privateKey" not in payload
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {},
+            {"password": "pw", "private_key": "k"},
+            {"passphrase": "pp"},
+            {"password": "pw", "passphrase": "pp"},
+        ],
+    )
+    def test_set_credentials_refuses_inconsistent_credentials(self, kwargs):
+        sc = storage_connector.SftpConnector(
+            None, "partner", 67, host="h", username="u"
+        )
+
+        with pytest.raises(ValueError):
+            sc.set_credentials(**kwargs)
+
+    def test_repr_never_shows_credentials(self):
+        sc = storage_connector.SftpConnector(
+            None,
+            "partner",
+            67,
+            host="h",
+            username="u",
+            private_key="key-value",
+            passphrase="pp-value",
+        )
+
+        assert "key-value" not in repr(sc) and "pp-value" not in repr(sc)
+        assert "PRIVATE_KEY" in repr(sc)
+
+    def test_not_readable_through_spark(self, backend_fixtures):
+        sc = storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_sftp"]["response"]
+        )
+
+        with pytest.raises(NotImplementedError, match="ingest_files"):
+            sc.read()
+        with pytest.raises(NotImplementedError, match="not read through Spark"):
+            sc.spark_options()
+        with pytest.raises(NotImplementedError, match="not read through Spark"):
+            sc.prepare_spark("x")
+
+    def test_ingest_files_is_accepted(self, backend_fixtures, mocker):
+        sc = storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_sftp"]["response"]
+        )
+        save = mocker.patch("hsfs.core.files_ingestion.FilesIngestionJob.save")
+
+        job = sc.ingest_files(dataset="partner_drop", prefix="2026/")
+
+        save.assert_called_once_with()
+        assert job.dataset_name == "partner_drop"
+        assert job.name == "test_sftp_partner_drop_files"
+
+
+class TestGoogleDriveConnector:
+    def test_from_response_json(self, backend_fixtures):
+        sc = storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_google_drive"]["response"]
+        )
+
+        assert isinstance(sc, storage_connector.GoogleDriveConnector)
+        assert sc.type == "GOOGLE_DRIVE"
+        assert sc.key_path == "/Projects/test/Resources/drive-sa.json"
+        assert sc.folder_id == "1AbCdEfGhIjKlMnOpQrStUvWxYz"
+        assert sc.folder_name == "Handbook"
+        assert sc.service_account_email == "drive@test.iam.gserviceaccount.com"
+        assert sc.description == "Google Drive connector description"
+
+    def test_from_response_json_basic_info(self, backend_fixtures):
+        sc = storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_google_drive_basic_info"][
+                "response"
+            ]
+        )
+
+        assert isinstance(sc, storage_connector.GoogleDriveConnector)
+        assert sc.key_path is None
+        assert sc.folder_id is None
+        assert sc.service_account_email is None
+
+    def test_to_dict_round_trip(self, backend_fixtures):
+        sc = storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_google_drive"]["response"]
+        )
+
+        assert sc.to_dict() == {
+            "id": 1,
+            "name": "test_google_drive",
+            "description": "Google Drive connector description",
+            "featurestoreId": 67,
+            "storageConnectorType": "GOOGLE_DRIVE",
+            "type": "featurestoreGoogleDriveConnectorDTO",
+            "keyPath": "/Projects/test/Resources/drive-sa.json",
+            "folderId": "1AbCdEfGhIjKlMnOpQrStUvWxYz",
+            "folderName": "Handbook",
+            "serviceAccountEmail": "drive@test.iam.gserviceaccount.com",
+        }
+
+    def test_to_dict_of_a_new_connector(self):
+        sc = storage_connector.GoogleDriveConnector(
+            id=None,
+            name="shared_docs",
+            featurestore_id=67,
+            key_path="/Projects/p/Resources/sa.json",
+            folder_id="1abc",
+        )
+
+        payload = sc.to_dict()
+
+        assert payload["type"] == "featurestoreGoogleDriveConnectorDTO"
+        assert payload["storageConnectorType"] == "GOOGLE_DRIVE"
+        assert payload["keyPath"] == "/Projects/p/Resources/sa.json"
+        assert payload["folderId"] == "1abc"
+        assert payload["folderName"] is None
+        assert "serviceAccountEmail" not in payload
+
+    def test_not_readable_through_spark(self, backend_fixtures):
+        sc = storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_google_drive"]["response"]
+        )
+
+        with pytest.raises(NotImplementedError, match="ingest_files"):
+            sc.read()
+        with pytest.raises(NotImplementedError, match="not read through Spark"):
+            sc.spark_options()
+        with pytest.raises(NotImplementedError, match="not read through Spark"):
+            sc.prepare_spark()
+
+    def test_ingest_files_is_accepted(self, backend_fixtures, mocker):
+        sc = storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_google_drive"]["response"]
+        )
+        save = mocker.patch("hsfs.core.files_ingestion.FilesIngestionJob.save")
+
+        job = sc.ingest_files(dataset="shared_docs", include=["**/*.pdf"])
+
+        save.assert_called_once_with()
+        assert job.include == ["**/*.pdf"]
+        assert job.name == "test_google_drive_shared_docs_files"
+
+
+class TestFilesOnlyConnectorList:
+    def test_the_list_keeps_both_files_only_types(self, backend_fixtures):
+        items = [
+            backend_fixtures["storage_connector"]["get_sftp"]["response"],
+            backend_fixtures["storage_connector"]["get_google_drive"]["response"],
+        ]
+
+        connectors = storage_connector.StorageConnector.from_response_json(
+            {"items": items}
+        )
+
+        assert [type(c).__name__ for c in connectors] == [
+            "SftpConnector",
+            "GoogleDriveConnector",
+        ]
+
+
 class TestStorageConnectorTags:
     _BASE = [
         "project",
@@ -4589,11 +5038,11 @@ class TestStorageConnectorMandatoryTags:
     def test_save_without_tags_still_creates_on_an_older_backend(
         self, mocker, backend_fixtures
     ):
-        client = _client(mocker, self._s3_json(backend_fixtures))
+        # Without an endpoint too, which such a backend cannot store either.
+        aws_json = self._s3_json(backend_fixtures, endpoint=None, pathStyleAccess=None)
+        client = _client(mocker, aws_json)
         self._backend(mocker, "5.2.4")
-        sc = storage_connector.StorageConnector.from_response_json(
-            self._s3_json(backend_fixtures)
-        )
+        sc = storage_connector.StorageConnector.from_response_json(aws_json)
 
         sc.save()
 
@@ -4614,3 +5063,48 @@ class TestStorageConnectorMandatoryTags:
 
         body = json.loads(client._send_request.call_args.kwargs["data"])
         assert body["tags"]["items"] == [{"name": "owner", "value": '"risk"'}]
+
+    def test_save_with_endpoint_refuses_a_backend_older_than_5_3(
+        self, mocker, backend_fixtures
+    ):
+        client = _client(mocker, self._s3_json(backend_fixtures))
+        self._backend(mocker, "5.2.4")
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures)
+        )
+        sc._endpoint = "https://s3.example.com:9021"
+
+        with pytest.raises(FeatureStoreException, match="target AWS S3"):
+            sc.save()
+
+        client._send_request.assert_not_called()
+
+    def test_update_with_endpoint_refuses_a_backend_older_than_5_3(
+        self, mocker, backend_fixtures
+    ):
+        client = _client(mocker, self._s3_json(backend_fixtures))
+        self._backend(mocker, "5.2.4")
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures)
+        )
+        sc._endpoint = "https://s3.example.com:9021"
+
+        with pytest.raises(FeatureStoreException, match="target AWS S3"):
+            sc.update()
+
+        client._send_request.assert_not_called()
+
+    @pytest.mark.parametrize("endpoint", [None, "", "  "])
+    def test_update_without_endpoint_still_runs_on_an_older_backend(
+        self, mocker, backend_fixtures, endpoint
+    ):
+        client = _client(mocker, self._s3_json(backend_fixtures))
+        self._backend(mocker, "5.2.4")
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures)
+        )
+        sc._endpoint = endpoint
+
+        sc.update()
+
+        assert client._send_request.call_args.args[0] == "PUT"

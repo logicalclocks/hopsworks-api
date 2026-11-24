@@ -753,6 +753,18 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         return engine_instance._checkpoint()
 
     @staticmethod
+    def _delta_has_data(feature_group):
+        engine_instance = FeatureGroupEngine._delta_engine_for(feature_group)
+        return engine_instance is not None and engine_instance._has_data()
+
+    @staticmethod
+    def _delta_transaction_commit(feature_group, app_id, version, search):
+        engine_instance = FeatureGroupEngine._delta_engine_for(feature_group)
+        if engine_instance is None:
+            return None
+        return engine_instance._transaction_commit(app_id, version, search)
+
+    @staticmethod
     def _delta_cleanup_metadata(feature_group):
         engine_instance = FeatureGroupEngine._delta_engine_for(feature_group)
         if engine_instance is None:

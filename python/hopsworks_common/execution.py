@@ -47,9 +47,11 @@ class Execution:
         href=None,
         job=None,
         rerun_count=None,
+        files_progress=None,
         **kwargs,
     ):
         self._id = id
+        self._files_progress = files_progress
         self._rerun_count = rerun_count
         self._final_status = final_status
         self._state = state
@@ -68,17 +70,29 @@ class Execution:
         self._execution_engine = execution_engine.ExecutionEngine()
         self._execution_api = execution_api.ExecutionApi()
 
+    @staticmethod
+    def _decamelize(json_dict):
+        # `filesProgress` is handed to the user as the backend sends it, so its
+        # camelCase keys must survive the decamelization of the rest.
+        files_progress = json_dict.get("filesProgress")
+        json_decamelized = humps.decamelize(json_dict)
+        if files_progress is not None:
+            json_decamelized["files_progress"] = files_progress
+        return json_decamelized
+
     @classmethod
     def from_response_json(cls, json_dict, job):
-        json_decamelized = humps.decamelize(json_dict)
-        if "count" not in json_decamelized:
-            return cls(**json_decamelized, job=job)
-        if json_decamelized["count"] == 0:
+        if "count" not in json_dict:
+            return cls(**cls._decamelize(json_dict), job=job)
+        if json_dict["count"] == 0:
             return []
-        return [cls(**execution, job=job) for execution in json_decamelized["items"]]
+        return [
+            cls(**cls._decamelize(execution), job=job)
+            for execution in json_dict["items"]
+        ]
 
     def update_from_response_json(self, json_dict):
-        json_decamelized = humps.decamelize(json_dict)
+        json_decamelized = self._decamelize(json_dict)
         # The response carries no job; re-initialising without it would detach the
         # execution from the job it belongs to.
         self.__init__(**{**json_decamelized, "job": self._job})
@@ -198,6 +212,21 @@ class Execution:
         if self.final_status in constants.JOBS.SUCCESS_STATES:
             return True
         return None
+
+    @public
+    @property
+    def files_progress(self) -> dict | None:
+        """Result of a files ingestion run, or `None` for other jobs and for a run that has not written its result yet.
+
+        The backend attaches `datasetName`, `prefix` and `connectorName` to every execution of a files job; that stub alone, without `status` or `executionId`, is reported as `None`.
+        Keys as the backend reports them: `executionId`, `status` (`ok`, `partial` or `failed`), `listed`, `copied`, `updated`, `skipped`, `deleted`, `failed`, `oversized`, `unsupported` (files that cannot be copied, such as Google-native documents or SFTP symlinks), `bytesCopied`, `listingComplete`, `deletionsSkipped`, `indexed`, `error`, `failedFiles` (`relativePath` and `error` of up to 100 files), `auditFile` (the run's audit CSV, relative to the job's state directory, or `None`), `auditPath` (the same file as an absolute HopsFS path, or `None`), `datasetName`, `connectorName`, `prefix`, `startedAt` and `finishedAt`.
+        """
+        progress = self._files_progress
+        if not isinstance(progress, dict) or not (
+            "status" in progress or "executionId" in progress
+        ):
+            return None
+        return progress
 
     @public
     @property

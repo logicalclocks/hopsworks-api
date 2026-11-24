@@ -571,10 +571,12 @@ class FeatureStore:
 
         Raises:
             hopsworks.client.exceptions.FeatureStoreException: If `tags` are passed to a Hopsworks backend older than 5.3, which cannot store data source tags.
+                Also if an S3 data source has an endpoint, which such a backend cannot store: the request is not sent, or, when the backend's version is unknown, the data source is stored without the endpoint and targets AWS S3.
             hopsworks.client.exceptions.RestAPIError: If a tag that is mandatory for data sources is missing from `tags`, if a tag value does not match its schema, or if the backend encounters another error when handling the request.
         """
         connector._featurestore_id = self._id
         saved = self._storage_connector_api._create(connector, tags)
+        connector._check_stored(saved)
         return ds.DataSource(storage_connector=saved)
 
     @public

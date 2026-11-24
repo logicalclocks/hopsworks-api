@@ -36,6 +36,10 @@ _ADMIN_HINT = (
     "in a single project is not enough."
 )
 
+# usage and delete count the schema's tags and scan its tag history by name,
+# so a large history makes them slow; the Admin UI gives up after the same time.
+_USAGE_TIMEOUT_SECONDS = 30
+
 
 @public(
     "hopsworks.core.tag_schemas_api.TagSchemasApi",
@@ -44,9 +48,8 @@ _ADMIN_HINT = (
 class TagSchemasApi:
     """Manage the platform's typed tag-schema registry.
 
-    All write operations on this class require the
-    **platform-administrator** role (``HOPS_ADMIN``); read operations
-    require any authenticated user.
+    All write operations on this class, and `usage`, require the **platform-administrator** role (``HOPS_ADMIN``).
+    The other read operations require any authenticated user.
     """
 
     @staticmethod
@@ -130,9 +133,8 @@ class TagSchemasApi:
             PermissionError: If the caller lacks ``HOPS_ADMIN``.
             ValueError: If ``name`` is empty or ``schema`` is not a dict
                 or a JSON string.
-            hopsworks.client.exceptions.RestAPIError: If the schema
-                payload is rejected by the backend (invalid JSON Schema,
-                duplicate name, etc.).
+            hopsworks.client.exceptions.RestAPIError: If the schema payload is rejected by the backend (invalid JSON Schema, duplicate name, etc.).
+                A name is also refused (409) while a deleted schema of that name still has archived values in the tag history, which the new schema would otherwise take over.
         """
         if not name:
             raise ValueError("name must be a non-empty schema name")
@@ -162,25 +164,71 @@ class TagSchemasApi:
             raise
 
     @public
+    def usage(self, name: str) -> dict[str, Any]:
+        """Show what still refers to a tag schema, and whether it can be deleted.
+
+        Requires **HOPS_ADMIN**.
+
+        Example:
+            ```python
+            usage = TagSchemasApi().usage("ownership")
+            if not usage["deletable"]:
+                print(usage["reason"])
+            print(usage["mandatoryIn"])  # e.g. ["feature store, every project"]
+            ```
+
+        Parameters:
+            name: Schema name.
+
+        Returns:
+            The number of tags created from the schema per kind of artifact (`featureStoreTags`, `modelRegistryTags`, `jobTags`, `datasetTags`, `dataSourceTags`, `semanticProjectTags`), its `archivedValues` in the tag history, where it is mandatory (`mandatoryIn`), `deletable`, and the `reason` it is not.
+
+        Raises:
+            PermissionError: If the caller lacks ``HOPS_ADMIN``.
+            hopsworks.client.exceptions.RestAPIError: If the schema does not exist.
+            requests.exceptions.Timeout: If the backend does not answer within 30 seconds.
+        """
+        if not name:
+            raise ValueError("name must be a non-empty schema name")
+        _client = client._get_instance()
+        try:
+            return _client._send_request(
+                "GET",
+                self._path() + [name, "usage"],
+                timeout=_USAGE_TIMEOUT_SECONDS,
+            )
+        except RestAPIError as e:
+            if getattr(e.response, "status_code", None) == 403:
+                raise PermissionError(_ADMIN_HINT) from e
+            raise
+
+    @public
     def delete(self, name: str) -> None:
         """Remove a tag schema from the registry.
 
-        Requires **HOPS_ADMIN**. Project-level Data Owner is **not**
-        sufficient.
+        Only a schema that no tag is created from and that has no archived values in the tag history can be deleted; `usage` shows what still refers to it.
+        A mandatory schema can be deleted, and stops being mandatory.
+        Deleting a schema that does not exist does nothing.
+
+        Requires **HOPS_ADMIN**.
+        Project-level Data Owner is **not** sufficient.
 
         Parameters:
             name: Schema name.
 
         Raises:
             PermissionError: If the caller lacks ``HOPS_ADMIN``.
-            hopsworks.client.exceptions.RestAPIError: If the schema does
-                not exist or the backend otherwise rejects the request.
+            hopsworks.client.exceptions.RestAPIError: If tags or archived values still refer to the schema (409, the message says which), or the backend otherwise rejects the request.
+            requests.exceptions.Timeout: If the backend does not answer within 30 seconds.
+                The schema may have been deleted all the same; `get` shows whether it still exists.
         """
         if not name:
             raise ValueError("name must be a non-empty schema name")
         _client = client._get_instance()
         try:
-            _client._send_request("DELETE", self._path() + [name])
+            _client._send_request(
+                "DELETE", self._path() + [name], timeout=_USAGE_TIMEOUT_SECONDS
+            )
         except RestAPIError as e:
             if getattr(e.response, "status_code", None) == 403:
                 raise PermissionError(_ADMIN_HINT) from e
