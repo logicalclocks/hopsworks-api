@@ -250,11 +250,11 @@
 | python/hopsworks\_common/engine/\_\_init\_\_.py                                  |        0 |        0 |    100% |           |
 | python/hopsworks\_common/engine/alerts\_engine.py                                |       64 |        2 |     97% |   45, 101 |
 | python/hopsworks\_common/engine/environment\_engine.py                           |       68 |        5 |     93% |   191-204 |
-| python/hopsworks\_common/engine/execution\_engine.py                             |      108 |       62 |     43% |57-80, 83-102, 119-144, 168, 179-193, 203-209, 216, 236 |
+| python/hopsworks\_common/engine/execution\_engine.py                             |      124 |       41 |     67% |62, 64, 127-136, 154-179, 203, 214-228, 238-244, 251, 271 |
 | python/hopsworks\_common/engine/git\_engine.py                                   |       40 |        1 |     98% |        65 |
 | python/hopsworks\_common/env\_var.py                                             |       75 |        6 |     92% |106, 112, 120, 147, 150, 158 |
 | python/hopsworks\_common/environment.py                                          |      216 |        9 |     96% |68, 75, 87, 398-399, 599, 642, 745, 748 |
-| python/hopsworks\_common/execution.py                                            |      176 |       18 |     90% |159, 165, 171, 177, 183, 189, 209, 214, 249, 278, 291, 331, 396, 399, 402, 407-415 |
+| python/hopsworks\_common/execution.py                                            |      181 |       18 |     90% |161, 167, 173, 179, 185, 191, 223, 228, 263, 309, 322, 362, 427, 430, 433, 438-446 |
 | python/hopsworks\_common/git\_commit.py                                          |       53 |       26 |     51% |40-49, 53-60, 66, 72, 78, 84, 90, 93, 96, 99 |
 | python/hopsworks\_common/git\_file\_status.py                                    |       37 |       15 |     59% |34-36, 40-45, 51, 69, 75, 78, 81, 84 |
 | python/hopsworks\_common/git\_op\_execution.py                                   |       54 |       25 |     54% |44-52, 56-57, 62, 67, 72, 77, 82, 87, 92, 97, 102, 107-114 |
@@ -547,7 +547,7 @@
 | python/hsml/utils/schema/tensor.py                                               |        8 |        0 |    100% |           |
 | python/hsml/utils/schema/tensor\_schema.py                                       |       34 |        0 |    100% |           |
 | python/hsml/version.py                                                           |        2 |        2 |      0% |     17-22 |
-| **TOTAL**                                                                        | **62464** | **13485** | **78%** |           |
+| **TOTAL**                                                                        | **62485** | **13464** | **78%** |           |
 
 
 ## Setup coverage badge
