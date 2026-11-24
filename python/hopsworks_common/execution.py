@@ -47,12 +47,14 @@ class Execution:
         href=None,
         job=None,
         rerun_count=None,
+        attempts=None,
         files_progress=None,
         **kwargs,
     ):
         self._id = id
         self._files_progress = files_progress
         self._rerun_count = rerun_count
+        self._attempts = attempts
         self._final_status = final_status
         self._state = state
         self._submission_time = submission_time
@@ -196,6 +198,18 @@ class Execution:
 
     @public
     @property
+    def attempts(self) -> list[dict]:
+        """Log files of the attempts before the current one, oldest first.
+
+        Each re-run sets the previous attempt's log files aside.
+        An entry has the keys `attempt` (counted from 1), `logs_path` (the attempt's directory), `stdout_path` and `stderr_path`; a path is missing when that attempt did not leave the file.
+        The list is as of when this object was fetched.
+        Empty for an execution that was never re-run.
+        """
+        return self._attempts or []
+
+    @public
+    @property
     def success(self) -> bool | None:
         """Boolean to indicate if execution ran successfully or failed."""
         is_spark_job = (
@@ -253,8 +267,14 @@ class Execution:
         return None
 
     @public
-    def download_logs(self, path: str | None = None) -> tuple[str | None, str | None]:
+    def download_logs(
+        self, path: str | None = None, attempt: int | None = None
+    ) -> tuple[str | None, str | None]:
         """Download stdout and stderr logs for the execution.
+
+        By default the logs of the latest attempt are downloaded.
+        For an execution that was re-run, pass `attempt` to get the logs of an earlier attempt.
+        The attempt is resolved against the execution's current state in Hopsworks, not this object's, so it is safe to use on an object fetched before a re-run.
 
         Example: Downloading and printing the logs
             ```python
@@ -268,14 +288,25 @@ class Execution:
             print(err_fd.read())
             ```
 
+        Example: Downloading the logs of the first attempt of a re-run execution
+            ```python
+            out_log_path, err_log_path = execution.download_logs(attempt=1)
+            ```
+
         Parameters:
             path: Path to download the logs.
+            attempt:
+                Which attempt to download the logs of, counted from 1.
+                The latest attempt is `rerun_count + 1`, and is the default.
 
         Returns:
             stdout: Path to downloaded log for stdout.
             stderr: Path to downloaded log for stderr.
+
+        Raises:
+            hopsworks.client.exceptions.JobExecutionException: If `path` does not exist, the execution has no such attempt, or an earlier attempt left no log files.
         """
-        return self._execution_engine._download_logs(self, path)
+        return self._execution_engine._download_logs(self, path, attempt)
 
     @public
     @usage._method_logger
@@ -298,8 +329,8 @@ class Execution:
         The execution keeps its id, submission time, arguments and the time window it was
         fired for (`HOPS_START_TIME` / `HOPS_END_TIME`), so it stays where it was in the
         executions timeline; `rerun_count` goes up by one and the previous attempt's log
-        files are kept under an `attempt-N` directory next to the new ones. Only failed or
-        killed executions can be re-run.
+        files are kept under an `attempt-N` directory next to the new ones; download them
+        with `download_logs(attempt=N)`. Only failed or killed executions can be re-run.
 
         ```python
 
