@@ -368,3 +368,41 @@ class TestDatasetApiShare:
             api.unshare("Resources/my_dir", "")
 
         client_instance._send_request.assert_not_called()
+
+
+class TestDatasetApiMkdir:
+    def _patch_client(self, mocker, send_request_return) -> MagicMock:
+        client_instance = MagicMock()
+        client_instance._project_id = 119
+        client_instance._project_name = "my_project"
+        client_instance._send_request.return_value = send_request_return
+        mocker.patch(
+            "hopsworks_common.core.dataset_api.client._get_instance",
+            return_value=client_instance,
+        )
+        return client_instance
+
+    def test_mkdir_subdirectory_returns_path_from_response(self, mocker):
+        api = DatasetApi()
+        self._patch_client(
+            mocker,
+            {
+                "name": "my_dir",
+                "attributes": {"path": "/Projects/my_project/Resources/my_dir"},
+            },
+        )
+
+        assert api.mkdir("Resources/my_dir") == "/Projects/my_project/Resources/my_dir"
+
+    def test_mkdir_top_level_dataset_without_path_in_response(self, mocker):
+        # The backend answers a top-level dataset create with a dataset DTO whose attributes are empty.
+        api = DatasetApi()
+        client_instance = self._patch_client(
+            mocker, {"name": "my_dataset", "datasetType": "DATASET", "attributes": {}}
+        )
+
+        assert api.mkdir("my_dataset") == "/Projects/my_project/my_dataset"
+        call = client_instance._send_request.call_args_list[0]
+        assert call.args[0] == "POST"
+        assert call.args[1] == ["project", 119, "dataset", "my_dataset"]
+        assert call.kwargs["query_params"]["action"] == "create"
