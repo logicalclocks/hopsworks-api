@@ -129,6 +129,7 @@ class _GatewayHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def do_GET(self):
+        self.server.builds_named.append(self.headers.get("X-Semantic-Build"))
         body = json.dumps(self.server.saved_queries).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -164,6 +165,7 @@ def gateway(http, monkeypatch):
     server = ThreadingHTTPServer(("127.0.0.1", 0), _GatewayHandler)
     server.chunks, server.ends_body, server.headers = [], True, {}
     server.saved_queries = {"savedQueries": []}
+    server.builds_named = []
     threading.Thread(
         target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
     ).start()
@@ -2297,3 +2299,21 @@ class TestExportWindow:
 
         assert semantic_layer_api._rows_from(table, "d", start).num_rows == 1
         assert semantic_layer_api._rows_from(table, "t", start).num_rows == 1
+
+
+class TestCurrentBuildHint:
+    def test_a_gateway_call_names_the_current_build(self, gateway, sales):
+        gateway.saved_queries = {"buildId": 12, "stale": False, "metrics": []}
+
+        assert sales.serving().build_id == 12
+        sales.list_metrics()
+
+        assert gateway.builds_named == ["12", "12"]
+
+    def test_a_project_with_no_build_names_none(self, gateway, sales):
+        sales._current_build_id = None
+        gateway.saved_queries = {"buildId": None, "stale": False}
+
+        sales.serving()
+
+        assert gateway.builds_named == [None]

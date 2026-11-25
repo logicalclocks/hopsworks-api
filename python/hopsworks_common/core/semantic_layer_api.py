@@ -616,6 +616,9 @@ class SemanticLayerApi:
         headers = {"Accept": accept}
         if body is not None:
             headers["Content-Type"] = _JSON
+        if sp.current_build_id:
+            # The gateway caches a caller's build for up to a minute; naming the current one serves a promotion at once.
+            headers["X-Semantic-Build"] = str(sp.current_build_id)
         data = None if body is None else json.dumps(body)
 
         def send() -> requests.Response:

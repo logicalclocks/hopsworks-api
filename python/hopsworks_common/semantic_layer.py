@@ -851,7 +851,7 @@ class SemanticProject:
     def serving(self) -> SemanticServing:
         """The build the gateway answers this project's queries from, and whether a newer compile is pending or invalid.
 
-        The gateway keeps each caller's view of the project for up to a minute, so a newly served build can take that long to show.
+        The request names the build this object read as current, so a gateway that knows the hint serves a promoted build at once; an older gateway keeps each caller's view for up to a minute.
 
         Returns:
             The serving build.
