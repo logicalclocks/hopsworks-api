@@ -73,6 +73,7 @@ from google.protobuf.json_format import MessageToDict, ParseDict
 from starlette.routing import Mount
 
 from . import a2a_store as _store
+from .a2a_push import _PushSender, _valid_webhook
 from .a2a_store import (
     DATABASE_URL_ENV,
     MISSED_HEARTBEATS,
@@ -239,6 +240,8 @@ class A2AConfig:
 TASK_STORES = frozenset({"memory", "database"})
 #: How often a replica looks for tasks whose replica was lost.
 SWEEP_SECONDS = 30.0
+#: How long shutdown waits for queued push notifications to go out.
+PUSH_DRAIN_SECONDS = 5.0
 
 
 class _NoDatabase(Exception):  # noqa: N818 -- a reason A2A is off, not a failure
@@ -400,6 +403,22 @@ class A2AServer:
             )
             handler_store = self.task_store
             event_stream = None
+        # Push notifications: the configs live beside the tasks, and the
+        # sender delivers from a queue so a slow receiver never holds a task's
+        # own stream (see a2a_push).
+        if self.stores is not None:
+            self.push_configs: Any = self.stores.push_configs
+        else:
+            from a2a.server.tasks import (  # noqa: PLC0415
+                InMemoryPushNotificationConfigStore,
+            )
+
+            self.push_configs = InMemoryPushNotificationConfigStore(
+                owner_resolver=self.ownership._owner
+            )
+        self.push_sender = _PushSender(
+            self.push_configs, on_terminal_delivered=self._terminal_pushed
+        )
         self.handler = DefaultRequestHandlerV2(
             agent_executor=self.executor,
             task_store=handler_store,
@@ -410,6 +429,9 @@ class A2AServer:
             validate_input_modes=True,
             interrupted_task_timeout=INTERRUPTED_TASK_TIMEOUT_S,
             event_stream=event_stream,
+            push_config_store=self.push_configs,
+            push_sender=self.push_sender,
+            push_url_validator=_valid_webhook,
         )
 
         # The card is served by the app, not by the SDK's route: its interface
@@ -458,7 +480,7 @@ class A2AServer:
         return {
             "enabled": True,
             "bindings": [TransportProtocol.JSONRPC, TransportProtocol.HTTP_JSON],
-            "push_notifications": False,
+            "push_notifications": True,
             "signed": False,
             "task_store": self.mode,
             # the in-memory store's bound; the database keeps tasks by age
@@ -480,8 +502,33 @@ class A2AServer:
             self._sweeper.cancel()
             await asyncio.gather(self._sweeper, return_exceptions=True)
             self._sweeper = None
+        # the notifications of the turns the drain just ended are still queued
+        await self.push_sender._drain(PUSH_DRAIN_SECONDS)
         if self.stores is not None:
             await self.stores._close()
+
+    async def _terminal_pushed(self, task_id: str) -> None:
+        """A task's terminal notification reached its receivers: its outbox row has done its work."""
+        if self.stores is not None:
+            await self.stores.leases._pushed(task_id)
+
+    async def _settle_lease(self, task_id: str, fence: int) -> None:
+        """A task this replica held ended: its lease goes, or stays as the outbox of its terminal notification.
+
+        It stays only while a receiver is registered and has not been told;
+        the platform delivers from the row when this replica does not.
+        """
+        stores = self.stores
+        if stores is None:
+            return
+        record = self.push_sender.records.get(task_id)
+        pushed = record is not None and record.terminal_delivered
+        if not pushed:
+            try:
+                pushed = not await self.push_configs.get_info_for_dispatch(task_id)
+            except Exception:  # noqa: BLE001 -- kept as an outbox row when unsure
+                pushed = False
+        await stores.leases._settle(task_id, fence, pushed=pushed)
 
     async def _sweep(self) -> None:
         """Every so often, fail the tasks of this deployment whose replica stopped renewing its lease.
@@ -521,7 +568,7 @@ class A2AServer:
         context = ServerCallContext(state={OWNER_STATE_KEY: lease["owner"]})
         stored = await stores.task_store.get(task_id, context)
         if stored is None or stored.task.status.state in TERMINAL_TASK_STATES:
-            await stores.leases._settle(task_id, lease["fence"], pushed=True)
+            await self._settle_lease(task_id, lease["fence"])
             return
         task = stored.task
         status = TaskStatus(
@@ -564,7 +611,10 @@ class A2AServer:
         except ConcurrentTaskModificationError:
             # someone advanced the task meanwhile (it ended, or was cancelled)
             _logger.debug("task %s moved while it was being reaped", task_id)
-        await stores.leases._settle(task_id, lease["fence"], pushed=True)
+        else:
+            # no replica runs this task, so nobody else tells its receivers
+            await self.push_sender.send_notification(task_id, event)
+        await self._settle_lease(task_id, lease["fence"])
 
     def _running(self) -> set[asyncio.Task]:
         """The executions accepted and not yet over, for the drain on shutdown.
@@ -645,7 +695,7 @@ class A2AServer:
             "capabilities": {
                 # a chat-only agent streams its whole answer as one artifact chunk
                 "streaming": True,
-                "pushNotifications": False,
+                "pushNotifications": True,
                 "extendedAgentCard": False,
                 "extensions": [
                     {
@@ -1069,7 +1119,7 @@ class HopsworksAgentExecutor(AgentExecutor):
             if left == "paused":
                 await stores.leases._release(task_id, fence)
             else:
-                await stores.leases._settle(task_id, fence, pushed=True)
+                await self._app._a2a._settle_lease(task_id, fence)
         except Exception:  # noqa: BLE001 -- a row left behind is reaped
             _logger.debug(
                 "could not give up the lease of task %s", task_id, exc_info=True
@@ -1806,7 +1856,7 @@ def _resolve(host: str, port: int) -> list[str]:
     ]
 
 
-def _pin(url: str) -> _Pinned:
+def _pin(url: str, what: str = "The URL part") -> _Pinned:
     """Resolve a URL's host once, check every address, and pin the fetch to one.
 
     Checking a name and then letting the client resolve it again lets an
@@ -1829,9 +1879,9 @@ def _pin(url: str) -> _Pinned:
     schemes = ("https",) if platform else ("http", "https")
     if parsed.scheme not in schemes or not host:
         raise AgentError(
-            "The URL part is not an https URL."
+            f"{what} is not an https URL."
             if platform
-            else "The URL part is not an http(s) URL.",
+            else f"{what} is not an http(s) URL.",
             "unsupported_content",
             422,
         )
@@ -1841,7 +1891,7 @@ def _pin(url: str) -> _Pinned:
         addresses = _resolve(host, port)
     except OSError as err:
         raise AgentError(
-            f"The URL part's host could not be resolved: {host}",
+            f"{what}'s host could not be resolved: {host}",
             "unsupported_content",
             422,
         ) from err
@@ -1851,8 +1901,7 @@ def _pin(url: str) -> _Pinned:
         local_loopback = not platform and _unmapped(address).is_loopback
         if _never_reached(address) and not local_loopback:
             raise AgentError(
-                f"The URL part's host resolves to an address the agent never "
-                f"reaches: {host}",
+                f"{what}'s host resolves to an address the agent never reaches: {host}",
                 "unsupported_content",
                 422,
             )
@@ -1861,7 +1910,7 @@ def _pin(url: str) -> _Pinned:
         )
         if _address_blocked(address) and not internal and not local_loopback:
             raise AgentError(
-                f"The URL part's host resolves to a private address the platform "
+                f"{what}'s host resolves to a private address the platform "
                 f"did not list: {host}",
                 "unsupported_content",
                 422,
@@ -1869,7 +1918,7 @@ def _pin(url: str) -> _Pinned:
         chosen = chosen or raw
     if chosen is None:
         raise AgentError(
-            f"The URL part's host resolves to nothing: {host}",
+            f"{what}'s host resolves to nothing: {host}",
             "unsupported_content",
             422,
         )

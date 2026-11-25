@@ -238,7 +238,7 @@ class TestAgentCard:
         assert manifest["capabilities"]["custom"]["hopsworks"]["a2a"] == {
             "enabled": True,
             "bindings": ["JSONRPC", "HTTP+JSON"],
-            "push_notifications": False,
+            "push_notifications": True,
             "signed": False,
             "task_store": "memory",
             "task_limit": 1000,
