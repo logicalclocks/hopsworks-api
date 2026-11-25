@@ -261,6 +261,29 @@ class TestWhereTasksAreKept:
             "@onlinefs.mysql.service.consul:3306/proj"
         )
 
+    def test_a_password_that_cannot_be_read_is_no_database(self, monkeypatch):
+        from hopsworks_agents.protocol import memory
+
+        monkeypatch.delenv(a2a_store.DATABASE_URL_ENV, raising=False)
+        monkeypatch.delenv("MYSQL_PASSWORD", raising=False)
+        monkeypatch.setenv("MYSQL_USER", "proj_meb1")
+        monkeypatch.setenv("MYSQL_HOST", "onlinefs.mysql.service.consul")
+        monkeypatch.setenv("MYSQL_DB", "proj")
+        monkeypatch.setenv("MYSQL_PASSWORD_SECRET_NAME", "proj_meb1")
+
+        def unreadable(name):
+            raise RuntimeError("the secrets API is down")
+
+        monkeypatch.setattr(memory, "_read_hopsworks_secret", unreadable)
+        assert a2a_store._database_url() is None
+        monkeypatch.setenv("DEPLOYMENT_ID", "42")
+        client = TestClient(replica())
+        manifest = client.get("/.well-known/hopsworks-agent.json").json()
+        assert manifest["capabilities"]["custom"]["hopsworks"]["a2a"] == {
+            "enabled": False,
+            "reason": "no_database",
+        }
+
     def test_retries_need_the_authors_word(self):
         with pytest.raises(ValueError, match="idempotent"):
             A2AConfig(retry_lost_tasks=1)

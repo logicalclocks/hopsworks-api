@@ -127,7 +127,16 @@ def _database_url() -> str | None:
             return None
         from .memory import _read_hopsworks_secret  # noqa: PLC0415
 
-        password = _read_hopsworks_secret(secret_name)
+        try:
+            password = _read_hopsworks_secret(secret_name)
+        except Exception:  # noqa: BLE001 -- no password is no database, not a crash at import
+            _logger.warning(
+                "could not read the database password from the secret %s, so "
+                "A2A tasks cannot be kept in the project's online database",
+                secret_name,
+                exc_info=True,
+            )
+            return None
     return URL.create(
         "mysql+aiomysql",
         username=env["MYSQL_USER"],
