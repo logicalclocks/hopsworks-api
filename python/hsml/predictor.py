@@ -340,6 +340,8 @@ class Predictor(DeployableComponent):
     @public
     @classmethod
     def for_model(cls, model, **kwargs):
+        if kwargs.get("knative_mode"):
+            util._warn_knative_mode_deprecated(direct_calls_only=True)
         kwargs["model_name"] = model.name
         kwargs["model_path"] = model.model_path
         kwargs["model_version"] = model.version
@@ -402,6 +404,8 @@ class Predictor(DeployableComponent):
         Returns:
             The predictor, with the schema pending until the deployment is saved.
         """
+        if kwargs.get("knative_mode"):
+            util._warn_knative_mode_deprecated(direct_calls_only=True)
         from hsml.python.feature_view_endpoint import FeatureViewEndpoint
 
         _reject_reserved_env_vars(kwargs.get("env_vars"))
@@ -463,6 +467,8 @@ class Predictor(DeployableComponent):
     @public
     @classmethod
     def for_server(cls, name: str, script_file: str, **kwargs):
+        if kwargs.get("knative_mode"):
+            util._warn_knative_mode_deprecated(direct_calls_only=True)
         # get predictor for a HTTP server without model
         return util._get_predictor_for_server(
             name=name, script_file=script_file, **kwargs
@@ -1181,8 +1187,9 @@ class Predictor(DeployableComponent):
 
         Knative mode is deprecated since 5.3 and removed in 5.4.
         A 5.3 cluster refuses to create a Knative deployment or switch one to Knative mode unless an administrator allows it; existing Knative deployments keep working.
-        Convert one with `deployment.stop(); deployment.knative_mode = False; deployment.save(); deployment.start()`.
-        The deployment restarts once, Knative-only scaling settings are dropped and Standard defaults fill the gaps.
+        Convert one with `deployment.knative_mode = False; deployment.save()` while it is stopped.
+        Stop a running one first with `deployment.stop()` and start it again with `deployment.start()`, so it restarts once; a stopped one stays stopped.
+        Knative-only scaling settings are dropped and Standard defaults fill the gaps.
 
         `True` selects Knative mode, which supports scale-to-zero and Knative-only autoscaling.
         `False` selects Standard mode, which autoscales on a CPU/memory metric between the minimum and maximum instances, or runs a fixed replica count when they are equal.

@@ -99,6 +99,72 @@ class TestHelper:
         (w,) = _knative_warnings(record)
         assert w.filename != "<string>"
 
+    def test_direct_calls_only_warns_for_a_user_caller(self):
+        def factory():
+            util._warn_knative_mode_deprecated(direct_calls_only=True)
+
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
+            factory()  # line attributed to the warning
+
+        (w,) = _knative_warnings(record)
+        assert w.filename == __file__
+
+    def test_direct_calls_only_silent_for_an_sdk_caller(self):
+        def factory():
+            util._warn_knative_mode_deprecated(direct_calls_only=True)
+
+        # Defined in an SDK module's namespace to stand for a method that delegates to the factory.
+        sdk_method = eval(  # noqa: S307
+            "lambda f: f()", {"__name__": "hsml.model_serving"}
+        )
+
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
+            sdk_method(factory)
+
+        assert _knative_warnings(record) == []
+
+
+class TestFactories:
+    def test_for_model_direct_call_warns_once(self, mocker):
+        mocker.patch("hsml.predictor.util._get_predictor_for_model")
+        mocker.patch(
+            "hsml.predictor._resolve_default_predictor", return_value=(False, None)
+        )
+        mocker.patch("hsml.predictor._resolve_model_schema")
+
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
+            predictor.Predictor.for_model(mocker.Mock(), knative_mode=True)
+
+        (w,) = _knative_warnings(record)
+        assert w.filename == __file__
+
+    def test_for_server_direct_call_warns_once(self, mocker):
+        mocker.patch("hsml.predictor.util._get_predictor_for_server")
+
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
+            predictor.Predictor.for_server(
+                name="e", script_file="s.py", knative_mode=True
+            )
+
+        (w,) = _knative_warnings(record)
+        assert w.filename == __file__
+
+    @pytest.mark.parametrize("value", [False, None])
+    def test_direct_call_without_knative_is_silent(self, mocker, value):
+        mocker.patch("hsml.predictor.util._get_predictor_for_server")
+
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
+            predictor.Predictor.for_server(
+                name="e", script_file="s.py", knative_mode=value
+            )
+
+        assert _knative_warnings(record) == []
+
 
 class TestEntryPoints:
     def _model(self, mocker):
@@ -158,6 +224,16 @@ class TestEntryPoints:
         with warnings.catch_warnings(record=True) as record:
             warnings.simplefilter("always")
             ms.create_feature_view_predictor(mocker.Mock(), knative_mode=True)
+
+        (w,) = _knative_warnings(record)
+        assert w.filename == __file__
+
+    def test_create_endpoint_through_the_real_factory_warns_once(self, mocker, ms):
+        mocker.patch("hsml.predictor.util._get_predictor_for_server")
+
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
+            ms.create_endpoint(name="e", script_file="s.py", knative_mode=True)
 
         (w,) = _knative_warnings(record)
         assert w.filename == __file__

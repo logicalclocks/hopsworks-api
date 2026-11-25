@@ -558,22 +558,40 @@ class KnativeModeWarning(Warning):
 
 
 _KNATIVE_CONVERSION_RECIPE = (
-    "To convert a deployment to Standard mode: "
-    "deployment.stop(); deployment.knative_mode = False; deployment.save(); deployment.start()."
+    "To convert a deployment to Standard mode, set deployment.knative_mode = False "
+    "and call deployment.save() while it is stopped. "
+    "A running deployment is stopped first with deployment.stop() and started again "
+    "with deployment.start(); a stopped one stays stopped."
 )
 
 
-def _warn_knative_mode_deprecated() -> None:
+_SDK_PACKAGES = ("hopsworks", "hopsworks_common", "hsfs", "hsml")
+
+
+def _is_sdk_module(module_name: str) -> bool:
+    return any(
+        module_name == package or module_name.startswith(package + ".")
+        for package in _SDK_PACKAGES
+    )
+
+
+def _warn_knative_mode_deprecated(direct_calls_only: bool = False) -> None:
     """Warn that Knative mode is deprecated, attributed to the user's call.
 
     Must be called directly from the public method or property setter the user called.
     The usage-logging wrapper around public methods is skipped when attributing the warning.
+
+    Parameters:
+        direct_calls_only: Warn only when the caller is outside the SDK.
+            The predictor factories pass it, since the SDK methods that delegate to them have already warned.
     """
     stacklevel = 3
     frame = sys._getframe(stacklevel - 1)
     while frame.f_globals.get("__name__") == "hopsworks_common.usage":
         stacklevel += 1
         frame = frame.f_back
+    if direct_calls_only and _is_sdk_module(frame.f_globals.get("__name__", "")):
+        return
     warnings.warn(
         "Knative mode (knative_mode=True) is deprecated since 5.3 and will be removed in 5.4; "
         "new deployments run in Standard mode, and 5.3 clusters refuse Knative mode unless an administrator allows it. "

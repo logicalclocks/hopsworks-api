@@ -286,8 +286,9 @@ DEFAULT_MEMORY_MB = 1024
     default=None,
     help="KServe mode: Standard (the default; CPU/memory or KEDA autoscaling, or fixed replicas when min equals max) or Knative (deprecated since 5.3, removed in 5.4). "
     "Omit to let the backend decide, which is Standard for a new deployment. "
-    "On an update, omitting it keeps the deployment's current mode. "
-    "Convert a Knative deployment in the SDK: deployment.stop(); deployment.knative_mode = False; deployment.save(); deployment.start().",
+    "On an update, omitting it keeps the deployment's current mode, so an existing Knative deployment stays in Knative mode. "
+    "Convert one in the SDK by setting deployment.knative_mode = False and calling deployment.save() while it is stopped; "
+    "stop a running one first with deployment.stop() and start it again with deployment.start().",
 )
 @click.option("--description", default="", help="Deployment description.")
 @click.option(
@@ -384,10 +385,11 @@ def deployment_create(
 
     if knative_mode:
         output.warn(
-            "Knative mode is deprecated since 5.3 and will be removed in 5.4; "
-            "use --standard (or omit the flag) for a Standard-mode deployment. "
-            "Convert a Knative deployment in the SDK: "
-            "deployment.stop(); deployment.knative_mode = False; deployment.save(); deployment.start()."
+            "Knative mode is deprecated since 5.3 and will be removed in 5.4. "
+            "A new deployment is Standard with --standard or without the flag. "
+            "An existing Knative deployment keeps its mode until it is switched explicitly: "
+            "in the SDK, set deployment.knative_mode = False and call deployment.save() while it is stopped, "
+            "stopping a running one first with deployment.stop() and starting it again with deployment.start()."
         )
     try:
         deployment = model.deploy(

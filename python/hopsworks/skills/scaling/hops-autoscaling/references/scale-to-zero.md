@@ -2,7 +2,7 @@
 
 ## What a minimum of 0 does
 
-- **Knative mode (deprecated since 5.3, removed in 5.4; convert with `deployment.stop(); deployment.knative_mode = False; deployment.save(); deployment.start()`):** Knative's autoscaler removes the last pod after `scale_to_zero_retention_seconds` of no traffic and holds the next request while a pod starts. Nothing else to configure.
+- **Knative mode (deprecated since 5.3, removed in 5.4; convert with `deployment.knative_mode = False; deployment.save()` while stopped, stopping and restarting it only if it was running):** Knative's autoscaler removes the last pod after `scale_to_zero_retention_seconds` of no traffic and holds the next request while a pod starts. Nothing else to configure.
 - **Standard mode:** the KEDA HTTP add-on fronts the deployment. The deployment's hosts route to the add-on's interceptor instead of straight to the predictor; the interceptor counts requests, KEDA removes the last replica after `idle_cooldown_seconds` without one, and the next request is held by the interceptor (up to `cold_start_timeout_seconds`) while a replica starts and passes its readiness probe, then forwarded. While active the deployment runs at least one replica and autoscales between 1 and `max_instances` on its metric as usual.
 
 Requirements in Standard mode: KEDA installed on the cluster, the KEDA autoscaler (the default where KEDA is installed; KServe's HPA cannot scale to zero), and a predictor without a transformer.

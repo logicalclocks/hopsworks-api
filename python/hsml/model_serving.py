@@ -376,7 +376,9 @@ class ModelServing:
             knative_mode: Whether to deploy in KServe Knative mode.
                 Knative mode is deprecated since 5.3 and removed in 5.4; a 5.3 cluster refuses it unless an administrator allows it, and passing `True` warns.
                 `None` (default) lets the backend decide: a new deployment runs in Standard mode; on an update, `None` keeps the deployment's current mode.
-                Convert an existing Knative deployment with `deployment.stop(); deployment.knative_mode = False; deployment.save(); deployment.start()`; the deployment restarts once, Knative-only scaling settings are dropped and Standard defaults fill the gaps.
+                Convert an existing Knative deployment while it is stopped with `deployment.knative_mode = False; deployment.save()`.
+                Stop a running one first with `deployment.stop()` and start it again with `deployment.start()`, so it restarts once; a stopped one stays stopped.
+                Knative-only scaling settings are dropped and Standard defaults fill the gaps.
                 Standard mode autoscales between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum, under KEDA wherever it is installed and KServe's HPA otherwise), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
                 A predictor without a transformer scales to zero when idle with `min_instances=0`; the SDK sends a minimum of 1 unless you set it (the UI defaults a new deployment to 0 where KEDA is installed); see [`PredictorScalingConfig`][hsml.scaling_config.PredictorScalingConfig].
             triton_image_tag: Triton Inference Server image tag for Triton deployments.
@@ -635,7 +637,9 @@ class ModelServing:
             knative_mode: Whether to deploy in KServe Knative mode.
                 Knative mode is deprecated since 5.3 and removed in 5.4; a 5.3 cluster refuses it unless an administrator allows it, and passing `True` warns.
                 `None` (default) lets the backend decide: a new deployment runs in Standard mode; on an update, `None` keeps the deployment's current mode.
-                Convert an existing Knative deployment with `deployment.stop(); deployment.knative_mode = False; deployment.save(); deployment.start()`; the deployment restarts once, Knative-only scaling settings are dropped and Standard defaults fill the gaps.
+                Convert an existing Knative deployment while it is stopped with `deployment.knative_mode = False; deployment.save()`.
+                Stop a running one first with `deployment.stop()` and start it again with `deployment.start()`, so it restarts once; a stopped one stays stopped.
+                Knative-only scaling settings are dropped and Standard defaults fill the gaps.
                 Standard mode autoscales between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum, under KEDA wherever it is installed and KServe's HPA otherwise), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
                 A predictor without a transformer scales to zero when idle with `min_instances=0`; the SDK sends a minimum of 1 unless you set it (the UI defaults a new deployment to 0 where KEDA is installed); see [`PredictorScalingConfig`][hsml.scaling_config.PredictorScalingConfig].
             memory: Memory given to an agent that configures none itself; see
@@ -755,7 +759,9 @@ class ModelServing:
             knative_mode: Whether to deploy in KServe Knative mode.
                 Knative mode is deprecated since 5.3 and removed in 5.4; a 5.3 cluster refuses it unless an administrator allows it, and passing `True` warns.
                 `None` (default) lets the backend decide: a new deployment runs in Standard mode; on an update, `None` keeps the deployment's current mode.
-                Convert an existing Knative deployment with `deployment.stop(); deployment.knative_mode = False; deployment.save(); deployment.start()`; the deployment restarts once, Knative-only scaling settings are dropped and Standard defaults fill the gaps.
+                Convert an existing Knative deployment while it is stopped with `deployment.knative_mode = False; deployment.save()`.
+                Stop a running one first with `deployment.stop()` and start it again with `deployment.start()`, so it restarts once; a stopped one stays stopped.
+                Knative-only scaling settings are dropped and Standard defaults fill the gaps.
                 Standard mode autoscales between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum, under KEDA wherever it is installed and KServe's HPA otherwise), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
                 A predictor without a transformer scales to zero when idle with `min_instances=0`; the SDK sends a minimum of 1 unless you set it (the UI defaults a new deployment to 0 where KEDA is installed); see [`PredictorScalingConfig`][hsml.scaling_config.PredictorScalingConfig].
             memory:

@@ -35,8 +35,9 @@ Inside a terminal with cluster access, **hops-kubectl-debug** shows the autoscal
 
 ## Steps (generic, non-binding)
 1. **Pick the mode.** Leave `knative_mode` unset for Standard; do not set `knative_mode=True`: Knative mode is deprecated and removed in 5.4.
-   To convert an existing Knative deployment: `deployment.stop(); deployment.knative_mode = False; deployment.save(); deployment.start()`.
-   It restarts once, Knative-only scaling settings are dropped and Standard defaults fill the gaps.
+   To convert an existing Knative deployment, set `deployment.knative_mode = False` and call `deployment.save()` while it is stopped.
+   Stop a running one first with `deployment.stop()` and start it again with `deployment.start()`, so it restarts once; a stopped one stays stopped.
+   Knative-only scaling settings are dropped and Standard defaults fill the gaps.
    The mode cannot change while the deployment runs.
 2. **Pick the range.** `min_instances` 0 means scale to zero when idle in both modes (Standard: through the KEDA HTTP add-on, predictor without a transformer only); 1 or more keeps that many running. Through the SDK the minimum is 1 unless set (the UI defaults a new deployment to 0 where KEDA is installed), so pass `min_instances=0` for scale to zero. `max_instances` caps the scale-out; the cluster administrator caps it in turn (`kube_serving_max_num_instances`).
 3. **Pick the metric and its target.** Standard mode: `CPU` or `MEMORY` (utilization %, under KEDA or the HPA), `CONCURRENCY` or `RPS` (per instance, measured at the gateway by the KEDA HTTP add-on; predictor without a transformer, not vLLM), or a vLLM engine metric under KEDA. Knative mode: `CONCURRENCY` or `RPS`. The full table with units, defaults and rules is in [references/metrics.md](references/metrics.md).

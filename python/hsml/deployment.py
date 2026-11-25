@@ -1581,8 +1581,9 @@ class Deployment:
         """Whether the deployment runs in KServe Knative mode.
 
         Knative mode is deprecated since 5.3 and removed in 5.4.
-        Convert a deployment with `deployment.stop(); deployment.knative_mode = False; deployment.save(); deployment.start()`.
-        The deployment restarts once, Knative-only scaling settings are dropped and Standard defaults fill the gaps.
+        Convert a deployment with `deployment.knative_mode = False; deployment.save()` while it is stopped.
+        Stop a running one first with `deployment.stop()` and start it again with `deployment.start()`, so it restarts once; a stopped one stays stopped.
+        Knative-only scaling settings are dropped and Standard defaults fill the gaps.
 
         `True` selects Knative mode and warns, `False` selects Standard mode and `None` lets the backend decide on creation or keeps the stored mode on an update.
         See [`Predictor.knative_mode`][hsml.predictor.Predictor.knative_mode] for the full mode semantics.
