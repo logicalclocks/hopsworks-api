@@ -119,7 +119,20 @@ PROMETHEUS_COLLECTOR_HOOK_NAMES = {"collect", "describe"}
 # genuine public override ever starts showing up as a false positive — never
 # bare method names, which would mask unrelated internal helpers (e.g.
 # ``VectorDbClient.read``, ``TrainingDatasetEngine.read``).
-POLYMORPHISM_FALLBACK_QUALNAMES: set[str] = set()
+POLYMORPHISM_FALLBACK_QUALNAMES: set[str] = {
+    # The A2A executor implements ``a2a.server.agent_execution.AgentExecutor``,
+    # an abstract base in a third-party package griffe does not load. Keyed as
+    # ``Class.method``, which is what the rule below compares against.
+    "HopsworksAgentExecutor.execute",
+    "HopsworksAgentExecutor.cancel",
+    # The bounded task store implements the SDK's ``TaskStore`` the same way.
+    "_BoundedTaskStore.save",
+    "_BoundedTaskStore.get",
+    "_BoundedTaskStore.list",
+    "_BoundedTaskStore.delete",
+    # The request checks extend the SDK's ``SimpleRequestContextBuilder``.
+    "_RequestChecks.build",
+}
 
 # Third-party-API-mirroring re-exports: symbols that intentionally mirror an
 # external library's public name (renaming would diverge from upstream and break
