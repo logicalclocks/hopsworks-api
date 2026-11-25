@@ -458,10 +458,12 @@ class _DurableStores:
 
             options.update(poolclass=NullPool)
         else:
-            # a replica holds few connections; RonDB's MySQL servers are shared
-            options.update(
-                pool_pre_ping=True, pool_size=5, max_overflow=5, pool_recycle=1800
-            )
+            # A replica holds few connections; RonDB's MySQL servers are shared.
+            # Connections are recycled young rather than pinged before use: the
+            # pool's ping does not work with the aiomysql build hopsworks
+            # ships, and the stores retry the one statement a dropped
+            # connection fails.
+            options.update(pool_size=5, max_overflow=5, pool_recycle=300)
         self.engine = create_async_engine(url, **options)
         # The SDK's stores declare a model per table name on one shared
         # registry, and so cannot be built twice under our names (the event

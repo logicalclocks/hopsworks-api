@@ -342,19 +342,21 @@ class AgentApp(FastAPI):
                     self._a2a = A2AServer(
                         self, a2a if isinstance(a2a, A2AConfig) else A2AConfig()
                     )
-                except _NoDatabase:
+                except _NoDatabase as off:
                     # Durable tasks are what a deployment's A2A promises, and
                     # this one has nowhere to keep them. Memory is never a
                     # silent fallback: the author chooses it, or A2A is off.
-                    self._a2a_off_reason = "no_database"
+                    self._a2a_off_reason = off.reason
                     import logging  # noqa: PLC0415
 
                     logging.getLogger(__name__).warning(
-                        "this deployment has no access to the project's online "
-                        "database, so the agent serves no Agent Card and no A2A "
-                        "routes; give the project an online feature store, or "
+                        "this deployment cannot keep A2A tasks in the project's "
+                        "online database (%s), so the agent serves no Agent Card "
+                        "and no A2A routes; give the project an online feature "
+                        "store and the environment hopsworks[agents-memory], or "
                         'pass a2a=A2AConfig(task_store="memory") to keep tasks '
-                        "in the process, per replica"
+                        "in the process, per replica",
+                        off.reason,
                     )
                 else:
 

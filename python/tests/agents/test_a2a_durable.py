@@ -36,13 +36,97 @@ def run(coro):
     return asyncio.run(coro)
 
 
+#: A MySQL to run this module against instead of SQLite, as an async SQLAlchemy
+#: URL (``mysql+aiomysql://user:password@host:port/database``). The tables are
+#: dropped and created from the platform's definitions, which is what checks
+#: those definitions against the stores.
+MYSQL_URL_ENV = "A2A_TEST_MYSQL_URL"
+
+# The platform's tables (hopsworks-ee A2ATables), on the engine a plain MySQL has.
+MYSQL_TABLES = {
+    "agent_a2a_tasks": """
+        `id` VARCHAR(36) NOT NULL,
+        `context_id` VARCHAR(255) NOT NULL,
+        `kind` VARCHAR(16) NOT NULL DEFAULT 'task',
+        `owner` VARCHAR(255) NULL,
+        `last_updated` DATETIME(6) NULL,
+        `status` JSON NOT NULL,
+        `artifacts` JSON NULL,
+        `history` JSON NULL,
+        `protocol_version` VARCHAR(16) NULL,
+        `metadata` JSON NULL,
+        PRIMARY KEY (`id`),
+        KEY `idx_agent_a2a_tasks_owner_last_updated` (`owner`, `last_updated`)""",
+    "agent_a2a_task_versions": """
+        `task_id` VARCHAR(36) NOT NULL,
+        `owner` VARCHAR(255) NULL,
+        `version` BIGINT NOT NULL,
+        PRIMARY KEY (`task_id`)""",
+    "agent_a2a_task_events": """
+        `seq` BIGINT NOT NULL AUTO_INCREMENT,
+        `task_id` VARCHAR(36) NOT NULL,
+        `owner` VARCHAR(255) NULL,
+        `task_version` BIGINT NOT NULL,
+        `event_data` LONGBLOB NOT NULL,
+        PRIMARY KEY (`seq`),
+        KEY `idx_agent_a2a_task_events_task` (`task_id`)""",
+    "agent_a2a_push_configs": """
+        `task_id` VARCHAR(36) NOT NULL,
+        `config_id` VARCHAR(255) NOT NULL,
+        `config_data` BLOB NOT NULL,
+        `owner` VARCHAR(255) NULL,
+        `protocol_version` VARCHAR(16) NULL,
+        PRIMARY KEY (`task_id`, `config_id`),
+        KEY `idx_agent_a2a_push_configs_owner` (`owner`)""",
+    "agent_a2a_task_leases": """
+        `task_id` VARCHAR(36) NOT NULL,
+        `owner` VARCHAR(255) NOT NULL,
+        `deployment_id` VARCHAR(64) NOT NULL,
+        `executor` VARCHAR(255) NOT NULL,
+        `fence` BIGINT NOT NULL,
+        `attempt` INT NOT NULL DEFAULT 1,
+        `started_at` DATETIME NOT NULL,
+        `heartbeat_at` DATETIME NOT NULL,
+        `terminal_at` DATETIME NULL,
+        `terminal_pushed` TINYINT(1) NOT NULL DEFAULT 0,
+        PRIMARY KEY (`task_id`),
+        KEY `idx_agent_a2a_task_leases_heartbeat` (`deployment_id`, `heartbeat_at`)""",
+}
+
+
+def _fresh_mysql(url):
+    from sqlalchemy import create_engine, text
+
+    engine = create_engine(url.replace("+aiomysql", "+pymysql"))
+    with engine.begin() as conn:
+        for table, columns in MYSQL_TABLES.items():
+            conn.execute(text(f"DROP TABLE IF EXISTS `{table}`"))
+            conn.execute(text(f"CREATE TABLE `{table}` ({columns}) ENGINE = InnoDB"))
+    engine.dispose()
+
+
 @pytest.fixture
 def database(tmp_path, monkeypatch):
-    """One database for the test's replicas."""
-    url = f"sqlite+aiosqlite:///{tmp_path / 'a2a.db'}"
+    """One database for the test's replicas: SQLite, or the MySQL the environment names."""
+    import os
+
+    url = os.environ.get(MYSQL_URL_ENV)
+    if url:
+        _fresh_mysql(url)
+    else:
+        url = f"sqlite+aiosqlite:///{tmp_path / 'a2a.db'}"
     monkeypatch.setenv(a2a_store.DATABASE_URL_ENV, url)
     monkeypatch.delenv("DEPLOYMENT_ID", raising=False)
     return url
+
+
+async def change_leases(app, **values):
+    """Rewrite every lease row, as something outside this replica would."""
+    from sqlalchemy import update
+
+    leases = app._a2a.stores.leases
+    async with app._a2a.stores.engine.begin() as conn:
+        await conn.execute(update(leases.table).values(**values))
 
 
 async def connect(app, *, headers=None, streaming=False):
@@ -335,15 +419,9 @@ class TestTheLease:
             await wait_for(leased)
             # the replica dies: it stops renewing, which a heartbeat that is
             # already too old says
-            from sqlalchemy import text
+            import datetime
 
-            async with lost._a2a.stores.engine.begin() as conn:
-                await conn.execute(
-                    text(
-                        "UPDATE agent_a2a_task_leases "
-                        "SET heartbeat_at = datetime('now', '-120 seconds')"
-                    )
-                )
+            await change_leases(lost, heartbeat_at=datetime.datetime(2000, 1, 1))
             assert await survivor._a2a._reap() == 1
             failed = await b.get_task(GetTaskRequest(id=task.id))
             assert state_name(failed) == "TASK_STATE_FAILED"
@@ -355,6 +433,93 @@ class TestTheLease:
             # nothing left to reap
             assert await survivor._a2a._reap() == 0
             holder["release"].set()
+
+        run(scenario())
+
+    def test_an_idempotent_agent_runs_a_lost_task_again_instead_of_failing_it(
+        self, database
+    ):
+        holder = {"runs": 0}
+
+        async def stuck(request, ctx):
+            await holder["never"].wait()
+            return "never"
+
+        async def works(request, ctx):
+            holder["runs"] += 1
+            return f"did: {request.text}"
+
+        lost = replica(stuck)
+        survivor = replica(works, a2a=A2AConfig(idempotent=True, retry_lost_tasks=1))
+
+        async def scenario():
+            import datetime
+
+            holder["never"] = asyncio.Event()
+            a, b = await connect(lost), await connect(survivor)
+            task = await send(a, user_message("report"), return_immediately=True)
+
+            async def leased():
+                return await lease_rows(lost)
+
+            await wait_for(leased)
+            await change_leases(lost, heartbeat_at=datetime.datetime(2000, 1, 1))
+            assert await survivor._a2a._reap() == 1
+
+            async def finished():
+                current = await b.get_task(GetTaskRequest(id=task.id))
+                # never failed on the way: working, then done
+                assert state_name(current) != "TASK_STATE_FAILED"
+                return (
+                    current if state_name(current) == "TASK_STATE_COMPLETED" else None
+                )
+
+            done = await wait_for(finished)
+            assert text_of(done.status.message) == "did: report"
+            assert hopsworks_of(done.status.message)["attempt"] == 2
+            assert holder["runs"] == 1
+
+            async def released():
+                return not await lease_rows(survivor)
+
+            await wait_for(released)
+
+        run(scenario())
+
+    def test_a_task_lost_again_past_its_retries_is_failed(self, database):
+        async def stuck(request, ctx):
+            await asyncio.Event().wait()
+
+        lost = replica(stuck)
+        survivor = replica(stuck, a2a=A2AConfig(idempotent=True, retry_lost_tasks=1))
+
+        async def scenario():
+            import datetime
+
+            a, b = await connect(lost), await connect(survivor)
+            task = await send(a, user_message("report"), return_immediately=True)
+
+            async def leased():
+                return await lease_rows(lost)
+
+            await wait_for(leased)
+            old = datetime.datetime(2000, 1, 1)
+            await change_leases(lost, heartbeat_at=old)
+            assert await survivor._a2a._reap() == 1
+
+            async def running_again():
+                rows = await lease_rows(survivor)
+                return rows and rows[0].attempt == 2 and rows[0].fence >= 3
+
+            await wait_for(running_again)
+            # the second run is lost too, and there is no retry left
+            await change_leases(survivor, heartbeat_at=old, executor="gone-pod")
+            assert await lost._a2a._reap() == 1
+            failed = await b.get_task(GetTaskRequest(id=task.id))
+            assert state_name(failed) == "TASK_STATE_FAILED"
+            facts = hopsworks_of(failed.status.message)
+            assert facts["status"] == "executor_lost"
+            assert facts["attempt"] == 2
 
         run(scenario())
 
@@ -383,16 +548,8 @@ class TestTheLease:
                 return seen.get("started")
 
             await wait_for(started)
-            from sqlalchemy import text
-
             # someone took the lease: the fence moved on
-            async with stale._a2a.stores.engine.begin() as conn:
-                await conn.execute(
-                    text(
-                        "UPDATE agent_a2a_task_leases "
-                        "SET fence = fence + 1, executor = 'other-pod'"
-                    )
-                )
+            await change_leases(stale, fence=2, executor="other-pod")
 
             async def stopped():
                 return seen.get("stopped")

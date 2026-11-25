@@ -246,12 +246,30 @@ class A2AConfig:
 TASK_STORES = frozenset({"memory", "database"})
 #: How often a replica looks for tasks whose replica was lost.
 SWEEP_SECONDS = 30.0
+#: Where a call context made by the sweep says the execution is a retry of a lost task.
+RETRY_STATE_KEY = "hopsworks_retry"
 #: How long shutdown waits for queued push notifications to go out.
 PUSH_DRAIN_SECONDS = 5.0
 
 
 class _NoDatabase(Exception):  # noqa: N818 -- a reason A2A is off, not a failure
-    """A deployment without a database, and no word that memory will do: A2A is not served."""
+    """A deployment that cannot keep tasks in a database, and no word that memory will do: A2A is not served."""
+
+    def __init__(self, reason: str = "no_database"):
+        super().__init__(reason)
+        #: What the manifest says: ``no_database``, or ``no_database_driver``.
+        self.reason = reason
+
+
+def _driver_ready() -> bool:
+    """Whether the async database stack the stores need is installed (the ``agents-memory`` extra)."""
+    try:
+        import aiomysql  # noqa: F401, PLC0415
+        import greenlet  # noqa: F401, PLC0415
+        import sqlalchemy.ext.asyncio  # noqa: F401, PLC0415
+    except ImportError:
+        return False
+    return True
 
 
 def _store_mode(config: A2AConfig) -> tuple[str, str | None]:
@@ -274,6 +292,8 @@ def _store_mode(config: A2AConfig) -> tuple[str, str | None]:
     if _on_platform():
         if url is None:
             raise _NoDatabase
+        if not _driver_ready():
+            raise _NoDatabase("no_database_driver")
         return "database", url
     # a local run keeps tasks in the process unless it names a database
     if os.environ.get(DATABASE_URL_ENV):
@@ -638,6 +658,54 @@ class A2AServer:
             await self._lost(lease)
         return len(taken)
 
+    async def _retry(self, lease: dict[str, Any], task: Task) -> bool:
+        """Run a lost task again here, from the start, when its author said that is safe; whether it was started.
+
+        Only before any terminal state was published: the task stays
+        ``WORKING`` throughout, and is failed only when no retry is left.
+        The turn runs again from the message that started it, under a new
+        lease and fence, with the attempt counted in its metadata.
+        """
+        config = self.config
+        retries_used = int(lease["attempt"]) - 2
+        if not config.idempotent or retries_used >= config.retry_lost_tasks:
+            return False
+        asked = [m for m in task.history if m.role == Role.ROLE_USER]
+        if not asked or task.status.state in PAUSED_TASK_STATES:
+            return False
+        message = Message()
+        message.CopyFrom(asked[-1])
+        message.task_id = task.id
+        message.context_id = task.context_id
+        owner = str(lease["owner"])
+        state: dict[str, Any] = {OWNER_STATE_KEY: owner, RETRY_STATE_KEY: True}
+        if self.ownership.private and _store.OWNER_SEPARATOR in owner:
+            # the caller the task belongs to, for the memory the turn reads
+            principal = owner.split(_store.OWNER_SEPARATOR, 1)[1]
+            state["headers"] = {"x-hopsworks-principal": principal}
+        from a2a.types import (  # noqa: PLC0415
+            SendMessageConfiguration,
+            SendMessageRequest,
+        )
+
+        try:
+            await self.handler.on_message_send(
+                SendMessageRequest(
+                    message=message,
+                    configuration=SendMessageConfiguration(return_immediately=True),
+                ),
+                ServerCallContext(state=state),
+            )
+        except Exception:  # noqa: BLE001 -- failed visibly instead
+            _logger.warning(
+                "could not run lost task %s again; it is failed", task.id, exc_info=True
+            )
+            return False
+        _logger.info(
+            "lost task %s is run again here (attempt %d)", task.id, lease["attempt"]
+        )
+        return True
+
     async def _lost(self, lease: dict[str, Any]) -> None:
         """A task whose replica was lost: failed, visibly, with what the caller needs to decide.
 
@@ -654,6 +722,8 @@ class A2AServer:
             await self._settle_lease(task_id, lease["fence"])
             return
         task = stored.task
+        if await self._retry(lease, task):
+            return
         status = TaskStatus(
             state=TaskState.TASK_STATE_FAILED,
             message=Message(
@@ -1066,7 +1136,11 @@ class HopsworksAgentExecutor(AgentExecutor):
             await app._settle_pending(ctx, answered=False)
             await self._reject(updater, refused)
             return
-        if context.current_task is not None:
+        if (
+            context.current_task is not None
+            and context.current_task.status.state in PAUSED_TASK_STATES
+        ):
+            # a follow-up to a paused task; a lost task run again stays WORKING
             await updater.submit()
         if not self._config.serialize_context:
             await self._turn(context, updater, ctx, headers)
@@ -1110,6 +1184,7 @@ class HopsworksAgentExecutor(AgentExecutor):
         run: _TurnRun | None = None
         beat: asyncio.Task | None = None
         fence: int | None = None
+        attempt = 1
         # how the turn left the task, for the lease: ended, paused, or not ours
         left = "ended"
         with (
@@ -1125,11 +1200,18 @@ class HopsworksAgentExecutor(AgentExecutor):
             ctx._span = span
             trace_id = _trace_id(span)
             try:
+                fence, attempt = await self._take_lease(context)
                 await updater.update_status(
                     TaskState.TASK_STATE_WORKING,
-                    metadata=_hopsworks({"trace_id": trace_id, "protocol": "a2a"}),
+                    metadata=_hopsworks(
+                        {
+                            "trace_id": trace_id,
+                            "protocol": "a2a",
+                            # said from the second run of a lost task on
+                            "attempt": attempt if attempt > 1 else None,
+                        }
+                    ),
                 )
-                fence = await self._take_lease(context)
                 run = _TurnRun(app, ctx)
                 self.runs[task_id] = run
                 beat = asyncio.create_task(self._heartbeat(context, run, fence))
@@ -1195,7 +1277,10 @@ class HopsworksAgentExecutor(AgentExecutor):
                 # the facts ride on the final message and on the event, so
                 # they are on the task itself as well as on its status
                 facts = _hopsworks(
-                    self._facts(ctx, response, trace_id, artifacts.dropped)
+                    {
+                        **self._facts(ctx, response, trace_id, artifacts.dropped),
+                        "attempt": attempt if attempt > 1 else None,
+                    }
                 )
                 await updater.update_status(
                     TaskState.TASK_STATE_COMPLETED,
@@ -1234,14 +1319,16 @@ class HopsworksAgentExecutor(AgentExecutor):
         server = self._app._a2a
         return server.stores if server is not None else None
 
-    async def _take_lease(self, context: RequestContext) -> int | None:
-        """Record that this replica runs the task; the fence it runs under, or None when tasks are not shared."""
+    async def _take_lease(self, context: RequestContext) -> tuple[int | None, int]:
+        """Record that this replica runs the task; the fence it runs under (None when tasks are not shared) and which run of the task this is."""
         stores = self._stores()
         if stores is None or context.call_context is None:
-            return None
+            return None, 1
         owner = self._app._a2a.ownership._owner(context.call_context)
-        fence, _attempt = await stores.leases._acquire(context.task_id or "", owner)
-        return fence
+        fence, attempt = await stores.leases._acquire(context.task_id or "", owner)
+        # a row the sweep took from a lost replica already counts this run
+        retried = bool((context.call_context.state or {}).get(RETRY_STATE_KEY))
+        return fence, (attempt if retried else 1)
 
     async def _leave_lease(self, task_id: str, fence: int | None, left: str) -> None:
         """The turn is over: the lease goes with it, unless it was lost to someone else."""

@@ -173,6 +173,10 @@ agents = [
     # request handler, the request-context builder, the compat card), which a
     # minor release may move.
     "a2a-sdk[fastapi,signing,encryption]>=1.3.0,<1.4",
+    # The async half of SQLAlchemy, which the A2A task stores on the project's
+    # online database run on. SQLAlchemy 2 itself comes with agents-memory, and
+    # the driver is the aiomysql build hopsworks already depends on.
+    "greenlet>=3.0",
     "opentelemetry-sdk>=1.0.0",
     "opentelemetry-exporter-otlp-proto-http>=1.0.0",
 ]
