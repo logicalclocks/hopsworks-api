@@ -1279,7 +1279,8 @@ class SemanticProject:
             columns=list(_HISTORY_COLUMNS.values()),
         )
         for column in ("started_at", "finished_at"):
-            frame[column] = pd.to_datetime(frame[column], utc=True)
+            # A timestamp on a whole second comes without a fraction, so the format pandas infers from the first row does not fit every row.
+            frame[column] = pd.to_datetime(frame[column], utc=True, format="ISO8601")
         for column in ("build_id", "rows", "duration_ms"):
             frame[column] = frame[column].astype("Int64")
         return frame
