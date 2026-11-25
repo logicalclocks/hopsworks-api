@@ -22,7 +22,7 @@ import asyncio
 import inspect
 import json
 from collections import OrderedDict
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -136,7 +136,7 @@ class AgentApp(FastAPI):
         fetch_urls: list[str] | None = None,
         input_media_types: list[str] | None = None,
         output_media_types: list[str] | None = None,
-        platform_skills: str | list[str] | None = None,
+        platform_skills: Sequence[str] | None = None,
         **fastapi_kwargs: Any,
     ):
         super().__init__(title=name, description=description, **fastapi_kwargs)
