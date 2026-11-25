@@ -55,7 +55,7 @@ def test_setup_failure_warns_only_for_implicit_selection(
         raise PermissionError("read-only filesystem")
 
     if failure == "missing":
-        monkeypatch.setattr(_skill_catalogue, "packaged_skills_dir", lambda: None)
+        monkeypatch.setattr(_skill_catalogue, "_packaged_skills_dir", lambda: None)
     elif failure == "tempdir":
         monkeypatch.setattr(skills_module, "TemporaryDirectory", denied)
     else:

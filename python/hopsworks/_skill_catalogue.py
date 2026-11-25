@@ -7,7 +7,7 @@ from pathlib import Path
 from hopsworks.cli.output import first_line
 
 
-def packaged_skills_dir() -> Path | None:
+def _packaged_skills_dir() -> Path | None:
     """The skills this installation ships, ignoring any environment override.
 
     Returns:
@@ -65,7 +65,7 @@ def _parse_frontmatter(skill_md: Path) -> dict[str, str]:
     return {"name": name, "description": description}
 
 
-def collect_skills(skills_dir: Path) -> list[dict[str, str]]:
+def _collect_skills(skills_dir: Path) -> list[dict[str, str]]:
     """Scan ``skills_dir`` and return one record per skill.
 
     Both layouts are accepted.
@@ -105,8 +105,15 @@ def collect_skills(skills_dir: Path) -> list[dict[str, str]]:
     return skills
 
 
-def render_catalogue(skills: list[dict[str, str]]) -> str:
-    """Render the skill summaries for a system prompt or ``hops context``."""
+def _render_catalogue(skills: list[dict[str, str]]) -> str:
+    """Render the skill summaries for a system prompt or ``hops context``.
+
+    Args:
+        skills: Skill records containing the bucket, name, and description.
+
+    Returns:
+        A Markdown table, or an empty string when there are no skills.
+    """
     if not skills:
         return ""
     rows = [

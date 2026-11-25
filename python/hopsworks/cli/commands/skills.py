@@ -15,8 +15,7 @@ import shlex
 from pathlib import Path
 
 import click
-from hopsworks._skill_catalogue import collect_skills as _collect_skills
-from hopsworks._skill_catalogue import packaged_skills_dir as _packaged_skills_dir
+from hopsworks._skill_catalogue import _collect_skills, _packaged_skills_dir
 from hopsworks.cli import output, scaffold
 
 

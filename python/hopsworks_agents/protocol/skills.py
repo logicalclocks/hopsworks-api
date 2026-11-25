@@ -9,6 +9,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Literal
 
+from hopsworks_apigen import public
+
 
 _log = logging.getLogger(__name__)
 
@@ -70,11 +72,11 @@ class DeploymentSkills:
         if selected == "none" or not selected:
             return
 
-        from hopsworks._skill_catalogue import collect_skills, packaged_skills_dir
+        from hopsworks._skill_catalogue import _collect_skills, _packaged_skills_dir
 
         try:
-            source = packaged_skills_dir()
-            records = collect_skills(source) if source else []
+            source = _packaged_skills_dir()
+            records = _collect_skills(source) if source else []
             if not records:
                 raise FileNotFoundError(
                     "This installation of hopsworks has no packaged skills."
@@ -118,8 +120,13 @@ class DeploymentSkills:
         """Additional Claude project directories to pass to ClaudeAgentOptions.add_dirs."""
         return [self._project.name] if self._project else []
 
+    @public
     def claude_options(self) -> dict[str, Any]:
-        """ClaudeAgentOptions kwargs for discovering this selection alongside project skills."""
+        """Configure Claude to discover the selected skills alongside project skills.
+
+        Returns:
+            Keyword arguments for ``ClaudeAgentOptions``.
+        """
         return {
             "setting_sources": ["project"],
             "add_dirs": self.claude_dirs,
@@ -128,14 +135,30 @@ class DeploymentSkills:
             "skills": "all",
         }
 
+    @public
     def catalogue(self) -> str:
-        """Summaries of the selected skills for the agent's system prompt."""
-        from hopsworks._skill_catalogue import render_catalogue
+        """Summarize the selected skills for the agent's system prompt.
 
-        return render_catalogue(list(self._skills.values()))
+        Returns:
+            A Markdown catalogue, or an empty string if no skills are selected.
+        """
+        from hopsworks._skill_catalogue import _render_catalogue
 
+        return _render_catalogue(list(self._skills.values()))
+
+    @public
     def read_skill(self, name: str) -> str:
-        """Read a selected Hopsworks skill by name, including the path for its relative references."""
+        """Read a selected skill and identify the source of its relative references.
+
+        Args:
+            name: Folder name of a selected Hopsworks skill.
+
+        Returns:
+            The source path followed by the Markdown instructions.
+
+        Raises:
+            ValueError: The skill is not enabled for this deployment.
+        """
         if name not in self._skills:
             raise ValueError(f"Hopsworks skill {name!r} is not enabled.")
         path = Path(self._skills[name]["path"])
