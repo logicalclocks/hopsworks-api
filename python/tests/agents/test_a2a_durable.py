@@ -194,6 +194,16 @@ async def lease_rows(app):
         return (await conn.execute(select(leases.table))).all()
 
 
+async def stored_as_working(client, task_id):
+    """Wait until the task's WORKING state is in the store: the handler can start before it is saved."""
+
+    async def working():
+        current = await client.get_task(GetTaskRequest(id=task_id))
+        return state_name(current) == "TASK_STATE_WORKING"
+
+    await wait_for(working)
+
+
 async def wait_for(predicate, timeout=5.0):
     deadline = asyncio.get_running_loop().time() + timeout
     while asyncio.get_running_loop().time() < deadline:
@@ -594,6 +604,7 @@ class TestTheLease:
                 return seen.get("started")
 
             await wait_for(started)
+            await stored_as_working(b, task.id)
             # someone took the lease: the fence moved on
             await change_leases(stale, fence=2, executor="other-pod")
 
@@ -861,6 +872,7 @@ class TestReviewOfTheLease:
                 return await lease_rows(stale)
 
             await wait_for(leased)
+            await stored_as_working(b, task.id)
             await change_leases(stale, fence=2, executor="other-pod")
             holder["go"].set()
             await asyncio.sleep(0.3)
