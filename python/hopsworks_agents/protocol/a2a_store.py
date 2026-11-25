@@ -498,6 +498,22 @@ class _DurableStores:
         self.push_configs.config_model = models["push"]
         self.leases = _Leases(self.engine, create_table=create)
 
+    async def _tables_exist(self) -> bool:
+        """Whether the tables are there to be used: created here for a local database, by the platform otherwise."""
+        from sqlalchemy import select  # noqa: PLC0415
+
+        try:
+            await self.task_store.initialize()
+            await self.leases._ensure()
+            model = self.task_store.as_task_store.task_model
+            async with self.engine.connect() as conn:
+                await conn.execute(select(model.id).limit(1))
+                await conn.execute(select(self.leases.table.c.task_id).limit(1))
+        except Exception:  # noqa: BLE001 -- said by the caller
+            _logger.debug("the A2A task tables could not be read", exc_info=True)
+            return False
+        return True
+
     async def _state(self, task_id: str) -> str | None:
         """A task's stored state, by name, read without its history and artifacts."""
         from sqlalchemy import select  # noqa: PLC0415

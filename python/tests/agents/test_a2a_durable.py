@@ -210,6 +210,27 @@ class TestWhereTasksAreKept:
         assert app._a2a.mode == "memory"
         assert app._a2a.stores is None
 
+    def test_startup_says_when_the_platforms_tables_are_missing(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        from hopsworks_agents.protocol import a2a_store as store
+
+        monkeypatch.delenv("DEPLOYMENT_ID", raising=False)
+        monkeypatch.setenv(
+            store.DATABASE_URL_ENV, f"sqlite+aiosqlite:///{tmp_path / 'empty.db'}"
+        )
+        # as on a deployment, where the tables are the platform's to create
+        monkeypatch.setattr(store, "_platform_creates_tables", lambda url: True)
+        app = replica()
+
+        async def scenario():
+            with caplog.at_level("ERROR"):
+                await app._a2a._start()
+            await app._a2a._stop()
+
+        run(scenario())
+        assert "task tables are missing" in caplog.text
+
     def test_a_named_database_is_used(self, database):
         app = replica()
         assert app._a2a.mode == "database"

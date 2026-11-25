@@ -558,6 +558,16 @@ class A2AServer:
     async def _start(self) -> None:
         """At startup: the sweep for tasks whose replica was lost, when tasks are shared."""
         if self.stores is not None and self._sweeper is None:
+            if not await self.stores._tables_exist():
+                # the tables are the platform's to create; without them every
+                # task request fails, which is better said once and plainly
+                _logger.error(
+                    "the A2A task tables are missing from the project's online "
+                    "database, so A2A requests to this agent will fail: the "
+                    "platform creates them when an agent deployment starts "
+                    "(Hopsworks 5.3 or later); until then, serve A2A from "
+                    'memory with a2a=A2AConfig(task_store="memory")'
+                )
             self._sweeper = asyncio.create_task(self._sweep())
         await self._sign()
 
