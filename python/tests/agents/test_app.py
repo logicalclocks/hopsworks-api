@@ -529,19 +529,19 @@ class TestFrameworkAndTracing:
         assert app.framework == expected
 
     def test_claude_discovers_only_selected_packaged_skills(
-        self, monkeypatch, tmp_path
+        self, monkeypatch, tmp_path, skill_catalogue
     ):
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("AGENT_FRAMEWORK", "claude_agents")
-        monkeypatch.setenv("HOPSWORKS_AGENT_SKILLS", "hops-analytics, hops-trino-sql")
+        monkeypatch.setenv("HOPSWORKS_AGENT_SKILLS", "jobs, orders")
         app = AgentApp()
         skills = app.platform_skills
         directory = Path(skills.claude_dirs[0]) / ".claude" / "skills"
         assert sorted(p.name for p in directory.iterdir()) == skills.names
-        assert (directory / "hops-analytics/references/silver-tasks.md").is_file()
+        assert (directory / "orders/references/guide.md").is_file()
         assert not (tmp_path / ".claude").exists()
-        assert "hops-trino-sql" in skills.catalogue()
-        assert "# Trino SQL" in skills.read_skill("hops-trino-sql")
+        assert "jobs" in skills.catalogue()
+        assert "[Orders]" in skills.read_skill("jobs")
 
         disabled = AgentApp(platform_skills="none").platform_skills
         assert disabled.names == disabled.claude_dirs == []
@@ -550,22 +550,24 @@ class TestFrameworkAndTracing:
     @pytest.mark.parametrize(
         "framework", ["langgraph", "llamaindex", "openai_agents", "custom"]
     )
-    def test_framework_skill_tool_obeys_selection(self, framework):
+    def test_framework_skill_tool_obeys_selection(self, framework, skill_catalogue):
         skills = AgentApp(
-            framework=framework, platform_skills=["hops-analytics"]
+            framework=framework, platform_skills=["orders"]
         ).platform_skills
         assert skills.claude_dirs == []
-        assert skills.names == ["hops-analytics"]
-        assert "hops-trino-sql" not in skills.catalogue()
-        for unselected in ("hops-trino-sql", "../hops-analytics"):
+        assert skills.names == ["orders"]
+        assert "jobs" not in skills.catalogue()
+        for unselected in ("jobs", "../orders"):
             with pytest.raises(ValueError, match="not enabled"):
                 skills.read_skill(unselected)
 
-    def test_platform_skill_defaults_and_invalid_selection(self, monkeypatch):
+    def test_platform_skill_defaults_and_invalid_selection(
+        self, monkeypatch, skill_catalogue
+    ):
         monkeypatch.delenv("HOPSWORKS_AGENT_SKILLS", raising=False)
         assert AgentApp(framework="custom").platform_skills.names == []
         claude_app = AgentApp(framework="claude-agent-sdk")
-        assert "hops-trino-sql" in claude_app.platform_skills.names
+        assert "jobs" in claude_app.platform_skills.names
         with pytest.raises(ValueError, match="Unknown Hopsworks skill"):
             AgentApp(platform_skills=["typo"])
 

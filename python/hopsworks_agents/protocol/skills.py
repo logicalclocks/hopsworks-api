@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Sequence
+import re
+import shutil
+import stat
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Literal
 
+import yaml
 from hopsworks_apigen import public
 
 
@@ -39,22 +43,86 @@ def _parse_selection(
     return tuple(name.strip() for name in value if name.strip())
 
 
-def _link_claude_skills(
-    project: Path, selected: dict[str, dict[str, str]], records: list[dict[str, str]]
-) -> None:
-    settings = project / ".claude"
-    directory = settings / "skills"
-    directory.mkdir(parents=True)
-    for name, skill in selected.items():
-        (directory / name).symlink_to(
-            Path(skill["path"]).parent, target_is_directory=True
-        )
+# Relative Markdown links that can leave the skill's own folder.
+_PARENT_LINK = re.compile(r"(?<=\]\()(\.\./[^\s)#]+)(?=[)#])")
+_HEADER = re.compile(r"\A---[ \t]*\n(.*?)^---[ \t]*(?:\n|\Z)", re.MULTILINE | re.DOTALL)
+# Markdown file -> link text -> (target skill directory, path within that skill).
+_SkillLinks = dict[Path, dict[str, tuple[Path, Path]]]
 
-    # Markdown readers can normalize ../../<bucket>/... before following
-    # the skill symlink. Keep the buckets outside the discovery directory.
-    buckets = {Path(skill["path"]).parents[1] for skill in records if skill["bucket"]}
-    for bucket in buckets:
-        (settings / bucket.name).symlink_to(bucket, target_is_directory=True)
+
+def _walk_skills(
+    start: set[Path], roots: set[Path]
+) -> Iterator[tuple[Path, _SkillLinks]]:
+    """Visit the selected skill trees and the other packaged trees their Markdown links to."""
+    pending = list(start)
+    visited = set()
+    while pending:
+        root = pending.pop()
+        if root in visited:
+            continue
+        visited.add(root)
+        links: _SkillLinks = {}
+        for md in root.rglob("*.md"):
+            if not md.is_file() or not md.resolve().is_relative_to(root):
+                continue
+            for link in _PARENT_LINK.findall(md.read_text(encoding="utf-8")):
+                target = (md.parent / link).resolve()
+                owner = next((p for p in (target, *target.parents) if p in roots), None)
+                if owner is not None and owner != root:
+                    links.setdefault(md, {})[link] = (owner, target.relative_to(owner))
+                    pending.append(owner)
+        yield root, links
+
+
+def _discovery_header(body: str, source: Path) -> str:
+    """Keep the metadata Claude needs to discover this playbook."""
+    header = _HEADER.match(body)
+    if header is None:
+        raise ValueError(f"Missing skill front matter: {source}")
+    fields = yaml.safe_load(header[1])
+    keys = ("name", "description")
+    if not isinstance(fields, dict) or not all(
+        isinstance(fields.get(key), str) for key in keys
+    ):
+        raise ValueError(f"Expected skill name and description in {source}")
+    metadata = yaml.safe_dump({key: fields[key] for key in keys}, sort_keys=False)
+    return f"---\n{metadata}---\n{body[header.end() :]}"
+
+
+def _stage_claude_skills(project: Path, selected: set[Path], roots: set[Path]) -> None:
+    # Only selected skills belong in a Claude settings directory. Linked
+    # playbooks are ordinary files that the agent can read as references.
+    destinations = {
+        root: project
+        / (".claude/skills" if root in selected else "references")
+        / root.name
+        for root in roots
+    }
+    for root, links in _walk_skills(selected, roots):
+        dest = destinations[root]
+        shutil.copytree(
+            root, dest, ignore=shutil.ignore_patterns("__pycache__", "*.pyc")
+        )
+        for md in {*root.rglob("SKILL.md"), *links}:
+            staged = dest / md.relative_to(root)
+            body = staged.read_text(encoding="utf-8")
+            if md.name == "SKILL.md":
+                # The deployment controls tool permissions. Publish discovery
+                # metadata only, even if the terminal playbook allows tools.
+                body = _discovery_header(body, md)
+            if md in links:
+                replacements = {}
+                for link, (owner, relative) in links[md].items():
+                    staged_target = destinations[owner] / relative
+                    replacements[link] = Path(
+                        os.path.relpath(staged_target, staged.parent)
+                    ).as_posix()
+                body = _PARENT_LINK.sub(
+                    lambda m, paths=replacements: paths.get(m[1], m[1]), body
+                )
+            # copytree preserves the installed package's read-only mode bits.
+            staged.chmod(staged.stat().st_mode | stat.S_IWUSR)
+            staged.write_text(body, encoding="utf-8")
 
 
 class DeploymentSkills:
@@ -62,6 +130,7 @@ class DeploymentSkills:
 
     def __init__(self, selection: Sequence[str] | None = None, *, framework: str):
         self._skills: dict[str, dict[str, str]] = {}
+        self._roots: set[Path] = set()
         self._project: TemporaryDirectory | None = None
         selected = _parse_selection(selection)
         if selected is None:
@@ -86,20 +155,28 @@ class DeploymentSkills:
                 for name in selected:
                     if name not in available:
                         raise ValueError(
-                            f"Unknown Hopsworks skill {name!r}. Use 'hops skills list' to see the names."
+                            f"Unknown Hopsworks skill {name!r}. Available packaged skills: {', '.join(sorted(available))}."
                         )
                 selected_skills = {name: available[name] for name in selected}
             else:
                 selected_skills = available
 
+            self._roots = {Path(s["path"]).resolve().parent for s in records}
             if framework == "claude_agents":
                 self._project = TemporaryDirectory(
                     prefix="hopsworks-agent-skills-", ignore_cleanup_errors=True
                 )
-                _link_claude_skills(Path(self._project.name), selected_skills, records)
+                _stage_claude_skills(
+                    Path(self._project.name),
+                    {
+                        Path(s["path"]).resolve().parent
+                        for s in selected_skills.values()
+                    },
+                    self._roots,
+                )
 
             self._skills = selected_skills
-        except OSError as exc:
+        except (OSError, ValueError, yaml.YAMLError) as exc:
             if self._project is not None:
                 self._project.cleanup()
                 self._project = None
@@ -147,19 +224,31 @@ class DeploymentSkills:
         return _render_catalogue(list(self._skills.values()))
 
     @public
-    def read_skill(self, name: str) -> str:
+    def read_skill(self, name: str, path: str = "SKILL.md") -> str:
         """Read a selected skill and identify the source of its relative references.
 
         Args:
             name: Folder name of a selected Hopsworks skill.
+            path: Text file relative to that skill folder, including references in linked playbooks.
 
         Returns:
             The source path followed by the Markdown instructions.
 
         Raises:
-            ValueError: The skill is not enabled for this deployment.
+            ValueError: The skill is disabled or the path is outside its reference trees.
+            FileNotFoundError: The file does not exist.
         """
         if name not in self._skills:
             raise ValueError(f"Hopsworks skill {name!r} is not enabled.")
-        path = Path(self._skills[name]["path"])
-        return f"# Source: {path}\n\n{path.read_text(encoding='utf-8')}"
+        root = Path(self._skills[name]["path"]).resolve().parent
+        relative = Path(path)
+        if relative.anchor:
+            raise ValueError("Expected a path relative to the selected skill.")
+        target = (root / relative).resolve()
+        if not target.is_relative_to(root):
+            owner = next((p for p in target.parents if p in self._roots), None)
+            if owner is None or not any(
+                r == owner for r, _ in _walk_skills({root}, self._roots)
+            ):
+                raise ValueError("Path is outside this skill and its linked playbooks.")
+        return f"# Source: {target}\n\n{target.read_text(encoding='utf-8')}"
