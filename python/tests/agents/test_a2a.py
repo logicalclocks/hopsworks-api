@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import json
+import sys
 
 import httpx
 import pytest
@@ -1936,6 +1937,10 @@ print(json.dumps(out))
             with pytest.raises(AgentError, match="cancelled"):
                 a2a_module._fetch(f"{base}/slow", stop=stop)
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="SIGTERM terminates the process on Windows; no handler and no drain run",
+    )
     def test_the_stop_signal_starts_the_drain_on_a_real_server(self, tmp_path):
         """A SIGTERM to a real uvicorn: the budget runs from the signal, not from the lifespan's end."""
         import signal
@@ -1975,6 +1980,10 @@ print(json.dumps(out))
             # uvicorn re-raises the signal it captured once it has stopped
             assert proc.wait(timeout=20) in (0, -signal.SIGTERM)
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="SIGTERM terminates the process on Windows; no handler and no drain run",
+    )
     def test_a_stream_stays_open_through_the_drain_on_a_real_server(self, tmp_path):
         """sse-starlette would end the stream at the signal; the caller must see the terminal event."""
         import signal
