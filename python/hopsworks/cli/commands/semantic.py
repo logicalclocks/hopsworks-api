@@ -515,16 +515,16 @@ def init_cmd(
         path, git_repository_id = clone.path, clone.id
     else:
         feature_groups = [fg_cmd._get_fg(ctx, *_fg_ref(ref)) for ref in from_fg]
-        # The semantic layer reads cached and stream feature groups through their offline table only.
-        tableless = [
+        # A spine group holds no rows. An external feature group over a table resolves at compile time
+        # through a Trino catalog of the project created from its data source.
+        spines = [
             f"{fg.name} version {fg.version}"
             for fg in feature_groups
-            if fg_cmd._fg_type_label(fg) in ("external", "spine")
+            if fg_cmd._fg_type_label(fg) == "spine"
         ]
-        if tableless:
+        if spines:
             raise click.ClickException(
-                f"{', '.join(tableless)}: semantic models read only feature groups with an "
-                "offline table, and external feature groups and spine groups have none."
+                f"{', '.join(spines)}: a spine group holds no rows for a semantic model to read."
             )
         files = _scaffold(
             name,

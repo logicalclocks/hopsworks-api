@@ -753,19 +753,41 @@ class TestInitInAFolder:
         assert result.exit_code == 1
         assert "unknown column" in result.output
 
-    def test_an_external_feature_group_is_refused(self, sl, datasets, mocker):
-        external = mock.MagicMock(name="ExternalFeatureGroup")
-        external.__class__ = type("ExternalFeatureGroup", (), {})
-        external.name, external.version = "crm_accounts", 1
+    def test_a_spine_group_is_refused(self, sl, datasets, mocker):
+        spine = mock.MagicMock(name="SpineGroup")
+        spine.__class__ = type("SpineGroup", (), {})
+        spine.name, spine.version = "dates", 1
+        mocker.patch.object(fg_cmd, "_get_fg", return_value=spine)
+
+        result = _run("sales", "--from-fg", "dates")
+
+        assert result.exit_code == 1
+        assert "dates version 1" in result.output
+        assert "spine group" in result.output
+        datasets.upload.assert_not_called()
+        sl.create_project.assert_not_called()
+
+    def test_an_external_feature_group_is_scaffolded(self, sl, datasets, mocker):
+        # The compile resolves it through a Trino catalog of its data source (HWORKS-3875).
+        accounts = _fg(
+            "crm_accounts",
+            1,
+            [("account_id", "bigint"), ("opened_at", "timestamp")],
+            ["account_id"],
+            "opened_at",
+        )
+        external = type("ExternalFeatureGroup", (SimpleNamespace,), {})(
+            **vars(accounts)
+        )
         mocker.patch.object(fg_cmd, "_get_fg", return_value=external)
 
         result = _run("sales", "--from-fg", "crm_accounts")
 
-        assert result.exit_code == 1
-        assert "crm_accounts version 1" in result.output
-        assert "offline table" in result.output
-        datasets.upload.assert_not_called()
-        sl.create_project.assert_not_called()
+        assert result.exit_code == 0, result.output
+        assert (
+            "ref('crm_accounts')" in datasets.uploaded["files"]["models/semantic.yml"]
+        )
+        sl.create_project.assert_called_once()
 
     def test_a_bad_version_is_a_usage_error(self, sl, datasets, feature_groups):
         result = _run("sales", "--from-fg", "orders:latest")
