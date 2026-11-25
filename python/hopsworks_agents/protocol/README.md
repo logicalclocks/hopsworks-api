@@ -416,7 +416,9 @@ A local run keeps them in the process; `HOPSWORKS_AGENT_A2A_DATABASE_URL` (any a
 Memory is never a silent fallback: a deployment that cannot reach a database, whose author did not choose memory, serves no card and no A2A routes, and its manifest says `a2a: {enabled: false, reason: "no_database"}` (`no_database_driver` when the `agents-memory` extra is missing).
 The manifest's `task_store` says which store is in use.
 
-A `raw` part larger than `HOPSWORKS_AGENT_ARTIFACT_INLINE_BYTES` (256 KiB) is written to the deployment's artifact storage when its task is saved, and the stored task carries a `url` part pointing at `/a2a/artifacts/...` instead; when a task is still larger than `HOPSWORKS_AGENT_TASK_MAX_BYTES` (2 MiB), its largest remaining parts go the same way.
+A `raw` part larger than `HOPSWORKS_AGENT_ARTIFACT_INLINE_BYTES` (256 KiB) is written to the deployment's artifact storage when its task is saved, and the stored task carries a `url` part pointing at `/a2a/artifacts/...` instead; when a task is still larger than `HOPSWORKS_AGENT_TASK_MAX_BYTES` (2 MiB), measured as the JSON the store writes, its largest remaining parts (`text` and `data` too, a `data` part as an `application/json` file) go the same way.
+Without storage, or when it fails, the task gives up its oldest history, then the content of its largest parts, then metadata beyond the `hopsworks` key, and says so in `metadata.hopsworks.truncated`; a task that still does not fit is stored without its artifacts and history, with a short note as its status message.
+A deleted task's files are removed with it; a removal that fails is retried by the sweep, and by the platform when no replica is left.
 A streaming caller receives the bytes inline in the events; a caller that reads the task afterwards receives the URL, and fetches it with the credential it reads the task with.
 
 ### Who may see a task
@@ -434,7 +436,8 @@ A running turn holds a lease in the database, renewed every 10 seconds.
 The heartbeat also keeps the claim of a resumed turn, so a turn longer than the claim's 15 minutes is not resumed twice, and notices a cancel that reached another replica, so the handler stops within one interval even inside a tool that reports nothing (`ctx.cancelled` is set).
 A replica that finds its lease taken, or cannot reach the database for three intervals, stops the turn and writes nothing more to the task.
 A lease nobody renews for 30 seconds is taken by a surviving replica, or by the platform when none is left, and the task ends `FAILED` with `metadata.hopsworks {status: "executor_lost", outcome: "unknown", retryable: true}`: nothing is known about how far the handler got, so the caller decides whether to resend.
-An agent whose tools are safe to repeat says so, `A2AConfig(idempotent=True, retry_lost_tasks=1)`: a surviving replica then runs the task again from the start, `attempt` counted in its metadata, and the task stays `WORKING` until it ends or the retries run out. Such an agent should keep at least one replica.
+An agent whose tools are safe to repeat says so, `A2AConfig(idempotent=True, retry_lost_tasks=1)`: a surviving replica then runs the task again from the start, `attempt` counted in its metadata, and the task stays `WORKING` until it ends or the retries run out. The policy is written on the lease when the task starts, so whoever finds the task lost applies the same one; when the platform finds it, it hands the task back and a replica takes it within 10 seconds, and fails it after 90 seconds if none does. Such an agent should keep at least one replica.
+A resumed turn running an action a person approved is marked on its lease before the action starts: a cancel from any replica is refused from then on, and a cancel that landed first means the action does not run.
 
 ### Push notifications
 
