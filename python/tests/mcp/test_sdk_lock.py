@@ -94,10 +94,10 @@ def test_a_cancelled_switch_gives_the_lock_back_once_the_sdk_work_ends():
         switch.cancel()
         release.set()
         await work
-        for _ in range(100):
-            if not sdk.connection_lock.locked():
-                break
-            await asyncio.sleep(0.01)
+        # The cancelled switch's lock request still runs: let it take the lock and give it back.
+        # Left pending, asyncio.run would cancel it, and its thread would take the lock for good.
+        pending = asyncio.all_tasks() - {asyncio.current_task()}
+        await asyncio.gather(*pending, return_exceptions=True)
 
     with patches[0], patches[1]:
         asyncio.run(scenario())
