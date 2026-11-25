@@ -258,6 +258,7 @@ def _deployment_to_dict(d: Any) -> dict[str, Any]:
 # The backend's default limits for a predictor instance.
 DEFAULT_CORES = 1.0
 DEFAULT_MEMORY_MB = 1024
+DEFAULT_GPUS = 0
 
 
 @deployment_group.command("create")
@@ -288,6 +289,13 @@ DEFAULT_MEMORY_MB = 1024
     "Omit to let the backend decide (vLLM deployments default to Standard, others to Knative mode). "
     "On an update, omitting it keeps the deployment's current mode.",
 )
+@click.option(
+    "--loading-strategy",
+    type=click.Choice(["MOUNT", "RUNAI_STREAMER", "DOWNLOAD"], case_sensitive=False),
+    help="How the model server reads the model files: MOUNT (read in place from HopsFS), "
+    "RUNAI_STREAMER (vLLM on GPUs, see --gpus, not vLLM-Omni, safetensors weights, streamed from HopsFS, can load faster with several GPUs) or DOWNLOAD (copied to the pod's disk). "
+    "The mount strategies need the HopsFS CSI driver. Omit to let Hopsworks choose.",
+)
 @click.option("--description", default="", help="Deployment description.")
 @click.option(
     "--passed-feature",
@@ -313,6 +321,11 @@ DEFAULT_MEMORY_MB = 1024
     type=click.IntRange(min=1),
     help=f"Memory in MB each instance may use, all of it requested. Default {DEFAULT_MEMORY_MB}.",
 )
+@click.option(
+    "--gpus",
+    type=click.IntRange(min=0),
+    help=f"GPUs each instance requests and may use. Default {DEFAULT_GPUS}.",
+)
 @click.pass_context
 def deployment_create(
     ctx: click.Context,
@@ -323,11 +336,13 @@ def deployment_create(
     environment: str | None,
     serving_tool: str | None,
     knative_mode: bool | None,
+    loading_strategy: str | None,
     description: str,
     passed_features: tuple[str, ...],
     no_default_predictor: bool,
     cores: float | None,
     memory: int | None,
+    gpus: int | None,
 ) -> None:
     """Deploy a model from the registry.
 
@@ -345,11 +360,13 @@ def deployment_create(
         environment: Inference environment name.
         serving_tool: ``KSERVE`` or ``DEFAULT``.
         knative_mode: KServe Knative (True) vs Standard (False) mode; None lets the backend decide.
+        loading_strategy: How the model server reads the model files; None lets the backend decide.
         description: Deployment description.
         passed_features: Features clients send with each request.
         no_default_predictor: Disable the default predictor.
         cores: CPU cores per instance; None keeps the backend's default resources.
         memory: Memory per instance in MB; None keeps the backend's default resources.
+        gpus: GPUs per instance; None keeps the backend's default resources.
     """
     project = session.get_project(ctx)
     mr = project.get_model_registry()
@@ -391,7 +408,8 @@ def deployment_create(
             passed_features=list(passed_features) or None,
             default_predictor=False if no_default_predictor else None,
             knative_mode=knative_mode,
-            resources=_resources(cores, memory),
+            loading_strategy=loading_strategy.upper() if loading_strategy else None,
+            resources=_resources(cores, memory, gpus),
         )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Deployment creation failed: {exc}") from exc
@@ -405,21 +423,22 @@ def deployment_create(
     _report_schema(deployment)
 
 
-def _resources(cores: float | None, memory: int | None) -> Any:
-    """One instance with `cores` and `memory` as its limits, or None for the backend's defaults.
+def _resources(cores: float | None, memory: int | None, gpus: int | None) -> Any:
+    """One instance with `cores`, `memory` and `gpus` as its limits, or None for the backend's defaults.
 
-    Requests follow the defaults' shape: half the cores, all the memory.
+    Requests follow the defaults' shape: half the cores, all the memory and all the GPUs.
     """
-    if cores is None and memory is None:
+    if cores is None and memory is None and gpus is None:
         return None
     from hsml.resources import PredictorResources, Resources
 
     cores = DEFAULT_CORES if cores is None else cores
     memory = DEFAULT_MEMORY_MB if memory is None else memory
+    gpus = DEFAULT_GPUS if gpus is None else gpus
     return PredictorResources(
         num_instances=1,
-        requests=Resources(cores=cores / 2, memory=memory, gpus=0),
-        limits=Resources(cores=cores, memory=memory, gpus=0),
+        requests=Resources(cores=cores / 2, memory=memory, gpus=gpus),
+        limits=Resources(cores=cores, memory=memory, gpus=gpus),
     )
 
 
