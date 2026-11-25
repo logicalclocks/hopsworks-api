@@ -560,6 +560,7 @@
       "config_file": "config.yaml",
       "vllmVariant": "VLLM",
       "vllmImageTag": null,
+      "loadingStrategy": "RUNAI_STREAMER",
       "knativeMode": false,
       "requested_instances": 0,
       "predictor_resources": {
@@ -639,6 +640,7 @@
       "serving_tool": "KSERVE",
       "api_protocol": "REST",
       "tritonImageTag": "26.09-py3",
+      "loadingStrategy": "MOUNT",
       "knativeMode": false,
       "requested_instances": 1,
       "predictor_resources": {

@@ -5921,6 +5921,24 @@ class TestSpark:
         assert mock_spark_engine_setup_adls_hadoop_conf.call_count == 0
         assert mock_spark_engine_setup_gcp_hadoop_conf.call_count == 0
 
+    @pytest.mark.parametrize(
+        "connector_class",
+        [storage_connector.S3Connector, storage_connector.GlueConnector],
+    )
+    @pytest.mark.parametrize("path", [None, "s3://existing-tables/table"])
+    def test_s3_connector_sets_default_filesystem_mapping(self, connector_class, path):
+        engine = spark.Engine.__new__(spark.Engine)
+        engine._is_connect = False
+        engine._spark_context = MagicMock()
+        connector = connector_class(id=1, name="existing_tables", featurestore_id=1)
+
+        engine._setup_storage_connector(connector, path)
+
+        conf = engine._spark_context._jsc.hadoopConfiguration.return_value
+        conf.setIfUnset.assert_called_once_with(
+            "fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem"
+        )
+
     def test_setup_s3_hadoop_conf_legacy(self, mocker):
         # Arrange
         mock_spark_context = MagicMock()

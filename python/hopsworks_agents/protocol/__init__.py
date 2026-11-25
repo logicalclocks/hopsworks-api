@@ -47,6 +47,8 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers only
     from .models import (
         AgentError,
         AgentResponse,
+        AgentSkill,
+        Artifact,
         AudioContent,
         ChatMessage,
         ChatRequest,
@@ -55,6 +57,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers only
         ImageContent,
         ResumeAnswer,
         TextContent,
+        UrlContent,
     )
     from .summarizers import (
         anthropic_summarizer,
@@ -109,6 +112,8 @@ _EXPORTS: dict[str, str] = {
     "search": "tools",
     "AgentError": "models",
     "AgentResponse": "models",
+    "AgentSkill": "models",
+    "Artifact": "models",
     "AudioContent": "models",
     "ChatMessage": "models",
     "ChatRequest": "models",
@@ -117,6 +122,7 @@ _EXPORTS: dict[str, str] = {
     "FileContent": "models",
     "ImageContent": "models",
     "TextContent": "models",
+    "UrlContent": "models",
 }
 
 __all__ = sorted(_EXPORTS)

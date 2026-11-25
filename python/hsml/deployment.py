@@ -1577,6 +1577,20 @@ class Deployment:
 
     @public
     @property
+    def loading_strategy(self) -> str | None:
+        """How the model server reads the model files: `'MOUNT'`, `'RUNAI_STREAMER'` or `'DOWNLOAD'`.
+
+        `None` lets Hopsworks choose on creation or keeps the stored value on an update.
+        See [`Predictor.loading_strategy`][hsml.predictor.Predictor.loading_strategy] for which model servers accept which strategy.
+        """
+        return self._predictor.loading_strategy
+
+    @loading_strategy.setter
+    def loading_strategy(self, loading_strategy: str | None):
+        self._predictor.loading_strategy = loading_strategy
+
+    @public
+    @property
     def knative_mode(self):
         """Whether the deployment runs in KServe Knative mode.
 

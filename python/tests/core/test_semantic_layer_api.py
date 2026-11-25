@@ -521,6 +521,11 @@ class TestCompile:
     def test_every_request_of_a_waited_compile_is_bounded(self, http, sales, mocker):
         http._send_request.reset_mock()  # the fixture listed the projects
         mocker.patch("hopsworks_common.semantic_layer.time.sleep")
+        # A clock that has not ticked, at a value where (t + 600) - t rounds above 600, as Windows' coarse clock hits.
+        mocker.patch(
+            "hopsworks_common.semantic_layer.time.monotonic",
+            return_value=32728.185951439325,
+        )
         http._send_request.side_effect = _control_plane(
             {"id": 13, "status": "COMPILING"}, {"id": 13, "status": "VALID"}
         )

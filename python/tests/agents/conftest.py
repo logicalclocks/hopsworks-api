@@ -12,6 +12,7 @@ the test modules as ruff wants them.
 """
 
 NEEDS_FASTAPI = [
+    "test_a2a.py",
     "test_app.py",
     "test_evaluation.py",
     "test_identity.py",

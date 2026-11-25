@@ -21,6 +21,8 @@ Everything else — HTTP surface, session identity, tracing, memory, CORS, the m
 ```
 models.py    protocol Pydantic models + AgentResponse/AgentError helpers
 app.py       AgentApp (FastAPI subclass): routes, handler decorators, streaming
+agui.py      AG-UI on the wire: a run becomes a turn, a turn becomes AG-UI events
+a2a.py       A2A on the wire: the Agent Card, the executor that runs a message as a turn, the SDK's JSON-RPC and REST routes
 memory.py    ChatMemory abstraction + InMemory/Sql backends + MySQL URL resolver
 tools.py     model-callable remember/recall/forget/search + framework wrapping
 summarizers.py  anthropic_summarizer, openai_summarizer (any OpenAI-compatible endpoint), hopsworks_summarizer (an LLM deployment, by name) + the default local embedder

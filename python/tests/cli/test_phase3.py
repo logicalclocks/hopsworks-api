@@ -11,6 +11,7 @@ import json
 from datetime import datetime, timezone
 from unittest import mock
 
+import pytest
 from click.testing import CliRunner
 from hopsworks.cli.main import cli
 
@@ -153,6 +154,55 @@ def test_deployment_create_sets_the_cores_and_memory_it_is_given(mock_project):
     assert model.deploy.call_args.kwargs["resources"] is None
 
 
+def test_deployment_create_requests_the_gpus_it_is_given(mock_project):
+    mr = mock.MagicMock()
+    model = mock.MagicMock()
+    model.version = 1
+    model.deploy.return_value = mock.MagicMock()
+    mr.get_models.return_value = [model]
+    mock_project.get_model_registry.return_value = mr
+    result = CliRunner().invoke(
+        cli,
+        [
+            "deployment",
+            "create",
+            "llm",
+            "--gpus",
+            "2",
+            "--loading-strategy",
+            "runai_streamer",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    kwargs = model.deploy.call_args.kwargs
+    resources = kwargs["resources"]
+    assert (resources.limits.gpus, resources.requests.gpus) == (2, 2)
+    assert (resources.limits.cores, resources.limits.memory) == (1, 1024)
+    assert kwargs["loading_strategy"] == "RUNAI_STREAMER"
+
+    result = CliRunner().invoke(cli, ["deployment", "create", "llm", "--gpus", "-1"])
+    assert result.exit_code != 0
+
+
+def test_deployment_create_forwards_the_loading_strategy(mock_project):
+    mr = mock.MagicMock()
+    model = mock.MagicMock()
+    model.version = 1
+    model.deploy.return_value = mock.MagicMock()
+    mr.get_models.return_value = [model]
+    mock_project.get_model_registry.return_value = mr
+    result = CliRunner().invoke(
+        cli, ["deployment", "create", "fraud", "--loading-strategy", "download"]
+    )
+    assert result.exit_code == 0, result.output
+    assert model.deploy.call_args.kwargs["loading_strategy"] == "DOWNLOAD"
+
+    model.deploy.reset_mock()
+    result = CliRunner().invoke(cli, ["deployment", "create", "fraud"])
+    assert result.exit_code == 0, result.output
+    assert model.deploy.call_args.kwargs["loading_strategy"] is None
+
+
 def test_deployment_create_deploys_the_latest_version_whatever_the_order(mock_project):
     # The registry lists versions newest first, so the last one is version 1.
     versions = []
@@ -187,8 +237,40 @@ def test_job_run_with_wait(mock_project):
     result = CliRunner().invoke(cli, ["job", "run", "etl", "--wait"])
     assert result.exit_code == 0, result.output
     job.run.assert_called_with(
-        args=None, await_termination=True, start_time=None, end_time=None
+        args=None,
+        await_termination=True,
+        start_time=None,
+        end_time=None,
+        resources=None,
     )
+
+
+def test_job_run_passes_the_resources_of_the_execution(mock_project):
+    api = mock.MagicMock()
+    job = mock.MagicMock()
+    job.run.return_value = mock.MagicMock(id=6, state="INITIALIZING")
+    api.get_job.return_value = job
+    mock_project.get_job_api.return_value = api
+    result = CliRunner().invoke(
+        cli,
+        ["job", "run", "etl", "--resources", '{"resourceConfig": {"memory": 16384}}'],
+    )
+    assert result.exit_code == 0, result.output
+    assert job.run.call_args.kwargs["resources"] == {
+        "resourceConfig": {"memory": 16384}
+    }
+
+
+@pytest.mark.parametrize("value", ["{not json", "[1, 2]"])
+def test_job_run_rejects_resources_that_are_not_a_json_object(mock_project, value):
+    api = mock.MagicMock()
+    job = mock.MagicMock()
+    api.get_job.return_value = job
+    mock_project.get_job_api.return_value = api
+    result = CliRunner().invoke(cli, ["job", "run", "etl", "--resources", value])
+    assert result.exit_code != 0
+    assert "--resources" in result.output
+    job.run.assert_not_called()
 
 
 def test_job_backfill_reads_a_timestamp_without_offset_as_utc(mock_project):
