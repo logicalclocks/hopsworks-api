@@ -215,6 +215,104 @@ class TestLargeParts:
         run(scenario())
 
 
+class TestTheCapHoldsForEveryKindOfContent:
+    def _talker(self, text):
+        app = AgentApp(name="Talker")
+
+        @app.chat
+        async def chat(request, ctx):
+            return text
+
+        return app
+
+    def test_a_long_text_answer_is_moved_out_like_a_file(self, shared, monkeypatch):
+        monkeypatch.setenv(a2a_artifacts.TASK_MAX_BYTES_ENV, "10000")
+        answer = "word " * 10000
+        app = self._talker(answer)
+
+        async def scenario():
+            client, http = await connect(app)
+            task = await ask(client, "go")
+            stored = await client.get_task(GetTaskRequest(id=task.id))
+            assert stored.ByteSize() <= 10000
+            part = artifact_part(stored, "response")
+            assert part.WhichOneof("content") == "url"
+            assert part.media_type.startswith("text/plain")
+            path = part.url[part.url.index("/a2a/artifacts") :]
+            assert (await http.get(path)).text == answer
+
+        run(scenario())
+
+    def test_without_storage_what_does_not_fit_is_dropped_and_said(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.delenv("DEPLOYMENT_ID", raising=False)
+        monkeypatch.delenv(a2a_artifacts.ARTIFACT_DIR_ENV, raising=False)
+        monkeypatch.setenv(
+            a2a_store.DATABASE_URL_ENV, f"sqlite+aiosqlite:///{tmp_path / 'a2a.db'}"
+        )
+        monkeypatch.setenv(a2a_artifacts.TASK_MAX_BYTES_ENV, "10000")
+        app = self._talker("word " * 10000)
+
+        async def scenario():
+            client, _ = await connect(app)
+            task = await ask(client, "go")
+            stored = await client.get_task(GetTaskRequest(id=task.id))
+            assert stored.ByteSize() <= 10000
+            facts = MessageToDict(stored.metadata)["hopsworks"]
+            assert facts["truncated"] is True
+            assert facts["omitted_parts"] >= 1
+            assert "omitted" in artifact_part(stored, "response").text
+
+        run(scenario())
+
+    def test_a_storage_that_fails_does_not_let_the_task_through_whole(
+        self, shared, monkeypatch
+    ):
+        monkeypatch.setenv(a2a_artifacts.TASK_MAX_BYTES_ENV, "10000")
+        app = reporting_app({"big.bin": b"x" * 50000})
+
+        def broken(task_id, digest, data):
+            raise OSError("the file system is gone")
+
+        monkeypatch.setattr(app._a2a.spill, "_write", broken)
+
+        async def scenario():
+            client, _ = await connect(app)
+            task = await ask(client, "go")
+            stored = await client.get_task(GetTaskRequest(id=task.id))
+            assert stored.ByteSize() <= 10000
+            assert MessageToDict(stored.metadata)["hopsworks"]["truncated"] is True
+
+        run(scenario())
+
+    def test_an_old_history_goes_before_any_content(self, shared, monkeypatch):
+        from a2a.types import Message, Part, Role, Task, TaskState, TaskStatus
+
+        monkeypatch.setenv(a2a_artifacts.TASK_MAX_BYTES_ENV, "4000")
+        store = a2a_artifacts._SpillingStore(None, None, lambda: None)
+        task = Task(
+            id="t1",
+            context_id="c",
+            status=TaskStatus(state=TaskState.TASK_STATE_WORKING),
+        )
+        for index in range(20):
+            task.history.add().CopyFrom(
+                Message(
+                    message_id=f"m{index}",
+                    role=Role.ROLE_USER,
+                    parts=[Part(text=f"{index}:" + "x" * 500)],
+                )
+            )
+        run(store._fit(task))
+        assert task.ByteSize() <= 4000
+        # the newest messages are the ones kept
+        assert task.history[-1].message_id == "m19"
+        facts = MessageToDict(task.metadata)["hopsworks"]
+        assert facts["dropped_history_messages"] >= 13
+        assert facts["omitted_parts"] == 0
+
+
 class TestExtendedCard:
     def test_an_authenticated_caller_gets_what_the_manifest_knows(self, monkeypatch):
         monkeypatch.delenv("DEPLOYMENT_ID", raising=False)

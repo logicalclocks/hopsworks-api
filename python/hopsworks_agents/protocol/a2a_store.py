@@ -292,6 +292,23 @@ class _Leases:
             )
             return bool(result.rowcount)
 
+    async def _holds(self, task_id: str, fence: int) -> bool:
+        """Whether the lease is still this replica's, under this fence: asked before every write to the task."""
+        from sqlalchemy import select  # noqa: PLC0415
+
+        table = self.table
+        async with self._engine.connect() as conn:
+            row = (
+                await conn.execute(
+                    select(table.c.task_id).where(
+                        table.c.task_id == task_id,
+                        table.c.executor == _executor_name(),
+                        table.c.fence == fence,
+                    )
+                )
+            ).first()
+        return row is not None
+
     async def _release(self, task_id: str, fence: int) -> None:
         """The turn ended without a terminal state (it paused): nothing left to own."""
         from sqlalchemy import delete  # noqa: PLC0415
@@ -343,78 +360,135 @@ class _Leases:
                 )
             )
 
-    async def _take_lost(self, limit: int = 20) -> list[dict[str, Any]]:
-        """Take the leases of this deployment whose replica stopped renewing them.
+    def _stale(self) -> Any:
+        """The test for a lease nobody renews, on the database's clock."""
+        from sqlalchemy import func, text  # noqa: PLC0415
 
-        Each is taken with the fence-bumping update, so a row comes back only
-        to the one caller that won it.
-        The staleness test uses the database's clock on both sides.
-        """
-        from sqlalchemy import func, select, update  # noqa: PLC0415
+        window = int(HEARTBEAT_SECONDS * MISSED_HEARTBEATS)
+        if self._engine.dialect.name == "sqlite":
+            return self.table.c.heartbeat_at < func.datetime(
+                "now", text(f"'-{window} seconds'")
+            )
+        return self.table.c.heartbeat_at < func.date_sub(
+            func.now(), text(f"INTERVAL {window} SECOND")
+        )
+
+    async def _stale_rows(self, limit: int = 20) -> list[Any]:
+        """The leases of this deployment that look lost; each must still be taken."""
+        from sqlalchemy import select  # noqa: PLC0415
 
         await self._ensure()
         table = self.table
-        window = HEARTBEAT_SECONDS * MISSED_HEARTBEATS
-        dialect = self._engine.dialect.name
-        if dialect == "sqlite":
-            from sqlalchemy import text  # noqa: PLC0415
-
-            stale = table.c.heartbeat_at < func.datetime(
-                "now", text(f"'-{int(window)} seconds'")
-            )
-        else:
-            from sqlalchemy import text  # noqa: PLC0415
-
-            stale = table.c.heartbeat_at < func.date_sub(
-                func.now(), text(f"INTERVAL {int(window)} SECOND")
-            )
-        me = _executor_name()
         async with self._engine.begin() as conn:
-            rows = (
-                await conn.execute(
-                    select(
-                        table.c.task_id,
-                        table.c.owner,
-                        table.c.fence,
-                        table.c.attempt,
-                        table.c.executor,
+            return list(
+                (
+                    await conn.execute(
+                        select(
+                            table.c.task_id,
+                            table.c.owner,
+                            table.c.fence,
+                            table.c.attempt,
+                            table.c.executor,
+                        )
+                        .where(
+                            table.c.deployment_id == _serving_id(),
+                            table.c.terminal_at.is_(None),
+                            self._stale(),
+                        )
+                        .limit(limit)
                     )
-                    .where(
-                        table.c.deployment_id == _serving_id(),
-                        table.c.terminal_at.is_(None),
-                        stale,
-                    )
-                    .limit(limit)
+                ).all()
+            )
+
+    async def _take(self, row: Any) -> dict[str, Any] | None:
+        """Take one lease that looked lost; None when it was renewed or taken since it was read.
+
+        One conditional update decides it: the fence must be the one read and
+        the heartbeat must still be stale now, so a heartbeat that landed
+        since the scan, which leaves the fence as it was, keeps the lease.
+        """
+        from sqlalchemy import func, update  # noqa: PLC0415
+
+        table = self.table
+        async with self._engine.begin() as conn:
+            result = await conn.execute(
+                update(table)
+                .where(
+                    table.c.task_id == row.task_id,
+                    table.c.fence == row.fence,
+                    table.c.terminal_at.is_(None),
+                    self._stale(),
                 )
-            ).all()
-        taken: list[dict[str, Any]] = []
-        for row in rows:
-            async with self._engine.begin() as conn:
-                result = await conn.execute(
-                    update(table)
-                    .where(
-                        table.c.task_id == row.task_id,
-                        table.c.fence == row.fence,
-                        table.c.terminal_at.is_(None),
-                    )
-                    .values(
-                        executor=me,
-                        fence=int(row.fence) + 1,
-                        attempt=int(row.attempt) + 1,
-                        heartbeat_at=func.now(),
-                    )
+                .values(
+                    executor=_executor_name(),
+                    fence=int(row.fence) + 1,
+                    attempt=int(row.attempt) + 1,
+                    heartbeat_at=func.now(),
                 )
-            if result.rowcount:
-                taken.append(
-                    {
-                        "task_id": row.task_id,
-                        "owner": row.owner,
-                        "fence": int(row.fence) + 1,
-                        "attempt": int(row.attempt) + 1,
-                        "lost_executor": row.executor,
-                    }
-                )
+            )
+        if not result.rowcount:
+            return None
+        return {
+            "task_id": row.task_id,
+            "owner": row.owner,
+            "fence": int(row.fence) + 1,
+            "attempt": int(row.attempt) + 1,
+            "lost_executor": row.executor,
+        }
+
+    async def _take_lost(self, limit: int = 20) -> list[dict[str, Any]]:
+        """Take the leases of this deployment whose replica stopped renewing them; each comes back to the one caller that won it."""
+        taken = []
+        for row in await self._stale_rows(limit):
+            lease = await self._take(row)
+            if lease is not None:
+                taken.append(lease)
         return taken
+
+
+class _Fence:
+    """A replica writes to a task only while it holds the task's lease.
+
+    A reaper that took a lease bumps its fence, and fails the task under a
+    version check; between the two, the replica that lost the lease could
+    still advance the task and make that check fail.
+    So every save by a replica that runs the task asks first whether the
+    lease is still its own, and a replica that knows it lost the lease
+    writes nothing more at all.
+    Writes to a task this replica does not run (a cancel that arrived here,
+    a reaper's own write) are not its executor's and pass.
+    """
+
+    def __init__(self, leases: _Leases):
+        self._leases = leases
+        #: The fence each task this replica runs is held under.
+        self.held: dict[str, int] = {}
+        #: Tasks whose lease this replica lost: nothing more is written to them from here.
+        self.out: set[str] = set()
+
+    async def _check(self, task_id: str) -> None:
+        """Refuse the write of a task whose lease is no longer this replica's.
+
+        Raises:
+            ConcurrentTaskModificationError: The lease was taken by someone else.
+        """
+        from a2a.server.cluster import (  # noqa: PLC0415
+            ConcurrentTaskModificationError,
+        )
+
+        if task_id in self.out:
+            raise ConcurrentTaskModificationError(task_id)
+        fence = self.held.get(task_id)
+        if fence is None:
+            return
+        try:
+            holds = await self._leases._holds(task_id, fence)
+        except Exception:  # noqa: BLE001 -- the save itself then says what is wrong
+            return
+        if not holds:
+            self.held.pop(task_id, None)
+            self.out.add(task_id)
+            raise ConcurrentTaskModificationError(task_id)
 
 
 _MODELS: dict[str, Any] = {}
@@ -497,6 +571,7 @@ class _DurableStores:
         )
         self.push_configs.config_model = models["push"]
         self.leases = _Leases(self.engine, create_table=create)
+        self.fence = _Fence(self.leases)
 
     async def _tables_exist(self) -> bool:
         """Whether the tables are there to be used: created here for a local database, by the platform otherwise."""

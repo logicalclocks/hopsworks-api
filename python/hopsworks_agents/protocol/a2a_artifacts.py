@@ -24,6 +24,7 @@ import logging
 import os
 import re
 import tempfile
+from collections import OrderedDict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -51,6 +52,8 @@ ARTIFACT_DIR_ENV = "HOPSWORKS_AGENT_ARTIFACT_DIR"
 DATASET_ROOT = "Resources/agents/a2a"
 #: Under the whole-task cap, a part smaller than this is left inline: moving it buys nothing.
 SMALLEST_SPILLED = 1024
+#: How many truncated tasks a replica remembers the note of.
+TRUNCATED_LIMIT = 2000
 #: Where a spilled part is served, under the app's base URL.
 ARTIFACTS_PATH = "/a2a/artifacts"
 
@@ -151,17 +154,37 @@ def _spilled_digest(url: str) -> str | None:
 
 
 class _SpillingStore(VersionedTaskStore):
-    """The versioned task store, with large ``raw`` parts moved out of a task as it is saved."""
+    """The versioned task store, with a task made to fit its row as it is saved.
+
+    Large ``raw`` parts are moved to the artifact storage, and the stored task
+    carries their URL.
+    A task that is still over its cap gives up, in this order, what costs the
+    reader least: its largest remaining parts, text included, moved out the
+    same way; then its oldest history messages; then the content of its
+    largest artifact parts, replaced by a line that says so.
+    What was dropped rather than moved is said in the task's
+    ``metadata.hopsworks.truncated``.
+    The cap therefore holds for the task as stored, whatever its content and
+    whether or not the artifact storage could be reached.
+    """
 
     def __init__(
         self,
         inner: VersionedTaskStore,
         backend: Any,
         base_url: Callable[[], str | None],
+        before_save: Callable[[str], Any] | None = None,
+        after_save: Callable[[Task], Any] | None = None,
     ):
         self._inner = inner
         self._backend = backend
         self._base_url = base_url
+        self._before_save = before_save
+        self._after_save = after_save
+        # What was dropped from each task so far, by task id. A later status
+        # update replaces the task's ``hopsworks`` metadata with its own
+        # facts, so the note is put back at every save of the task.
+        self._truncated: OrderedDict[str, dict[str, Any]] = OrderedDict()
 
     @property
     def as_task_store(self) -> Any:
@@ -172,16 +195,15 @@ class _SpillingStore(VersionedTaskStore):
         return getattr(self._inner, name)
 
     async def save(self, task: Task, **kwargs: Any) -> Any:
-        try:
-            await self._spill(task)
-        except Exception:  # noqa: BLE001 -- the task is saved whole rather than not at all
-            _logger.warning(
-                "could not move the large parts of task %s out of its row; it is "
-                "saved with them inline",
-                task.id,
-                exc_info=True,
-            )
-        return await self._inner.save(task, **kwargs)
+        if self._before_save is not None:
+            # whether this replica may still write the task at all
+            await self._before_save(task.id)
+        await self._fit(task)
+        version = await self._inner.save(task, **kwargs)
+        if self._after_save is not None:
+            # what the state now in the store means for who holds the task
+            await self._after_save(task)
+        return version
 
     async def get(self, task_id: str, context: Any) -> Any:
         return await self._inner.get(task_id, context)
@@ -193,52 +215,150 @@ class _SpillingStore(VersionedTaskStore):
         await self._inner.delete(task_id, context)
 
     @staticmethod
-    def _raw_parts(task: Task) -> list[Part]:
+    def _content_parts(task: Task, kinds: tuple[str, ...]) -> list[Part]:
+        """The parts of the task's artifacts and history that hold content of these kinds."""
         parts: list[Part] = []
         for artifact in task.artifacts:
-            parts.extend(p for p in artifact.parts if p.WhichOneof("content") == "raw")
+            parts.extend(p for p in artifact.parts if p.WhichOneof("content") in kinds)
         for message in task.history:
-            parts.extend(p for p in message.parts if p.WhichOneof("content") == "raw")
-        if task.status.HasField("message"):
-            parts.extend(
-                p for p in task.status.message.parts if p.WhichOneof("content") == "raw"
-            )
+            parts.extend(p for p in message.parts if p.WhichOneof("content") in kinds)
         return parts
 
-    async def _spill(self, task: Task) -> None:
-        """Move out every part over the inline size, then the largest left while the task is over its cap."""
+    @staticmethod
+    def _size(part: Part) -> int:
+        kind = part.WhichOneof("content")
+        if kind == "raw":
+            return len(part.raw)
+        if kind == "text":
+            return len(part.text.encode())
+        return 0
+
+    async def _fit(self, task: Task) -> None:
+        """Bring the task under its cap: move what can be moved, then drop what must be dropped."""
+        try:
+            await self._fit_once(task)
+        finally:
+            self._note(task)
+
+    def _note(self, task: Task) -> None:
+        """Say on the task what was dropped from it, also after a status update replaced its metadata."""
+        from google.protobuf.json_format import MessageToDict  # noqa: PLC0415
+
+        dropped = self._truncated.get(task.id)
+        if dropped is None:
+            return
+        existing = MessageToDict(task.metadata).get("hopsworks")
+        facts = dict(existing) if isinstance(existing, dict) else {}
+        facts.update(dropped)
+        task.metadata.update({"hopsworks": facts})
+
+    async def _fit_once(self, task: Task) -> None:
         inline = _limit(INLINE_BYTES_ENV, DEFAULT_INLINE_BYTES)
         cap = _limit(TASK_MAX_BYTES_ENV, DEFAULT_TASK_MAX_BYTES)
-        parts = self._raw_parts(task)
-        if not parts:
-            return
-        for part in parts:
-            if len(part.raw) > inline:
-                await self._move(task, part)
+        storage = self._backend is not None and bool(_TASK_ID.match(task.id))
+        if storage:
+            # a file is kept beside the row whenever it is large, cap or no cap
+            for part in self._content_parts(task, ("raw",)):
+                if len(part.raw) > inline:
+                    storage = await self._move(task, part)
+                    if not storage:
+                        break
         if task.ByteSize() <= cap:
             return
-        remaining = sorted(
-            (p for p in parts if p.WhichOneof("content") == "raw"),
-            key=lambda p: len(p.raw),
-            reverse=True,
-        )
-        for part in remaining:
-            if task.ByteSize() <= cap or len(part.raw) < SMALLEST_SPILLED:
-                break
-            await self._move(task, part)
-
-    async def _move(self, task: Task, part: Part) -> None:
-        if not _TASK_ID.match(task.id):
+        if storage:
+            movable = sorted(
+                self._content_parts(task, ("raw", "text")),
+                key=self._size,
+                reverse=True,
+            )
+            for part in movable:
+                if task.ByteSize() <= cap or self._size(part) < SMALLEST_SPILLED:
+                    break
+                if not await self._move(task, part):
+                    break
+        if task.ByteSize() <= cap:
             return
-        data = bytes(part.raw)
+        dropped = self._truncate(task, cap)
+        _logger.warning(
+            "task %s is larger than a stored task may be (%d bytes): %s",
+            task.id,
+            cap,
+            dropped,
+        )
+
+    async def _move(self, task: Task, part: Part) -> bool:
+        """Write a part's content to the artifact storage and leave its URL; False when the storage failed."""
+        kind = part.WhichOneof("content")
+        data = bytes(part.raw) if kind == "raw" else part.text.encode()
         digest = hashlib.sha256(data).hexdigest()
-        await asyncio.to_thread(self._backend._write, task.id, digest, data)
+        try:
+            await asyncio.to_thread(self._backend._write, task.id, digest, data)
+        except Exception:  # noqa: BLE001 -- the cap is then kept by dropping instead
+            _logger.warning(
+                "could not move a part of task %s to the artifact storage",
+                task.id,
+                exc_info=True,
+            )
+            return False
         base = (self._base_url() or "").rstrip("/")
-        # setting the URL clears the bytes: the two are one field's alternatives
+        if kind == "text" and not part.media_type:
+            part.media_type = "text/plain; charset=utf-8"
+        # setting the URL clears the content: they are one field's alternatives
         part.url = f"{base}{ARTIFACTS_PATH}/{task.id}/{digest}"
         part.metadata.update(
             {"hopsworks": {"spilled": True, "size": len(data), "sha256": digest}}
         )
+        return True
+
+    @staticmethod
+    def _omit(part: Part) -> None:
+        size = _SpillingStore._size(part)
+        part.text = f"[omitted: {size} bytes, more than a stored task may hold]"
+        part.metadata.update({"hopsworks": {"omitted": True, "size": size}})
+
+    def _truncate(self, task: Task, cap: int) -> str:
+        """Drop content until the task fits, oldest and least needed first; what was dropped, in words."""
+        messages = 0
+        # the last message is what the turn was asked: kept while anything else can go
+        while task.ByteSize() > cap and len(task.history) > 1:
+            del task.history[0]
+            messages += 1
+        parts = 0
+        candidates = sorted(
+            self._content_parts(task, ("raw", "text")), key=self._size, reverse=True
+        )
+        if task.status.HasField("message"):
+            # the answer itself goes last
+            candidates.extend(
+                sorted(
+                    (
+                        p
+                        for p in task.status.message.parts
+                        if p.WhichOneof("content") in ("raw", "text")
+                    ),
+                    key=self._size,
+                    reverse=True,
+                )
+            )
+        for part in candidates:
+            if task.ByteSize() <= cap:
+                break
+            if self._size(part) < 128:
+                # omitting it would save nothing
+                continue
+            self._omit(part)
+            parts += 1
+        dropped = self._truncated.pop(task.id, None) or {
+            "truncated": True,
+            "dropped_history_messages": 0,
+            "omitted_parts": 0,
+        }
+        dropped["dropped_history_messages"] += messages
+        dropped["omitted_parts"] += parts
+        self._truncated[task.id] = dropped
+        while len(self._truncated) > TRUNCATED_LIMIT:
+            self._truncated.popitem(last=False)
+        return f"{messages} history message(s) dropped, {parts} part(s) omitted"
 
 
 async def _read_spilled(

@@ -479,3 +479,84 @@ class TestTheTerminalOutbox:
             assert await self._rows(app) == []
 
         run(scenario())
+
+
+class TestPushNeedsTheDeploymentsKey:
+    """On a deployment the configs hold a receiver's credentials, and are stored encrypted or not at all."""
+
+    def _deployment(self, tmp_path, monkeypatch, key):
+        monkeypatch.setenv(
+            a2a_store.DATABASE_URL_ENV, f"sqlite+aiosqlite:///{tmp_path / 'a2a.db'}"
+        )
+        monkeypatch.setenv("DEPLOYMENT_ID", "42")
+        if key:
+            monkeypatch.setenv(a2a_store.PUSH_KEY_ENV, key)
+        else:
+            monkeypatch.delenv(a2a_store.PUSH_KEY_ENV, raising=False)
+        return echo_app()
+
+    def test_without_the_key_push_is_not_served(self, tmp_path, monkeypatch):
+        from a2a.utils.errors import PushNotificationNotSupportedError
+        from fastapi.testclient import TestClient
+
+        app = self._deployment(tmp_path, monkeypatch, None)
+        assert app._a2a.push is False
+        client = TestClient(app)
+        card = client.get("/.well-known/agent-card.json").json()
+        assert card["capabilities"]["pushNotifications"] is False
+        manifest = client.get("/.well-known/hopsworks-agent.json").json()
+        a2a = manifest["capabilities"]["custom"]["hopsworks"]["a2a"]
+        assert a2a["push_notifications"] is False
+
+        async def scenario():
+            sdk = await connect(app)
+            # a task is still served; a webhook sent with it is stored nowhere
+            events = [
+                event
+                async for event in sdk.send_message(
+                    request_with_webhook("hi", "https://hooks.example.test/x")
+                )
+            ]
+            task = events[0].task
+            assert TaskState.Name(task.status.state) == "TASK_STATE_COMPLETED"
+            from a2a.types import ListTaskPushNotificationConfigsRequest
+
+            with pytest.raises(PushNotificationNotSupportedError):
+                await sdk.list_task_push_notification_configs(
+                    ListTaskPushNotificationConfigsRequest(task_id=task.id)
+                )
+
+        run(scenario())
+
+    def test_with_the_key_the_stored_config_is_not_readable(
+        self, tmp_path, monkeypatch
+    ):
+        from cryptography.fernet import Fernet
+
+        monkeypatch.setattr(
+            a2a_module, "_resolve", lambda host, port: ["93.184.216.34"]
+        )
+        app = self._deployment(tmp_path, monkeypatch, Fernet.generate_key().decode())
+        assert app._a2a.push is True
+
+        async def scenario():
+            from sqlalchemy import select
+
+            sdk = await connect(app)
+            [
+                event
+                async for event in sdk.send_message(
+                    request_with_webhook(
+                        "hi",
+                        "https://hooks.example.test/x",
+                        authentication={"scheme": "ApiKey", "credentials": "cb-secret"},
+                    )
+                )
+            ]
+            model = app._a2a.stores.push_configs.config_model
+            async with app._a2a.stores.engine.connect() as conn:
+                rows = (await conn.execute(select(model.config_data))).all()
+            assert rows and all(b"cb-secret" not in row[0] for row in rows)
+            await app._a2a.push_sender._drain(0.05)
+
+        run(scenario())

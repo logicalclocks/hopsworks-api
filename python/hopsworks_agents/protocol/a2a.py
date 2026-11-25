@@ -246,6 +246,10 @@ class A2AConfig:
 TASK_STORES = frozenset({"memory", "database"})
 #: How often a replica looks for tasks whose replica was lost.
 SWEEP_SECONDS = 30.0
+#: How many times a reaper writes FAILED again when the task moved under it.
+LOST_WRITE_ATTEMPTS = 5
+#: How many lost tasks a replica remembers it must not write to, before it starts over.
+FENCED_OUT_LIMIT = 10_000
 #: Where a call context made by the sweep says the execution is a retry of a lost task.
 RETRY_STATE_KEY = "hopsworks_retry"
 #: How long shutdown waits for queued push notifications to go out.
@@ -412,12 +416,17 @@ class A2AServer:
             # answers or follows a task, and a task outlives the pod that ran it.
             self.stores = _DurableStores(url or "", self.ownership)
             handler_store: Any = self.stores.task_store
-            # large parts are kept beside the database, not in the task's row
+            # A task is made to fit its row as it is saved (large parts go to
+            # the artifact storage when there is one), and a replica that lost
+            # a task's lease writes nothing more to it.
             self.spill = _spill_backend()
-            if self.spill is not None:
-                handler_store = _SpillingStore(
-                    self.stores.task_store, self.spill, self._public_url
-                )
+            handler_store = _SpillingStore(
+                self.stores.task_store,
+                self.spill,
+                self._public_url,
+                before_save=self.stores.fence._check,
+                after_save=self._saved,
+            )
             self.task_store: Any = self.stores.task_store.as_task_store
             event_stream: Any = self.stores.event_stream
             _logger.info("A2A tasks are kept in the project's online database")
@@ -441,8 +450,22 @@ class A2AServer:
         # Push notifications: the configs live beside the tasks, and the
         # sender delivers from a queue so a slow receiver never holds a task's
         # own stream (see a2a_push).
-        if self.stores is not None:
-            self.push_configs: Any = self.stores.push_configs
+        # On a deployment the configs, which hold a receiver's credentials,
+        # are stored encrypted with the deployment's key; without the key push
+        # is not served, rather than served with the credentials in the clear.
+        self.push = not (
+            self.stores is not None
+            and _on_platform()
+            and not os.environ.get(_store.PUSH_KEY_ENV)
+        )
+        if not self.push:
+            _logger.warning(
+                "the platform gave this deployment no key to encrypt push "
+                "notification configs with, so push notifications are not served"
+            )
+            self.push_configs: Any = None
+        elif self.stores is not None:
+            self.push_configs = self.stores.push_configs
         else:
             from a2a.server.tasks import (  # noqa: PLC0415
                 InMemoryPushNotificationConfigStore,
@@ -451,8 +474,10 @@ class A2AServer:
             self.push_configs = InMemoryPushNotificationConfigStore(
                 owner_resolver=self.ownership._owner
             )
-        self.push_sender = _PushSender(
-            self.push_configs, on_terminal_delivered=self._terminal_pushed
+        self.push_sender: _PushSender | None = (
+            _PushSender(self.push_configs, on_terminal_delivered=self._terminal_pushed)
+            if self.push
+            else None
         )
         self.handler = DefaultRequestHandlerV2(
             agent_executor=self.executor,
@@ -466,7 +491,7 @@ class A2AServer:
             event_stream=event_stream,
             push_config_store=self.push_configs,
             push_sender=self.push_sender,
-            push_url_validator=_valid_webhook,
+            push_url_validator=_valid_webhook if self.push else None,
             # what an authenticated caller may ask for beyond the public card;
             # rebuilt on each request, since the manifest it carries is live
             extended_agent_card=self._extended_card(
@@ -543,7 +568,7 @@ class A2AServer:
         return {
             "enabled": True,
             "bindings": [TransportProtocol.JSONRPC, TransportProtocol.HTTP_JSON],
-            "push_notifications": True,
+            "push_notifications": self.push,
             "extended_card": True,
             "signed": self._signature is not None,
             "task_store": self.mode,
@@ -610,9 +635,37 @@ class A2AServer:
             await asyncio.gather(self._sweeper, return_exceptions=True)
             self._sweeper = None
         # the notifications of the turns the drain just ended are still queued
-        await self.push_sender._drain(PUSH_DRAIN_SECONDS)
+        if self.push_sender is not None:
+            await self.push_sender._drain(PUSH_DRAIN_SECONDS)
         if self.stores is not None:
             await self.stores._close()
+
+    async def _saved(self, task: Task) -> None:
+        """A task this replica runs was saved: when the state it reached ends the run, its lease ends with it.
+
+        The lease is given up here, when the terminal or paused state is in
+        the store, and not when the execution returns: what the execution
+        enqueued is saved after it returned, and those writes are still this
+        replica's to make, under the lease, and nobody else's.
+        """
+        stores = self.stores
+        if stores is None:
+            return
+        state = task.status.state
+        if state not in TERMINAL_TASK_STATES and state not in PAUSED_TASK_STATES:
+            return
+        fence = stores.fence.held.pop(task.id, None)
+        if fence is None:
+            return
+        try:
+            if state in PAUSED_TASK_STATES:
+                await stores.leases._release(task.id, fence)
+            else:
+                await self._settle_lease(task.id, fence)
+        except Exception:  # noqa: BLE001 -- a row left behind is reaped
+            _logger.debug(
+                "could not give up the lease of task %s", task.id, exc_info=True
+            )
 
     async def _terminal_pushed(self, task_id: str) -> None:
         """A task's terminal notification reached its receivers: its outbox row has done its work."""
@@ -628,7 +681,11 @@ class A2AServer:
         stores = self.stores
         if stores is None:
             return
-        record = self.push_sender.records.get(task_id)
+        sender = self.push_sender
+        if sender is None:
+            await stores.leases._settle(task_id, fence, pushed=True)
+            return
+        record = sender.records.get(task_id)
         pushed = record is not None and record.terminal_delivered
         if not pushed:
             try:
@@ -639,7 +696,7 @@ class A2AServer:
         if not pushed:
             # the delivery may have finished while the row was being written,
             # and then found no row to clear
-            record = self.push_sender.records.get(task_id)
+            record = sender.records.get(task_id)
             if record is not None and record.terminal_delivered:
                 await stores.leases._pushed(task_id)
 
@@ -731,50 +788,66 @@ class A2AServer:
         if stored is None or stored.task.status.state in TERMINAL_TASK_STATES:
             await self._settle_lease(task_id, lease["fence"])
             return
-        task = stored.task
-        if await self._retry(lease, task):
+        if await self._retry(lease, stored.task):
             return
-        status = TaskStatus(
-            state=TaskState.TASK_STATE_FAILED,
-            message=Message(
-                message_id=f"lost-{task_id}-{lease['fence']}",
-                role=Role.ROLE_AGENT,
-                task_id=task_id,
-                context_id=task.context_id,
-                parts=[
-                    Part(
-                        text="The replica running this task was lost before it "
-                        "finished; what the task did before that is not known."
-                    )
-                ],
-                metadata=_hopsworks(
-                    {
-                        "status": "executor_lost",
-                        "outcome": "unknown",
-                        "retryable": True,
-                        "http_status": 503,
-                        "attempt": lease["attempt"] - 1,
-                    }
+        event = None
+        # The replica that lost the lease may still have advanced the task
+        # before it noticed, which fails the version check here; the write is
+        # then made again on what the task has become, until it lands or the
+        # task is found ended.
+        for _ in range(LOST_WRITE_ATTEMPTS):
+            task = stored.task
+            status = TaskStatus(
+                state=TaskState.TASK_STATE_FAILED,
+                message=Message(
+                    message_id=f"lost-{task_id}-{lease['fence']}",
+                    role=Role.ROLE_AGENT,
+                    task_id=task_id,
+                    context_id=task.context_id,
+                    parts=[
+                        Part(
+                            text="The replica running this task was lost before it "
+                            "finished; what the task did before that is not known."
+                        )
+                    ],
+                    metadata=_hopsworks(
+                        {
+                            "status": "executor_lost",
+                            "outcome": "unknown",
+                            "retryable": True,
+                            "http_status": 503,
+                            "attempt": lease["attempt"] - 1,
+                        }
+                    ),
                 ),
-            ),
-        )
-        status.timestamp.GetCurrentTime()
-        task.status.CopyFrom(status)
-        event = TaskStatusUpdateEvent(
-            task_id=task_id, context_id=task.context_id, status=status
-        )
-        try:
-            await stores.task_store.save(
-                task,
-                event=event,
-                prev=None,
-                prev_version=stored.version,
-                context=context,
             )
-        except ConcurrentTaskModificationError:
-            # someone advanced the task meanwhile (it ended, or was cancelled)
-            _logger.debug("task %s moved while it was being reaped", task_id)
+            status.timestamp.GetCurrentTime()
+            task.status.CopyFrom(status)
+            event = TaskStatusUpdateEvent(
+                task_id=task_id, context_id=task.context_id, status=status
+            )
+            try:
+                await stores.task_store.save(
+                    task,
+                    event=event,
+                    prev=None,
+                    prev_version=stored.version,
+                    context=context,
+                )
+                break
+            except ConcurrentTaskModificationError:
+                event = None
+                stored = await stores.task_store.get(task_id, context)
+                if stored is None or stored.task.status.state in TERMINAL_TASK_STATES:
+                    break
         else:
+            _logger.error(
+                "lost task %s kept moving and could not be failed; its lease is "
+                "kept for the next sweep",
+                task_id,
+            )
+            return
+        if event is not None and self.push_sender is not None:
             # no replica runs this task, so nobody else tells its receivers
             await self.push_sender.send_notification(task_id, event)
         await self._settle_lease(task_id, lease["fence"])
@@ -858,7 +931,7 @@ class A2AServer:
             "capabilities": {
                 # a chat-only agent streams its whole answer as one artifact chunk
                 "streaming": True,
-                "pushNotifications": True,
+                "pushNotifications": self.push,
                 "extendedAgentCard": True,
                 "extensions": [
                     {
@@ -1061,6 +1134,23 @@ def _base_url(request: Request) -> str:
     return f"{proto}://{host}{prefix}"
 
 
+@dataclass
+class _Held:
+    """What one execution holds while it runs: its lease, and what the heartbeat learned about it."""
+
+    #: The fence the lease is held under; None when tasks are not shared.
+    fence: int | None
+    #: Which run of the task this is: more than 1 for a lost task run again.
+    attempt: int = 1
+    #: The turn, once it runs, and its context, once it is built.
+    run: Any = None
+    ctx: Any = None
+    #: The lease is someone else's now: nothing more is written to the task from here.
+    lost: bool = False
+    #: Another replica cancelled the task: CANCELED is already in the store.
+    cancelled: bool = False
+
+
 class HopsworksAgentExecutor(AgentExecutor):
     """Runs one A2A message as a turn of the app, and reports it as task events."""
 
@@ -1073,10 +1163,8 @@ class HopsworksAgentExecutor(AgentExecutor):
         self._context_locks: dict[str, asyncio.Lock] = {}
         # executions in flight, for the drain to wait on after it aborted them
         self._executing: set[asyncio.Task] = set()
-        # tasks whose turn was stopped for a reason the executor must not
-        # report: another replica cancelled the task, or the lease was lost
-        self._cancelled_elsewhere: set[str] = set()
-        self._lease_lost: set[str] = set()
+        # what each execution in flight holds, by task id
+        self._held: dict[str, _Held] = {}
 
     async def _settled(self, timeout: float) -> None:
         """Wait for the executions in flight to end, for the drain."""
@@ -1095,15 +1183,31 @@ class HopsworksAgentExecutor(AgentExecutor):
         token = None
         if not self._app._memory_routes:
             token = _principal.set(_principal_of(_headers(context)))
+        task_id = context.task_id or ""
+        held: _Held | None = None
+        beat: asyncio.Task | None = None
         try:
-            await self._execute(context, event_queue)
+            # The lease comes first, before the task is created or the caller
+            # is told anything: a task that was acknowledged is one a reaper
+            # can find, whether its turn is running or queued behind another.
+            held = await self._hold(context)
+            self._held[task_id] = held
+            beat = asyncio.create_task(self._heartbeat(context, held))
+            await self._execute(context, event_queue, held)
         finally:
+            if beat is not None:
+                beat.cancel()
+            if held is not None:
+                self._held.pop(task_id, None)
+                await self._leave_lease(task_id, held)
             if token is not None:
                 _principal.reset(token)
             if current is not None:
                 self._executing.discard(current)
 
-    async def _execute(self, context: RequestContext, event_queue: EventQueue) -> None:
+    async def _execute(
+        self, context: RequestContext, event_queue: EventQueue, held: _Held
+    ) -> None:
 
         app = self._app
         task_id = context.task_id or ""
@@ -1141,6 +1245,7 @@ class HopsworksAgentExecutor(AgentExecutor):
         ctx.task_id = task_id
         ctx._pending_key = _pending_key(context)
         ctx._claimed = replayed
+        held.ctx = ctx
         refused = await app._attach_evaluation(ctx, headers)
         if refused is not None:
             await app._settle_pending(ctx, answered=False)
@@ -1161,6 +1266,11 @@ class HopsworksAgentExecutor(AgentExecutor):
         lock = self._context_locks.setdefault(key, asyncio.Lock())
         async with lock:
             try:
+                if held.lost or held.cancelled:
+                    # while it waited, its lease was taken or the task was
+                    # cancelled elsewhere: whoever did that settled the task
+                    await app._settle_pending(ctx, answered=False)
+                    return
                 if app._draining:
                     # its turn came after the drain began: a running turn was
                     # given the budget, a queued one does not start
@@ -1192,11 +1302,8 @@ class HopsworksAgentExecutor(AgentExecutor):
         # task to its trace.
         completed: ChatResponse | None = None
         run: _TurnRun | None = None
-        beat: asyncio.Task | None = None
-        fence: int | None = None
-        attempt = 1
-        # how the turn left the task, for the lease: ended, paused, or not ours
-        left = "ended"
+        held = self._held.get(task_id) or _Held(None)
+        attempt = held.attempt
         with (
             eval_active(ctx.evaluation),
             turn_span(
@@ -1210,7 +1317,6 @@ class HopsworksAgentExecutor(AgentExecutor):
             ctx._span = span
             trace_id = _trace_id(span)
             try:
-                fence, attempt = await self._take_lease(context)
                 await updater.update_status(
                     TaskState.TASK_STATE_WORKING,
                     metadata=_hopsworks(
@@ -1224,19 +1330,21 @@ class HopsworksAgentExecutor(AgentExecutor):
                 )
                 run = _TurnRun(app, ctx)
                 self.runs[task_id] = run
-                beat = asyncio.create_task(self._heartbeat(context, run, fence))
+                held.run = run
+                if held.lost:
+                    # the lease went while the turn was being set up
+                    run._abort()
                 artifacts = _Artifacts(updater, self._accepted(context))
                 while True:
                     kind, payload = await run._next()
                     if kind == "done":
-                        if task_id in self._lease_lost:
+                        if held.lost:
                             # the lease is someone else's now, and so is the
                             # task: this replica writes nothing more to it
-                            left = "lost"
                             _mark_cancelled(span)
                             await run._close(None)
                             return
-                        if task_id in self._cancelled_elsewhere and not run.detached:
+                        if held.cancelled and not run.detached:
                             # CANCELED is already in the store, written by the
                             # replica the cancel reached
                             _mark_cancelled(span)
@@ -1266,7 +1374,6 @@ class HopsworksAgentExecutor(AgentExecutor):
                         if unrecorded is not None:
                             await self._fail(updater, unrecorded, trace_id)
                             return
-                        left = "paused"
                         await self._interrupt(updater, payload, trace_id)
                         return
                     elif kind == "error":
@@ -1310,18 +1417,11 @@ class HopsworksAgentExecutor(AgentExecutor):
                 raise
             finally:
                 self.runs.pop(task_id, None)
-                if beat is not None:
-                    beat.cancel()
-                if task_id in self._lease_lost:
-                    left = "lost"
-                self._lease_lost.discard(task_id)
-                self._cancelled_elsewhere.discard(task_id)
                 if run is None:
                     await app._finalize_turn(ctx, completed)
                 else:
                     await run._close(completed)
                     run.finished.set()
-                await self._leave_lease(task_id, fence, left)
 
     # ── owning the task while its turn runs ──────────────────────────────
 
@@ -1329,37 +1429,55 @@ class HopsworksAgentExecutor(AgentExecutor):
         server = self._app._a2a
         return server.stores if server is not None else None
 
-    async def _take_lease(self, context: RequestContext) -> tuple[int | None, int]:
-        """Record that this replica runs the task; the fence it runs under (None when tasks are not shared) and which run of the task this is."""
+    async def _hold(self, context: RequestContext) -> _Held:
+        """Record that this replica has the task, before anything else is done with it."""
         stores = self._stores()
+        task_id = context.task_id or ""
         if stores is None or context.call_context is None:
-            return None, 1
+            return _Held(None)
         owner = self._app._a2a.ownership._owner(context.call_context)
-        fence, attempt = await stores.leases._acquire(context.task_id or "", owner)
+        fence, attempt = await stores.leases._acquire(task_id, owner)
+        if len(stores.fence.out) > FENCED_OUT_LIMIT:
+            stores.fence.out.clear()
+        stores.fence.out.discard(task_id)
+        stores.fence.held[task_id] = fence
         # a row the sweep took from a lost replica already counts this run
         retried = bool((context.call_context.state or {}).get(RETRY_STATE_KEY))
-        return fence, (attempt if retried else 1)
+        return _Held(fence, attempt if retried else 1)
 
-    async def _leave_lease(self, task_id: str, fence: int | None, left: str) -> None:
-        """The turn is over: the lease goes with it, unless it was lost to someone else."""
+    async def _leave_lease(self, task_id: str, held: _Held) -> None:
+        """The execution returned: what is left of its lease to deal with here.
+
+        Normally nothing: the lease ends when the state the execution reached
+        is saved (``A2AServer._saved``), which happens after it returns.
+        A task another replica cancelled is already ended in the store, so
+        its lease is settled here.
+        A lost lease is someone else's.
+        An execution that returned without its last state ever being saved
+        leaves a lease nobody renews, which a reaper takes.
+        """
         stores = self._stores()
-        if stores is None or fence is None or left == "lost":
+        if stores is None or held.fence is None:
+            return
+        if held.lost:
+            stores.fence.held.pop(task_id, None)
+            return
+        if not held.cancelled:
+            return
+        if stores.fence.held.pop(task_id, None) is None:
             return
         try:
-            if left == "paused":
-                await stores.leases._release(task_id, fence)
-            else:
-                await self._app._a2a._settle_lease(task_id, fence)
+            await self._app._a2a._settle_lease(task_id, held.fence)
         except Exception:  # noqa: BLE001 -- a row left behind is reaped
             _logger.debug(
                 "could not give up the lease of task %s", task_id, exc_info=True
             )
 
-    async def _heartbeat(
-        self, context: RequestContext, run: _TurnRun, fence: int | None
-    ) -> None:
-        """While the turn runs, every few seconds: keep what it holds, and notice what changed elsewhere.
+    async def _heartbeat(self, context: RequestContext, held: _Held) -> None:
+        """While the execution lasts, every few seconds: keep what it holds, and notice what changed elsewhere.
 
+        From before the task is acknowledged until its execution returns,
+        whether the turn runs or waits its turn behind another.
         Renews the lease, so nobody takes the task for lost.
         Renews the claim of a resumed turn, so a turn longer than the claim's
         lease is not resumed a second time by another replica.
@@ -1372,11 +1490,11 @@ class HopsworksAgentExecutor(AgentExecutor):
         """
         task_id = context.task_id or ""
         stores = self._stores()
-        ctx = run.ctx
         missed = 0
         while True:
             await asyncio.sleep(_store.HEARTBEAT_SECONDS)
-            if ctx._claimed:
+            ctx = held.ctx
+            if ctx is not None and ctx._claimed:
                 try:
                     await asyncio.to_thread(
                         self._app._pending_store()._renew, ctx._pending_key
@@ -1385,10 +1503,10 @@ class HopsworksAgentExecutor(AgentExecutor):
                     _logger.debug(
                         "could not renew the claim of %s", task_id, exc_info=True
                     )
-            if stores is None or fence is None:
+            if stores is None or held.fence is None:
                 continue
             try:
-                held = await stores.leases._heartbeat(task_id, fence)
+                kept = await stores.leases._heartbeat(task_id, held.fence)
                 state = await stores._state(task_id)
             except asyncio.CancelledError:
                 raise
@@ -1402,21 +1520,24 @@ class HopsworksAgentExecutor(AgentExecutor):
                 )
                 if missed < MISSED_HEARTBEATS:
                     continue
-                held, state = False, None
+                kept, state = False, None
             else:
                 missed = 0
-            if not held:
+            if not kept:
                 _logger.error(
                     "the lease of task %s is lost: the turn is stopped and "
                     "nothing more is written to the task from this replica",
                     task_id,
                 )
-                self._lease_lost.add(task_id)
-                run._abort()
+                held.lost = True
+                stores.fence.out.add(task_id)
+                if held.run is not None:
+                    held.run._abort()
                 return
             if state == TaskState.Name(TaskState.TASK_STATE_CANCELED):
-                self._cancelled_elsewhere.add(task_id)
-                run._hangup()
+                held.cancelled = True
+                if held.run is not None:
+                    held.run._hangup()
                 return
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:

@@ -43,6 +43,8 @@ def run(coro):
 MYSQL_URL_ENV = "A2A_TEST_MYSQL_URL"
 
 # The platform's tables (hopsworks-ee A2ATables), on the engine a plain MySQL has.
+# RonDB allows three JSON columns in a table's default layout, so the two that
+# grow, artifacts and history, are LONGTEXT; the SDK writes JSON text either way.
 MYSQL_TABLES = {
     "agent_a2a_tasks": """
         `id` VARCHAR(36) NOT NULL,
@@ -51,8 +53,8 @@ MYSQL_TABLES = {
         `owner` VARCHAR(255) NULL,
         `last_updated` DATETIME(6) NULL,
         `status` JSON NOT NULL,
-        `artifacts` JSON NULL,
-        `history` JSON NULL,
+        `artifacts` LONGTEXT NULL,
+        `history` LONGTEXT NULL,
         `protocol_version` VARCHAR(16) NULL,
         `metadata` JSON NULL,
         PRIMARY KEY (`id`),
@@ -730,5 +732,187 @@ class TestPrivateMode:
             task = await send(alice, user_message("hi"))
             fetched = await bob.get_task(GetTaskRequest(id=task.id))
             assert fetched.id == task.id
+
+        run(scenario())
+
+
+class TestReviewOfTheLease:
+    """What a review of the lease found, each as the case that showed it."""
+
+    def test_a_task_queued_behind_another_is_leased_before_it_is_acknowledged(
+        self, database
+    ):
+        holder = {}
+
+        async def held(request, ctx):
+            await holder["release"].wait()
+            return "done"
+
+        app = replica(held, a2a=A2AConfig(serialize_context=True))
+
+        async def scenario():
+            holder["release"] = asyncio.Event()
+            client = await connect(app)
+            first = await send(
+                client, user_message("one", context_id="ctx"), return_immediately=True
+            )
+            second = await send(
+                client, user_message("two", context_id="ctx"), return_immediately=True
+            )
+            assert state_name(second) == "TASK_STATE_SUBMITTED"
+            # the caller holds both ids, and a reaper can find both tasks
+            rows = await lease_rows(app)
+            assert {r.task_id for r in rows} == {first.id, second.id}
+            holder["release"].set()
+
+            async def both_done():
+                return not await lease_rows(app)
+
+            await wait_for(both_done)
+
+        run(scenario())
+
+    def test_a_queued_task_whose_replica_was_lost_is_failed(self, database):
+        holder = {}
+
+        async def held(request, ctx):
+            await holder["never"].wait()
+
+        lost = replica(held, a2a=A2AConfig(serialize_context=True))
+        survivor = replica()
+
+        async def scenario():
+            import datetime
+
+            holder["never"] = asyncio.Event()
+            a, b = await connect(lost), await connect(survivor)
+            await send(
+                a, user_message("one", context_id="ctx"), return_immediately=True
+            )
+            queued = await send(
+                a, user_message("two", context_id="ctx"), return_immediately=True
+            )
+            await change_leases(lost, heartbeat_at=datetime.datetime(2000, 1, 1))
+            assert await survivor._a2a._reap() == 2
+            failed = await b.get_task(GetTaskRequest(id=queued.id))
+            assert state_name(failed) == "TASK_STATE_FAILED"
+            assert hopsworks_of(failed.status.message)["status"] == "executor_lost"
+
+        run(scenario())
+
+    def test_a_lease_renewed_since_the_scan_is_not_taken(self, database):
+        holder = {}
+
+        async def held(request, ctx):
+            await holder["release"].wait()
+            return "done"
+
+        app, reaper = replica(held), replica()
+
+        async def scenario():
+            import datetime
+
+            holder["release"] = asyncio.Event()
+            client = await connect(app)
+            task = await send(client, user_message("go"), return_immediately=True)
+
+            async def leased():
+                return await lease_rows(app)
+
+            await wait_for(leased)
+            leases = reaper._a2a.stores.leases
+            await change_leases(app, heartbeat_at=datetime.datetime(2000, 1, 1))
+            stale = await leases._stale_rows()
+            assert [row.task_id for row in stale] == [task.id]
+            # the replica's heartbeat lands between the scan and the takeover
+            assert await app._a2a.stores.leases._heartbeat(task.id, 1) is True
+            assert await leases._take(stale[0]) is None
+            rows = await lease_rows(app)
+            assert [(r.fence, r.attempt) for r in rows] == [(1, 1)]
+            holder["release"].set()
+
+            async def done():
+                return not await lease_rows(app)
+
+            await wait_for(done)
+            final = await client.get_task(GetTaskRequest(id=task.id))
+            assert state_name(final) == "TASK_STATE_COMPLETED"
+
+        run(scenario())
+
+    def test_a_replica_whose_lease_was_taken_cannot_write_before_it_notices(
+        self, database
+    ):
+        # the heartbeat is slow here on purpose: the replica has not noticed
+        holder = {}
+
+        async def answers_late(request, ctx):
+            await holder["go"].wait()
+            return "a late answer"
+
+        stale, taker = replica(answers_late), replica()
+
+        async def scenario():
+            holder["go"] = asyncio.Event()
+            a, b = await connect(stale), await connect(taker)
+            task = await send(a, user_message("work"), return_immediately=True)
+
+            async def leased():
+                return await lease_rows(stale)
+
+            await wait_for(leased)
+            await change_leases(stale, fence=2, executor="other-pod")
+            holder["go"].set()
+            await asyncio.sleep(0.3)
+            # the answer was refused at the store: the task is as the taker left it
+            current = await b.get_task(GetTaskRequest(id=task.id))
+            assert state_name(current) == "TASK_STATE_WORKING"
+            assert task.id in stale._a2a.stores.fence.out
+
+        run(scenario())
+
+    def test_a_reaper_fails_a_task_that_moved_under_it(self, database, monkeypatch):
+        holder = {}
+
+        async def held(request, ctx):
+            await holder["never"].wait()
+
+        lost, survivor = replica(held), replica()
+
+        async def scenario():
+            import datetime
+
+            holder["never"] = asyncio.Event()
+            a, b = await connect(lost), await connect(survivor)
+            task = await send(a, user_message("go"), return_immediately=True)
+
+            async def leased():
+                return await lease_rows(lost)
+
+            await wait_for(leased)
+            await change_leases(lost, heartbeat_at=datetime.datetime(2000, 1, 1))
+            store = survivor._a2a.stores.task_store
+            real_get, calls = store.get, {"n": 0}
+
+            async def get_then_move(task_id, context):
+                found = await real_get(task_id, context)
+                calls["n"] += 1
+                if calls["n"] == 1 and found is not None:
+                    # the lost replica's last write lands after the reaper read
+                    moved = await real_get(task_id, context)
+                    await store.save(
+                        moved.task,
+                        event=None,
+                        prev=None,
+                        prev_version=moved.version,
+                        context=context,
+                    )
+                return found
+
+            monkeypatch.setattr(store, "get", get_then_move)
+            assert await survivor._a2a._reap() == 1
+            failed = await b.get_task(GetTaskRequest(id=task.id))
+            assert state_name(failed) == "TASK_STATE_FAILED"
+            assert await lease_rows(survivor) == []
 
         run(scenario())
