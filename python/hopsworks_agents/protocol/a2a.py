@@ -68,11 +68,17 @@ from a2a.utils.constants import (
 )
 from a2a.utils.errors import InvalidParamsError, UnsupportedOperationError
 from fastapi import Request  # noqa: TC002 -- FastAPI resolves the annotation at runtime
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from google.protobuf.json_format import MessageToDict, ParseDict
 from starlette.routing import Mount
 
 from . import a2a_store as _store
+from .a2a_artifacts import (
+    ARTIFACTS_PATH,
+    _read_spilled,
+    _spill_backend,
+    _SpillingStore,
+)
 from .a2a_push import _PushSender, _valid_webhook
 from .a2a_store import (
     DATABASE_URL_ENV,
@@ -376,13 +382,22 @@ class A2AServer:
             private=not app._memory_routes, on_platform=_on_platform()
         )
         self.stores: _DurableStores | None = None
+        self.spill: Any = None
         self._sweeper: asyncio.Task | None = None
+        # the platform's signature over the card at the public URL, once asked for
+        self._signature: dict[str, str] | None = None
         self.executor = HopsworksAgentExecutor(app, self.config)
         if self.mode == "database":
             # In the project's online database: any replica reads, cancels,
             # answers or follows a task, and a task outlives the pod that ran it.
             self.stores = _DurableStores(url or "", self.ownership)
             handler_store: Any = self.stores.task_store
+            # large parts are kept beside the database, not in the task's row
+            self.spill = _spill_backend()
+            if self.spill is not None:
+                handler_store = _SpillingStore(
+                    self.stores.task_store, self.spill, self._public_url
+                )
             self.task_store: Any = self.stores.task_store.as_task_store
             event_stream: Any = self.stores.event_stream
             _logger.info("A2A tasks are kept in the project's online database")
@@ -432,7 +447,35 @@ class A2AServer:
             push_config_store=self.push_configs,
             push_sender=self.push_sender,
             push_url_validator=_valid_webhook,
+            # what an authenticated caller may ask for beyond the public card;
+            # rebuilt on each request, since the manifest it carries is live
+            extended_agent_card=self._extended_card(
+                self._public_url() or "http://localhost"
+            ),
+            extended_card_modifier=self._current_extended_card,
         )
+
+        # A part moved out of a task's row is served to whoever may read the
+        # task: the lookup goes through the task, under the caller's owner.
+        @app.get(ARTIFACTS_PATH + "/{task_id}/{digest}")
+        async def spilled_part(task_id: str, digest: str, request: Request) -> Response:
+            found = None
+            if self.spill is not None:
+                context = ServerCallContext(state={"headers": dict(request.headers)})
+                task = await self.task_store.get(task_id, context)
+                if task is not None:
+                    found = await _read_spilled(self.spill, task, digest)
+            if found is None:
+                return JSONResponse(
+                    {"detail": {"code": "not_found", "message": "No such artifact."}},
+                    status_code=404,
+                )
+            data, media_type, filename = found
+            headers = {"Cache-Control": "private, max-age=3600"}
+            if filename:
+                safe = "".join(c for c in filename if c.isalnum() or c in "._- ")
+                headers["Content-Disposition"] = f'attachment; filename="{safe}"'
+            return Response(content=data, media_type=media_type, headers=headers)
 
         # The card is served by the app, not by the SDK's route: its interface
         # URLs are the request's when the platform set no public URL, and the
@@ -481,7 +524,8 @@ class A2AServer:
             "enabled": True,
             "bindings": [TransportProtocol.JSONRPC, TransportProtocol.HTTP_JSON],
             "push_notifications": True,
-            "signed": False,
+            "extended_card": True,
+            "signed": self._signature is not None,
             "task_store": self.mode,
             # the in-memory store's bound; the database keeps tasks by age
             "task_limit": self.config.max_tasks if self.mode == "memory" else None,
@@ -495,6 +539,39 @@ class A2AServer:
         """At startup: the sweep for tasks whose replica was lost, when tasks are shared."""
         if self.stores is not None and self._sweeper is None:
             self._sweeper = asyncio.create_task(self._sweep())
+        await self._sign()
+
+    async def _sign(self) -> None:
+        """Ask the platform to sign the card this deployment serves at its public URL.
+
+        The signing key never enters a pod: the platform holds it, checks that
+        the card's URLs are the ones it gave this deployment, and returns a
+        signature anyone can verify against the cluster's published keys.
+        Only the card at the platform's URL is signed; the card built from a
+        request's own headers (a port-forward, a local run) is served unsigned.
+        An older platform has nothing to sign with, and the card stays unsigned.
+        """
+        public = os.environ.get("HOPSWORKS_AGENT_PUBLIC_URL")
+        platform = self._app._platform
+        if not public or not getattr(platform, "configured", False):
+            return
+        from a2a.utils.signing import _canonicalize_agent_card  # noqa: PLC0415
+
+        try:
+            payload = _canonicalize_agent_card(self._card(public))
+            answer = await asyncio.to_thread(
+                platform._request,
+                "POST",
+                ["serving", platform.deployment_id, "agents", "card", "sign"],
+                {"payload": payload},
+            )
+            signature = answer["signature"]
+            self._signature = {
+                "protected": str(signature["protected"]),
+                "signature": str(signature["signature"]),
+            }
+        except Exception as err:  # noqa: BLE001 -- unsigned is a state, not a failure
+            _logger.warning("the Agent Card is served unsigned: %s", err)
 
     async def _stop(self) -> None:
         """At shutdown, after the drain: the sweep ends and the database connections close."""
@@ -529,6 +606,12 @@ class A2AServer:
             except Exception:  # noqa: BLE001 -- kept as an outbox row when unsure
                 pushed = False
         await stores.leases._settle(task_id, fence, pushed=pushed)
+        if not pushed:
+            # the delivery may have finished while the row was being written,
+            # and then found no row to clear
+            record = self.push_sender.records.get(task_id)
+            if record is not None and record.terminal_delivered:
+                await stores.leases._pushed(task_id)
 
     async def _sweep(self) -> None:
         """Every so often, fail the tasks of this deployment whose replica stopped renewing its lease.
@@ -696,7 +779,7 @@ class A2AServer:
                 # a chat-only agent streams its whole answer as one artifact chunk
                 "streaming": True,
                 "pushNotifications": True,
-                "extendedAgentCard": False,
+                "extendedAgentCard": True,
                 "extensions": [
                     {
                         "uri": HOPSWORKS_EXTENSION_URI,
@@ -750,7 +833,57 @@ class A2AServer:
         card = self._card(base_url)
         served = MessageToDict(card, always_print_fields_with_no_presence=True)
         _merge_missing(served, agent_card_to_dict(card))
+        if self._signature is not None and base_url.rstrip("/") == (
+            os.environ.get("HOPSWORKS_AGENT_PUBLIC_URL") or ""
+        ).rstrip("/"):
+            served["signatures"] = [dict(self._signature)]
         return served
+
+    def _extended_card(self, base_url: str) -> AgentCard:
+        """The card an authenticated caller may ask for: the public one, and what the Hopsworks manifest knows.
+
+        The memory tiers, the conversation and feedback endpoints, tool
+        events, the agent's graph and its evaluation mode ride as parameters
+        of the Hopsworks extension, where a client that knows the extension
+        finds them and any other ignores them.
+        """
+        card = self._card(base_url)
+        manifest = self._app._manifest()
+        capabilities = manifest.get("capabilities") or {}
+        custom = (capabilities.get("custom") or {}).get("hopsworks") or {}
+        for extension in card.capabilities.extensions:
+            if extension.uri == HOPSWORKS_EXTENSION_URI:
+                extension.params.update(
+                    _struct(
+                        {
+                            "agent": {
+                                "endpoints": manifest.get("endpoints"),
+                                "protocol": manifest.get("protocol"),
+                                "ui": manifest.get("ui"),
+                                "hopsworks": custom,
+                            }
+                        }
+                    )
+                )
+        return card
+
+    async def _current_extended_card(
+        self, card: AgentCard, context: ServerCallContext
+    ) -> AgentCard:
+        """The extended card for this request: at the public URL, or where the request came in."""
+        public = self._public_url()
+        if public:
+            return self._extended_card(public)
+        state = getattr(context, "state", None) or {}
+        headers = {
+            str(k).lower(): str(v) for k, v in (state.get("headers") or {}).items()
+        }
+        host = headers.get("x-forwarded-host") or headers.get("host")
+        if not host:
+            return self._extended_card("http://localhost")
+        proto = headers.get("x-forwarded-proto") or "http"
+        prefix = (headers.get("x-forwarded-prefix") or "").rstrip("/")
+        return self._extended_card(f"{proto}://{host}{prefix}")
 
 
 def _merge_missing(into: dict[str, Any], extra: dict[str, Any]) -> None:

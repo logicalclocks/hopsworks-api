@@ -432,7 +432,10 @@ class TestTheTerminalOutbox:
                 )
             ]
             await settle(app, events[0].task.id)
-            await asyncio.sleep(0.05)
+            for _ in range(100):
+                if not await self._rows(app):
+                    break
+                await asyncio.sleep(0.02)
             assert await self._rows(app) == []
 
         run(scenario())
@@ -469,7 +472,10 @@ class TestTheTerminalOutbox:
                 )
             )
             [event async for event in client.send_message(request)]
-            await asyncio.sleep(0.05)
+            for _ in range(100):
+                if not await self._rows(app):
+                    break
+                await asyncio.sleep(0.02)
             assert await self._rows(app) == []
 
         run(scenario())

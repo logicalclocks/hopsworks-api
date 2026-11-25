@@ -449,10 +449,19 @@ class _DurableStores:
 
         self.url = url
         create = not _platform_creates_tables(url)
-        options: dict[str, Any] = {"pool_pre_ping": True}
-        if not url.startswith("sqlite"):
+        options: dict[str, Any] = {}
+        if url.startswith("sqlite"):
+            # A local file: no pool, so no connection outlives its use. A
+            # pooled SQLite connection keeps a thread that a process which
+            # never ran the app's shutdown would wait on at exit.
+            from sqlalchemy.pool import NullPool  # noqa: PLC0415
+
+            options.update(poolclass=NullPool)
+        else:
             # a replica holds few connections; RonDB's MySQL servers are shared
-            options.update(pool_size=5, max_overflow=5, pool_recycle=1800)
+            options.update(
+                pool_pre_ping=True, pool_size=5, max_overflow=5, pool_recycle=1800
+            )
         self.engine = create_async_engine(url, **options)
         # The SDK's stores declare a model per table name on one shared
         # registry, and so cannot be built twice under our names (the event

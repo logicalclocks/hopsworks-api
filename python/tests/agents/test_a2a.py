@@ -239,6 +239,7 @@ class TestAgentCard:
             "enabled": True,
             "bindings": ["JSONRPC", "HTTP+JSON"],
             "push_notifications": True,
+            "extended_card": True,
             "signed": False,
             "task_store": "memory",
             "task_limit": 1000,

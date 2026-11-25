@@ -222,7 +222,12 @@ class TestAnyReplicaServesATask:
             a, b = await connect(first), await connect(second)
             paused = await send(a, user_message("delete", context_id="ctx-2"))
             assert state_name(paused) == "TASK_STATE_INPUT_REQUIRED"
-            assert await lease_rows(first) == []
+
+            async def released():
+                return not await lease_rows(first)
+
+            # a paused task is nobody's to run: its lease goes with the turn
+            await wait_for(released)
             done = await send(
                 b, user_message("yes", context_id="ctx-2", task_id=paused.id)
             )
