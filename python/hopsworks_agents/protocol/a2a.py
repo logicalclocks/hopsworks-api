@@ -419,15 +419,19 @@ class A2AServer:
             self.stores = _DurableStores(url or "", self.ownership)
             handler_store: Any = self.stores.task_store
             # A task is made to fit its row as it is saved (large parts go to
-            # the artifact storage when there is one), and a replica that lost
-            # a task's lease writes nothing more to it.
+            # the artifact storage when there is one); the store refuses the
+            # writes of a replica that lost the task's lease.
             self.spill = _spill_backend()
+            if getattr(self.spill, "durable_cleanup", False):
+                # files in the project are removed with their task, by
+                # whoever gets to it: this replica, another, or the platform
+                self.stores.task_store.cleanups = self.stores.cleanups
             handler_store = _SpillingStore(
                 self.stores.task_store,
                 self.spill,
                 self._public_url,
-                before_save=self.stores.fence._check,
                 after_save=self._saved,
+                cleanups=self.stores.task_store.cleanups,
             )
             self.task_store: Any = self.stores.task_store.as_task_store
             event_stream: Any = self.stores.event_stream
@@ -449,6 +453,8 @@ class A2AServer:
             )
             handler_store = self.task_store
             event_stream = None
+        #: The store the SDK's handler saves through.
+        self.handler_store = handler_store
         # Push notifications: the configs live beside the tasks, and the
         # sender delivers from a queue so a slow receiver never holds a task's
         # own stream (see a2a_push).
@@ -657,6 +663,11 @@ class A2AServer:
         state = task.status.state
         if state not in TERMINAL_TASK_STATES and state not in PAUSED_TASK_STATES:
             return
+        held = self.executor._held.get(task.id)
+        if state in PAUSED_TASK_STATES and held is not None and not held.paused:
+            # still paused as the answer that resumes it is recorded: the
+            # resumed turn holds the lease, and keeps it
+            return
         fence = stores.fence.held.pop(task.id, None)
         if fence is None:
             return
@@ -704,19 +715,64 @@ class A2AServer:
                 await stores.leases._pushed(task_id)
 
     async def _sweep(self) -> None:
-        """Every so often, fail the tasks of this deployment whose replica stopped renewing its lease.
+        """While the replica lives: run the tasks handed back to it, fail the ones whose replica was lost, remove deleted tasks' files.
 
+        Tasks the platform handed back to be run again are taken at start
+        and at every heartbeat interval; lost leases and leftover files every
+        sweep interval.
         The backend runs the same sweep, which is what holds when no replica
         is left; a surviving replica is only the faster of the two.
         """
+        loop = asyncio.get_running_loop()
+        next_sweep = loop.time() + SWEEP_SECONDS
         while True:
-            await asyncio.sleep(SWEEP_SECONDS)
             try:
-                await self._reap()
+                await self._take_handed_back()
+                if loop.time() >= next_sweep:
+                    next_sweep = loop.time() + SWEEP_SECONDS
+                    await self._reap()
+                    await self._clean_spills()
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001 -- the next round tries again
                 _logger.debug("the lost-task sweep failed", exc_info=True)
+            await asyncio.sleep(_store.HEARTBEAT_SECONDS)
+
+    async def _take_handed_back(self) -> int:
+        """Run the tasks the platform handed back to this deployment to be run again; how many were taken."""
+        stores = self.stores
+        if stores is None:
+            return 0
+        taken = await stores.leases._take_handed_back()
+        for lease in taken:
+            await self._lost(lease)
+        return len(taken)
+
+    async def _clean_spills(self) -> int:
+        """Remove the files of deleted tasks that are still filed for removal; how many were removed."""
+        stores = self.stores
+        if stores is None or self.stores.task_store.cleanups is None:
+            return 0
+        cleanups = stores.cleanups
+        removed = 0
+        for task_id in await cleanups._due():
+            try:
+                await asyncio.to_thread(self.spill._remove, task_id)
+            except Exception:  # noqa: BLE001 -- counted, and given up on past the limit
+                attempts = await cleanups._failed(task_id)
+                if attempts >= cleanups.ATTEMPTS:
+                    _logger.error(
+                        "could not remove the files of deleted task %s after %d "
+                        "attempts; they are left in the project",
+                        task_id,
+                        attempts,
+                        exc_info=True,
+                    )
+                    await cleanups._done(task_id)
+                continue
+            await cleanups._done(task_id)
+            removed += 1
+        return removed
 
     async def _reap(self) -> int:
         """Take the lost leases of this deployment and settle each task; how many were taken."""
@@ -735,10 +791,16 @@ class A2AServer:
         ``WORKING`` throughout, and is failed only when no retry is left.
         The turn runs again from the message that started it, under a new
         lease and fence, with the attempt counted in its metadata.
+        How many retries there are is read from the lease, where the replica
+        that started the task wrote its author's word, so this replica, any
+        other and the platform decide alike. A task the platform handed back
+        was decided there.
         """
-        config = self.config
-        retries_used = int(lease["attempt"]) - 2
-        if not config.idempotent or retries_used >= config.retry_lost_tasks:
+        # the take counted this run: retries used are the attempts after the first
+        retries_used = int(lease["attempt"]) - 1
+        if not lease.get("handed_back") and retries_used > int(
+            lease.get("retry_limit") or 0
+        ):
             return False
         asked = [m for m in task.history if m.role == Role.ROLE_USER]
         if not asked or task.status.state in PAUSED_TASK_STATES:
@@ -781,6 +843,8 @@ class A2AServer:
 
         Nothing is known about how far the handler got, so the outcome is
         ``unknown`` rather than failed, and the caller may resend.
+        Run again instead when the lease allows a retry, or the platform
+        handed the task back to be run again.
         """
         stores = self.stores
         if stores is None:  # pragma: no cover - only called with stores
@@ -830,12 +894,14 @@ class A2AServer:
                 task_id=task_id, context_id=task.context_id, status=status
             )
             try:
+                # under the lease this sweep took, not one an executor holds
                 await stores.task_store.save(
                     task,
                     event=event,
                     prev=None,
                     prev_version=stored.version,
                     context=context,
+                    fence=lease["fence"],
                 )
                 break
             except ConcurrentTaskModificationError:
@@ -1152,6 +1218,8 @@ class _Held:
     lost: bool = False
     #: Another replica cancelled the task: CANCELED is already in the store.
     cancelled: bool = False
+    #: The turn asked a person: the paused state it saves ends the lease.
+    paused: bool = False
 
 
 class HopsworksAgentExecutor(AgentExecutor):
@@ -1299,13 +1367,21 @@ class HopsworksAgentExecutor(AgentExecutor):
 
         app = self._app
         task_id = context.task_id or ""
+        held = self._held.get(task_id) or _Held(None)
+        if ctx._claimed:
+            protected = await self._protect(task_id, held)
+            if not protected:
+                # a cancel landed first (or the task is no longer this
+                # replica's): the approved action does not run
+                held.cancelled = protected is False
+                await app._settle_pending(ctx, answered=protected is False)
+                return
         await app._resolve_subject(ctx)
         await app._open_turn(ctx)
         # WORKING follows, with the trace id, which is how a caller joins the
         # task to its trace.
         completed: ChatResponse | None = None
         run: _TurnRun | None = None
-        held = self._held.get(task_id) or _Held(None)
         attempt = held.attempt
         with (
             eval_active(ctx.evaluation),
@@ -1439,7 +1515,10 @@ class HopsworksAgentExecutor(AgentExecutor):
         if stores is None or context.call_context is None:
             return _Held(None)
         owner = self._app._a2a.ownership._owner(context.call_context)
-        fence, attempt = await stores.leases._acquire(task_id, owner)
+        config = self._config
+        # the author's policy, on the row: whoever finds the turn lost reads it there
+        retry_limit = config.retry_lost_tasks if config.idempotent else 0
+        fence, attempt = await stores.leases._acquire(task_id, owner, retry_limit)
         if len(stores.fence.out) > FENCED_OUT_LIMIT:
             stores.fence.out.clear()
         stores.fence.out.discard(task_id)
@@ -1447,6 +1526,32 @@ class HopsworksAgentExecutor(AgentExecutor):
         # a row the sweep took from a lost replica already counts this run
         retried = bool((context.call_context.state or {}).get(RETRY_STATE_KEY))
         return _Held(fence, attempt if retried else 1)
+
+    async def _protect(self, task_id: str, held: _Held) -> bool | None:
+        """Before a resumed turn runs the action a person approved: make sure no cancel lands on it from now on.
+
+        True when the action may run: the lease says so, in the same
+        transaction that found the task not ended, and a cancel from any
+        replica is refused from then on.
+        False when the task ended first (a cancel landed before the turn
+        got here) or the lease is no longer this replica's.
+        None when the database could not be asked: the action does not run,
+        and the person's answer is given back so it can be sent again.
+        """
+        stores = self._stores()
+        if stores is None or held.fence is None:
+            # tasks are per replica: the local cancel is the only one
+            return True
+        try:
+            return await stores.task_store._protect(task_id, held.fence)
+        except Exception:  # noqa: BLE001 -- fail closed: the action does not run
+            _logger.error(
+                "could not record that task %s runs an approved action, so it "
+                "is not run",
+                task_id,
+                exc_info=True,
+            )
+            return None
 
     async def _leave_lease(self, task_id: str, held: _Held) -> None:
         """The execution returned: what is left of its lease to deal with here.
@@ -1787,6 +1892,10 @@ class HopsworksAgentExecutor(AgentExecutor):
         message = updater.new_agent_message(
             parts, metadata=_hopsworks({"trace_id": trace_id, "interrupts": interrupts})
         )
+        held = self._held.get(updater.task_id)
+        if held is not None:
+            # the pause this execution asks for, which ends its lease once saved
+            held.paused = True
         if interrupts and all(q.get("reason") == "auth_required" for q in interrupts):
             await updater.requires_auth(message)
         else:

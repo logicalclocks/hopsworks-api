@@ -20,15 +20,19 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
 import os
 import re
+import shutil
 import tempfile
 from collections import OrderedDict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from a2a.server.cluster import VersionedTaskStore
+
+from .a2a_store import SPILL_TASK_ID
 
 
 if TYPE_CHECKING:
@@ -58,7 +62,11 @@ TRUNCATED_LIMIT = 2000
 ARTIFACTS_PATH = "/a2a/artifacts"
 
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
-_TASK_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+
+
+def _safe_task_id(task_id: str) -> bool:
+    """Whether a task id can name a directory of its own: one path segment, not starting with a dot."""
+    return bool(SPILL_TASK_ID.match(task_id))
 
 
 def _limit(name: str, default: int) -> int:
@@ -70,7 +78,14 @@ def _limit(name: str, default: int) -> int:
 
 
 class _DirectorySpill:
-    """Spilled parts as files under a directory every replica sees."""
+    """Spilled parts as files under a directory every replica sees.
+
+    The directory is the author's or a local run's, which the platform does
+    not know of: a deleted task's files are removed here, at once, and no
+    cleanup row is filed for the platform to retry.
+    """
+
+    durable_cleanup = False
 
     def __init__(self, root: str):
         self._root = Path(root)
@@ -91,9 +106,24 @@ class _DirectorySpill:
         path = self._path(task_id, digest)
         return path.read_bytes() if path.is_file() else None
 
+    def _remove(self, task_id: str) -> None:
+        """Remove a task's files; a task that has none is done already."""
+        if not _safe_task_id(task_id):
+            return
+        folder = self._root / task_id
+        if folder.exists():
+            shutil.rmtree(folder)
+
 
 class _DatasetSpill:
-    """Spilled parts as files in the project's file system, through the deployment's own client."""
+    """Spilled parts as files in the project's file system, through the deployment's own client.
+
+    A deleted task's files are filed for removal in the database
+    (``agent_a2a_spill_cleanup``), so the platform removes them when no
+    replica gets to it.
+    """
+
+    durable_cleanup = True
 
     def __init__(self, deployment_id: str):
         self._root = f"{DATASET_ROOT}/{deployment_id}"
@@ -132,6 +162,15 @@ class _DatasetSpill:
             local = api.download(remote, local_path=scratch, overwrite=True)
             return Path(local).read_bytes()
 
+    def _remove(self, task_id: str) -> None:
+        """Remove a task's directory; a task that has none is done already."""
+        if not _safe_task_id(task_id):
+            return
+        api = self._dataset_api()
+        folder = f"{self._root}/{task_id}"
+        if api.exists(folder):
+            api.remove(folder)
+
 
 def _spill_backend() -> Any | None:
     """Where spilled parts go: a shared directory when one is named, the project's files on a deployment, nowhere otherwise."""
@@ -153,17 +192,56 @@ def _spilled_digest(url: str) -> str | None:
     return digest if _DIGEST.match(digest) else None
 
 
+def _json_size(value: Any) -> int:
+    """The length of a value as the store writes it: ``json.dumps``, as SQLAlchemy's JSON type does."""
+    return len(json.dumps(value))
+
+
+def _stored_size(task: Task) -> int:
+    """How much a task takes in its row: the JSON text of the columns the store writes."""
+    from google.protobuf.json_format import MessageToDict  # noqa: PLC0415
+
+    size = _json_size(MessageToDict(task.status))
+    size += _json_size([MessageToDict(a) for a in task.artifacts])
+    size += _json_size([MessageToDict(m) for m in task.history])
+    if task.metadata.fields:
+        size += _json_size(MessageToDict(task.metadata))
+    return size
+
+
+def _part_size(part: Part) -> int:
+    from google.protobuf.json_format import MessageToDict  # noqa: PLC0415
+
+    return _json_size(MessageToDict(part))
+
+
+#: The kinds of part content that can be moved out or omitted.
+_CONTENT = ("raw", "text", "data")
+#: What a task holds when nothing of its content fits.
+_EMPTIED_NOTE = (
+    "[The content of this task was larger than a stored task may hold and was "
+    "dropped; a caller that streamed the task received it.]"
+)
+
+
 class _SpillingStore(VersionedTaskStore):
     """The versioned task store, with a task made to fit its row as it is saved.
 
     Large ``raw`` parts are moved to the artifact storage, and the stored task
     carries their URL.
+    The cap is measured on what the store writes: the JSON text of the task's
+    columns, the note of what was dropped included.
     A task that is still over its cap gives up, in this order, what costs the
-    reader least: its largest remaining parts, text included, moved out the
-    same way; then its oldest history messages; then the content of its
-    largest artifact parts, replaced by a line that says so.
+    reader least: its largest remaining parts, text and ``data`` included,
+    moved out the same way; then its oldest history messages; then the
+    content of its largest parts, replaced by a line that says so; then the
+    metadata beyond the ``hopsworks`` key, on the task, its messages, its
+    artifacts and their parts.
     What was dropped rather than moved is said in the task's
     ``metadata.hopsworks.truncated``.
+    A task that still does not fit is stored with its artifacts and history
+    emptied and its status message replaced by a short note; if even that
+    does not fit, the save fails.
     The cap therefore holds for the task as stored, whatever its content and
     whether or not the artifact storage could be reached.
     """
@@ -173,14 +251,15 @@ class _SpillingStore(VersionedTaskStore):
         inner: VersionedTaskStore,
         backend: Any,
         base_url: Callable[[], str | None],
-        before_save: Callable[[str], Any] | None = None,
         after_save: Callable[[Task], Any] | None = None,
+        cleanups: Any = None,
     ):
         self._inner = inner
         self._backend = backend
         self._base_url = base_url
-        self._before_save = before_save
         self._after_save = after_save
+        #: Where a deleted task's files are filed for removal, when they need a row.
+        self._cleanups = cleanups
         # What was dropped from each task so far, by task id. A later status
         # update replaces the task's ``hopsworks`` metadata with its own
         # facts, so the note is put back at every save of the task.
@@ -195,9 +274,6 @@ class _SpillingStore(VersionedTaskStore):
         return getattr(self._inner, name)
 
     async def save(self, task: Task, **kwargs: Any) -> Any:
-        if self._before_save is not None:
-            # whether this replica may still write the task at all
-            await self._before_save(task.id)
         await self._fit(task)
         version = await self._inner.save(task, **kwargs)
         if self._after_save is not None:
@@ -212,7 +288,40 @@ class _SpillingStore(VersionedTaskStore):
         return await self._inner.list(params, context)
 
     async def delete(self, task_id: str, context: Any) -> None:
-        await self._inner.delete(task_id, context)
+        """Delete the task, and its spilled files with it.
+
+        Only a task the caller may delete has its files touched; the store
+        says whether it had one.
+        """
+        deleted = await self._inner.delete(task_id, context)
+        if deleted is False or self._backend is None:
+            return
+        await self._clean(task_id)
+
+    async def _clean(self, task_id: str) -> None:
+        """Remove a deleted task's files; a removal that fails is left to the sweep, when a row was filed for it."""
+        try:
+            await asyncio.to_thread(self._backend._remove, task_id)
+        except Exception:  # noqa: BLE001 -- the sweep tries again
+            _logger.warning(
+                "could not remove the files of deleted task %s%s",
+                task_id,
+                "; they are removed later" if self._cleanups is not None else "",
+                exc_info=True,
+            )
+            if self._cleanups is not None:
+                try:
+                    await self._cleanups._failed(task_id)
+                except Exception:  # noqa: BLE001 -- the row is there all the same
+                    _logger.debug("could not count the failure", exc_info=True)
+            return
+        if self._cleanups is not None:
+            try:
+                await self._cleanups._done(task_id)
+            except Exception:  # noqa: BLE001 -- the sweep finds the files gone
+                _logger.debug(
+                    "could not clear the cleanup of %s", task_id, exc_info=True
+                )
 
     @staticmethod
     def _content_parts(task: Task, kinds: tuple[str, ...]) -> list[Part]:
@@ -225,16 +334,28 @@ class _SpillingStore(VersionedTaskStore):
         return parts
 
     @staticmethod
+    def _data_bytes(part: Part) -> bytes:
+        from google.protobuf.json_format import MessageToDict  # noqa: PLC0415
+
+        return json.dumps(MessageToDict(part.data)).encode()
+
+    @staticmethod
     def _size(part: Part) -> int:
         kind = part.WhichOneof("content")
         if kind == "raw":
             return len(part.raw)
         if kind == "text":
             return len(part.text.encode())
+        if kind == "data":
+            return len(_SpillingStore._data_bytes(part))
         return 0
 
     async def _fit(self, task: Task) -> None:
-        """Bring the task under its cap: move what can be moved, then drop what must be dropped."""
+        """Bring the task under its cap: move what can be moved, then drop what must be dropped.
+
+        Raises:
+            a2a.utils.errors.InternalError: Not even the task without its content fits.
+        """
         try:
             await self._fit_once(task)
         finally:
@@ -255,7 +376,9 @@ class _SpillingStore(VersionedTaskStore):
     async def _fit_once(self, task: Task) -> None:
         inline = _limit(INLINE_BYTES_ENV, DEFAULT_INLINE_BYTES)
         cap = _limit(TASK_MAX_BYTES_ENV, DEFAULT_TASK_MAX_BYTES)
-        storage = self._backend is not None and bool(_TASK_ID.match(task.id))
+        # what an earlier save dropped is said again, and counted in the size
+        self._note(task)
+        storage = self._backend is not None and _safe_task_id(task.id)
         if storage:
             # a file is kept beside the row whenever it is large, cap or no cap
             for part in self._content_parts(task, ("raw",)):
@@ -263,20 +386,23 @@ class _SpillingStore(VersionedTaskStore):
                     storage = await self._move(task, part)
                     if not storage:
                         break
-        if task.ByteSize() <= cap:
+        if _stored_size(task) <= cap:
             return
         if storage:
             movable = sorted(
-                self._content_parts(task, ("raw", "text")),
-                key=self._size,
-                reverse=True,
+                self._content_parts(task, _CONTENT), key=self._size, reverse=True
             )
+            size = _stored_size(task)
             for part in movable:
-                if task.ByteSize() <= cap or self._size(part) < SMALLEST_SPILLED:
+                if size <= cap or self._size(part) < SMALLEST_SPILLED:
                     break
+                before = _part_size(part)
                 if not await self._move(task, part):
                     break
-        if task.ByteSize() <= cap:
+                size -= before - _part_size(part)
+                if size <= cap:
+                    size = _stored_size(task)
+        if _stored_size(task) <= cap:
             return
         dropped = self._truncate(task, cap)
         _logger.warning(
@@ -289,7 +415,12 @@ class _SpillingStore(VersionedTaskStore):
     async def _move(self, task: Task, part: Part) -> bool:
         """Write a part's content to the artifact storage and leave its URL; False when the storage failed."""
         kind = part.WhichOneof("content")
-        data = bytes(part.raw) if kind == "raw" else part.text.encode()
+        if kind == "raw":
+            data = bytes(part.raw)
+        elif kind == "data":
+            data = self._data_bytes(part)
+        else:
+            data = part.text.encode()
         digest = hashlib.sha256(data).hexdigest()
         try:
             await asyncio.to_thread(self._backend._write, task.id, digest, data)
@@ -303,6 +434,8 @@ class _SpillingStore(VersionedTaskStore):
         base = (self._base_url() or "").rstrip("/")
         if kind == "text" and not part.media_type:
             part.media_type = "text/plain; charset=utf-8"
+        elif kind == "data" and not part.media_type:
+            part.media_type = "application/json"
         # setting the URL clears the content: they are one field's alternatives
         part.url = f"{base}{ARTIFACTS_PATH}/{task.id}/{digest}"
         part.metadata.update(
@@ -316,49 +449,153 @@ class _SpillingStore(VersionedTaskStore):
         part.text = f"[omitted: {size} bytes, more than a stored task may hold]"
         part.metadata.update({"hopsworks": {"omitted": True, "size": size}})
 
-    def _truncate(self, task: Task, cap: int) -> str:
-        """Drop content until the task fits, oldest and least needed first; what was dropped, in words."""
-        messages = 0
-        # the last message is what the turn was asked: kept while anything else can go
-        while task.ByteSize() > cap and len(task.history) > 1:
-            del task.history[0]
-            messages += 1
-        parts = 0
-        candidates = sorted(
-            self._content_parts(task, ("raw", "text")), key=self._size, reverse=True
-        )
+    @staticmethod
+    def _structs(task: Task) -> list[Any]:
+        """Every metadata Struct of the task: its own, its messages', its artifacts' and their parts'."""
+        messages = list(task.history)
         if task.status.HasField("message"):
-            # the answer itself goes last
-            candidates.extend(
-                sorted(
-                    (
-                        p
-                        for p in task.status.message.parts
-                        if p.WhichOneof("content") in ("raw", "text")
-                    ),
-                    key=self._size,
-                    reverse=True,
-                )
-            )
-        for part in candidates:
-            if task.ByteSize() <= cap:
-                break
-            if self._size(part) < 128:
-                # omitting it would save nothing
-                continue
-            self._omit(part)
-            parts += 1
-        dropped = self._truncated.pop(task.id, None) or {
+            messages.append(task.status.message)
+        structs = [task.metadata]
+        for artifact in task.artifacts:
+            structs.append(artifact.metadata)
+            structs.extend(part.metadata for part in artifact.parts)
+        for message in messages:
+            structs.append(message.metadata)
+            structs.extend(part.metadata for part in message.parts)
+        return structs
+
+    def _measure(self, task: Task, base: dict[str, Any], counts: dict[str, Any]) -> int:
+        """The task's stored size with the note of what was dropped so far on it."""
+        dropped = dict(base)
+        for key, value in counts.items():
+            if isinstance(value, bool):
+                dropped[key] = value or bool(dropped.get(key))
+            else:
+                dropped[key] = int(dropped.get(key) or 0) + value
+        self._truncated[task.id] = dropped
+        self._truncated.move_to_end(task.id)
+        while len(self._truncated) > TRUNCATED_LIMIT:
+            self._truncated.popitem(last=False)
+        self._note(task)
+        return _stored_size(task)
+
+    def _truncate(self, task: Task, cap: int) -> str:
+        """Drop content until the task fits, oldest and least needed first; what was dropped, in words.
+
+        Raises:
+            a2a.utils.errors.InternalError: Not even the task without its content fits.
+        """
+        from google.protobuf.json_format import MessageToDict  # noqa: PLC0415
+
+        base = self._truncated.pop(task.id, None) or {
             "truncated": True,
             "dropped_history_messages": 0,
             "omitted_parts": 0,
         }
-        dropped["dropped_history_messages"] += messages
-        dropped["omitted_parts"] += parts
-        self._truncated[task.id] = dropped
-        while len(self._truncated) > TRUNCATED_LIMIT:
-            self._truncated.popitem(last=False)
-        return f"{messages} history message(s) dropped, {parts} part(s) omitted"
+        counts: dict[str, Any] = {
+            "dropped_history_messages": 0,
+            "omitted_parts": 0,
+        }
+        size = self._measure(task, base, counts)
+        # 1. the oldest history; the last message is what the turn was asked,
+        # kept while anything else can go
+        if size > cap and len(task.history) > 1:
+            excess = size - cap
+            saved = drop = 0
+            for message in task.history[:-1]:
+                if saved >= excess:
+                    break
+                # the message and the separator before the next one
+                saved += _json_size(MessageToDict(message)) + 2
+                drop += 1
+            del task.history[:drop]
+            counts["dropped_history_messages"] = drop
+            size = self._measure(task, base, counts)
+        # 2. the content of the largest parts, the answer itself last
+        if size > cap:
+            candidates = sorted(
+                self._content_parts(task, _CONTENT), key=self._size, reverse=True
+            )
+            if task.status.HasField("message"):
+                candidates.extend(
+                    sorted(
+                        (
+                            p
+                            for p in task.status.message.parts
+                            if p.WhichOneof("content") in _CONTENT
+                        ),
+                        key=self._size,
+                        reverse=True,
+                    )
+                )
+            for part in candidates:
+                if size <= cap:
+                    break
+                if self._size(part) < 128:
+                    # omitting it would save nothing
+                    continue
+                before = _part_size(part)
+                self._omit(part)
+                counts["omitted_parts"] += 1
+                size -= before - _part_size(part)
+                if size <= cap:
+                    size = self._measure(task, base, counts)
+            size = self._measure(task, base, counts)
+        # 3. metadata beyond the platform's own key, largest first
+        if size > cap:
+            structs = sorted(
+                self._structs(task),
+                key=lambda struct: _json_size(MessageToDict(struct)),
+                reverse=True,
+            )
+            for struct in structs:
+                if size <= cap:
+                    break
+                extra = [key for key in struct.fields if key != "hopsworks"]
+                if not extra:
+                    continue
+                for key in extra:
+                    del struct[key]
+                counts["dropped_metadata"] = counts.get("dropped_metadata", 0) + 1
+                size = self._measure(task, base, counts)
+        # 4. nothing of the content fits: the task is kept, without it
+        if size > cap:
+            self._empty(task)
+            counts["emptied"] = True
+            size = self._measure(task, base, counts)
+            if size > cap:
+                from a2a.utils.errors import InternalError  # noqa: PLC0415
+
+                raise InternalError(
+                    message=f"Task {task.id} does not fit in a stored task "
+                    f"({cap} bytes) even without its content."
+                )
+        return (
+            f"{counts['dropped_history_messages']} history message(s) dropped, "
+            f"{counts['omitted_parts']} part(s) omitted, "
+            f"{counts.get('dropped_metadata', 0)} metadata dropped"
+            + (", content emptied" if counts.get("emptied") else "")
+        )
+
+    @staticmethod
+    def _empty(task: Task) -> None:
+        """Keep the task, its state and its ``hopsworks`` facts, and nothing of its content."""
+        from a2a.types import Message, Role  # noqa: PLC0415
+
+        del task.artifacts[:]
+        del task.history[:]
+        for key in [key for key in task.metadata.fields if key != "hopsworks"]:
+            del task.metadata[key]
+        if task.status.HasField("message"):
+            old = task.status.message
+            note = Message(
+                message_id=old.message_id,
+                role=old.role or Role.ROLE_AGENT,
+                task_id=old.task_id,
+                context_id=old.context_id,
+            )
+            note.parts.add(text=_EMPTIED_NOTE)
+            task.status.message.CopyFrom(note)
 
 
 async def _read_spilled(
@@ -369,7 +606,7 @@ async def _read_spilled(
     None when the task names no such part, so a digest is never a key to
     content the task does not carry.
     """
-    if not _DIGEST.match(digest) or not _TASK_ID.match(task.id):
+    if not _DIGEST.match(digest) or not _safe_task_id(task.id):
         return None
     found: Part | None = None
     candidates: list[Part] = []

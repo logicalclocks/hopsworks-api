@@ -192,7 +192,7 @@ class TestLargeParts:
             }
             assert kinds["a.bin"] == "url"
             assert kinds["c.bin"] == "raw"
-            assert stored.ByteSize() <= 6000
+            assert a2a_artifacts._stored_size(stored) <= 6000
 
         run(scenario())
 
@@ -234,7 +234,7 @@ class TestTheCapHoldsForEveryKindOfContent:
             client, http = await connect(app)
             task = await ask(client, "go")
             stored = await client.get_task(GetTaskRequest(id=task.id))
-            assert stored.ByteSize() <= 10000
+            assert a2a_artifacts._stored_size(stored) <= 10000
             part = artifact_part(stored, "response")
             assert part.WhichOneof("content") == "url"
             assert part.media_type.startswith("text/plain")
@@ -258,7 +258,7 @@ class TestTheCapHoldsForEveryKindOfContent:
             client, _ = await connect(app)
             task = await ask(client, "go")
             stored = await client.get_task(GetTaskRequest(id=task.id))
-            assert stored.ByteSize() <= 10000
+            assert a2a_artifacts._stored_size(stored) <= 10000
             facts = MessageToDict(stored.metadata)["hopsworks"]
             assert facts["truncated"] is True
             assert facts["omitted_parts"] >= 1
@@ -281,7 +281,7 @@ class TestTheCapHoldsForEveryKindOfContent:
             client, _ = await connect(app)
             task = await ask(client, "go")
             stored = await client.get_task(GetTaskRequest(id=task.id))
-            assert stored.ByteSize() <= 10000
+            assert a2a_artifacts._stored_size(stored) <= 10000
             assert MessageToDict(stored.metadata)["hopsworks"]["truncated"] is True
 
         run(scenario())
@@ -305,12 +305,138 @@ class TestTheCapHoldsForEveryKindOfContent:
                 )
             )
         run(store._fit(task))
-        assert task.ByteSize() <= 4000
+        assert a2a_artifacts._stored_size(task) <= 4000
         # the newest messages are the ones kept
         assert task.history[-1].message_id == "m19"
         facts = MessageToDict(task.metadata)["hopsworks"]
         assert facts["dropped_history_messages"] >= 13
         assert facts["omitted_parts"] == 0
+
+
+class TestTheCapIsWhatTheStoreWrites:
+    """The whole-task cap, measured on the JSON the store writes, for every kind of content."""
+
+    @staticmethod
+    def _task(**kwargs):
+        from a2a.types import Task, TaskState, TaskStatus
+
+        return Task(
+            id="t1",
+            context_id="c",
+            status=TaskStatus(state=TaskState.TASK_STATE_COMPLETED),
+            **kwargs,
+        )
+
+    @staticmethod
+    def _artifact(task, name, part):
+        artifact = task.artifacts.add(artifact_id=name, name=name)
+        artifact.parts.add().CopyFrom(part)
+        return artifact
+
+    def test_the_cap_is_measured_on_the_stored_json_not_the_protobuf(self, monkeypatch):
+        monkeypatch.setenv(a2a_artifacts.TASK_MAX_BYTES_ENV, "10000")
+        store = a2a_artifacts._SpillingStore(None, None, lambda: None)
+        task = self._task()
+        # small as protobuf (UTF-8), three times larger as the JSON text the
+        # store writes (each character escaped)
+        self._artifact(task, "response", Part(text="é" * 3000))
+        assert task.ByteSize() <= 10000
+        assert a2a_artifacts._stored_size(task) > 10000
+        run(store._fit(task))
+        assert a2a_artifacts._stored_size(task) <= 10000
+        assert MessageToDict(task.metadata)["hopsworks"]["omitted_parts"] == 1
+
+    def test_a_large_data_part_is_moved_out_as_json(self, tmp_path, monkeypatch):
+        monkeypatch.setenv(a2a_artifacts.TASK_MAX_BYTES_ENV, "4000")
+        spill = a2a_artifacts._DirectorySpill(str(tmp_path))
+        store = a2a_artifacts._SpillingStore(None, spill, lambda: "http://agent")
+        task = self._task()
+        rows = [{"id": index, "name": "x" * 40} for index in range(200)]
+        part = Part()
+        part.data.list_value.extend(rows)
+        self._artifact(task, "table", part)
+        run(store._fit(task))
+        moved = task.artifacts[0].parts[0]
+        assert moved.WhichOneof("content") == "url"
+        assert moved.media_type == "application/json"
+        digest = moved.url.rsplit("/", 1)[-1]
+        kept = json.loads(spill._read("t1", digest))
+        assert [row["id"] for row in kept] == list(range(200))
+        assert a2a_artifacts._stored_size(task) <= 4000
+
+    def test_without_storage_a_large_data_part_is_omitted(self, monkeypatch):
+        monkeypatch.setenv(a2a_artifacts.TASK_MAX_BYTES_ENV, "4000")
+        store = a2a_artifacts._SpillingStore(None, None, lambda: None)
+        task = self._task()
+        part = Part()
+        part.data.struct_value.update({"blob": "y" * 20000})
+        self._artifact(task, "table", part)
+        run(store._fit(task))
+        assert a2a_artifacts._stored_size(task) <= 4000
+        assert "omitted" in task.artifacts[0].parts[0].text
+
+    def test_metadata_beyond_the_platforms_key_goes_and_the_facts_stay(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv(a2a_artifacts.TASK_MAX_BYTES_ENV, "4000")
+        store = a2a_artifacts._SpillingStore(None, None, lambda: None)
+        task = self._task()
+        artifact = self._artifact(task, "response", Part(text="the answer"))
+        artifact.metadata.update({"trace": ["z" * 50] * 200})
+        task.metadata.update({"hopsworks": {"trace_id": "abc"}, "debug": "d" * 5000})
+        run(store._fit(task))
+        assert a2a_artifacts._stored_size(task) <= 4000
+        assert "trace" not in MessageToDict(task.artifacts[0].metadata)
+        facts = MessageToDict(task.metadata)
+        assert "debug" not in facts
+        assert facts["hopsworks"]["trace_id"] == "abc"
+        assert facts["hopsworks"]["dropped_metadata"] >= 1
+        # the content was small: it is all there
+        assert task.artifacts[0].parts[0].text == "the answer"
+
+    def test_a_task_of_many_small_parts_is_kept_without_its_content(self, monkeypatch):
+        from a2a.types import Message
+
+        monkeypatch.setenv(a2a_artifacts.TASK_MAX_BYTES_ENV, "4000")
+        store = a2a_artifacts._SpillingStore(None, None, lambda: None)
+        task = self._task()
+        for index in range(200):
+            # each too small to be worth omitting
+            self._artifact(task, f"a{index}", Part(text="w" * 100))
+        task.status.message.CopyFrom(
+            Message(
+                message_id="answer", role=Role.ROLE_AGENT, parts=[Part(text="done")]
+            )
+        )
+        run(store._fit(task))
+        assert a2a_artifacts._stored_size(task) <= 4000
+        assert len(task.artifacts) == 0
+        assert "dropped" in task.status.message.parts[0].text
+        assert task.status.message.message_id == "answer"
+        assert MessageToDict(task.metadata)["hopsworks"]["emptied"] is True
+
+    def test_a_task_that_cannot_fit_even_empty_is_not_saved(self, monkeypatch):
+        from a2a.utils.errors import InternalError
+
+        monkeypatch.setenv(a2a_artifacts.TASK_MAX_BYTES_ENV, "2000")
+        store = a2a_artifacts._SpillingStore(None, None, lambda: None)
+        task = self._task()
+        task.metadata.update({"hopsworks": {"facts": "f" * 5000}})
+        with pytest.raises(InternalError):
+            run(store._fit(task))
+
+    def test_the_note_of_an_earlier_truncation_counts_toward_the_cap(self, monkeypatch):
+        monkeypatch.setenv(a2a_artifacts.TASK_MAX_BYTES_ENV, "4000")
+        store = a2a_artifacts._SpillingStore(None, None, lambda: None)
+        task = self._task()
+        self._artifact(task, "response", Part(text="x" * 10000))
+        run(store._fit(task))
+        # the next save of the task, after a status update dropped the note
+        task.ClearField("metadata")
+        self._artifact(task, "more", Part(text="m" * 3500))
+        run(store._fit(task))
+        assert a2a_artifacts._stored_size(task) <= 4000
+        assert MessageToDict(task.metadata)["hopsworks"]["truncated"] is True
 
 
 class TestExtendedCard:
