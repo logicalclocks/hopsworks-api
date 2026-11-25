@@ -68,7 +68,9 @@ jobs:
         # against upstream Apache Spark instead. The Hops Hudi fork bundles
         # resolve anonymously from the open nexus.hops.works/repository/hudi,
         # so no hudi override is needed.
-        run: mvn clean install javadoc:javadoc javadoc:aggregate -Pspark-4.1 -DskipTests -Dspark.version=4.1.3 && cp -r target/site/apidocs ../logicalclocks.github.io/docs/javadoc
+        # The javadoc goals are named in full, with the version from the pom.
+        # A "javadoc:" prefix makes Maven fetch the plugin groups' metadata from Maven Central, and a 429 there failed the build.
+        run: mvn clean install org.apache.maven.plugins:maven-javadoc-plugin:javadoc org.apache.maven.plugins:maven-javadoc-plugin:aggregate -Pspark-4.1 -DskipTests -Dspark.version=4.1.3 && cp -r target/site/apidocs ../logicalclocks.github.io/docs/javadoc
 
       - name: Check for broken links
         working-directory: logicalclocks.github.io
