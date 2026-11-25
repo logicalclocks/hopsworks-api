@@ -246,6 +246,8 @@ class A2AConfig:
 TASK_STORES = frozenset({"memory", "database"})
 #: How often a replica looks for tasks whose replica was lost.
 SWEEP_SECONDS = 30.0
+#: Where the platform signs this deployment's card, set by the platform.
+CARD_SIGN_URL_ENV = "HOPSWORKS_AGENT_CARD_SIGN_URL"
 #: How many times a reaper writes FAILED again when the task moved under it.
 LOST_WRITE_ATTEMPTS = 5
 #: How many lost tasks a replica remembers it must not write to, before it starts over.
@@ -607,18 +609,19 @@ class A2AServer:
         An older platform has nothing to sign with, and the card stays unsigned.
         """
         public = os.environ.get("HOPSWORKS_AGENT_PUBLIC_URL")
+        # the platform's own address for it, which an older platform does not set
+        sign_url = os.environ.get(CARD_SIGN_URL_ENV)
         platform = self._app._platform
-        if not public or not getattr(platform, "configured", False):
+        if not public or not sign_url or not getattr(platform, "configured", False):
             return
         from a2a.utils.signing import _canonicalize_agent_card  # noqa: PLC0415
 
         try:
             payload = _canonicalize_agent_card(self._card(public))
+            # as the deployment, with its own key: the platform signs a card
+            # only for the deployment whose URLs it names
             answer = await asyncio.to_thread(
-                platform._request,
-                "POST",
-                ["serving", platform.deployment_id, "agents", "card", "sign"],
-                {"payload": payload},
+                platform._post_as_deployment, sign_url, {"payload": payload}
             )
             signature = answer["signature"]
             self._signature = {

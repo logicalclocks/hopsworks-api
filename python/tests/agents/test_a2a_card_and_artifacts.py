@@ -358,10 +358,10 @@ class _Platform:
         self.refuse = refuse
         self.requests = []
 
-    def _request(self, method, segments, body, **kwargs):
+    def _post_as_deployment(self, url, body):
         from jwt import api_jws
 
-        self.requests.append((method, segments, body))
+        self.requests.append((url, body))
         if self.refuse:
             raise AgentError("not found", "platform_refused", 404)
         token = api_jws.encode(
@@ -376,11 +376,13 @@ class _Platform:
 
 class TestSignedCard:
     PUBLIC = "https://gateway.example/v1/proj/advisor"
+    SIGN_URL = "https://hopsworks.internal/hopsworks-api/api/project/119/serving/42/agents/card/sign"
 
     @pytest.fixture(autouse=True)
     def deployment(self, monkeypatch):
         monkeypatch.delenv(a2a_store.DATABASE_URL_ENV, raising=False)
         monkeypatch.setenv("HOPSWORKS_AGENT_PUBLIC_URL", self.PUBLIC)
+        monkeypatch.setenv("HOPSWORKS_AGENT_CARD_SIGN_URL", self.SIGN_URL)
 
     def _app(self, platform):
         from hopsworks_agents.protocol.a2a import A2AConfig
@@ -399,11 +401,8 @@ class TestSignedCard:
         platform = _Platform()
         app = self._app(platform)
         run(app._a2a._sign())
-        method, segments, body = platform.requests[0]
-        assert (method, segments) == (
-            "POST",
-            ["serving", "42", "agents", "card", "sign"],
-        )
+        url, body = platform.requests[0]
+        assert url == self.SIGN_URL
         # what was sent is the card's canonical form, with the URLs to check
         sent = json.loads(body["payload"])
         assert sent["supportedInterfaces"][0]["url"] == f"{self.PUBLIC}/a2a"
@@ -440,6 +439,40 @@ class TestSignedCard:
         assert not served.get("signatures")
         manifest = client.get("/.well-known/hopsworks-agent.json").json()
         assert manifest["capabilities"]["custom"]["hopsworks"]["a2a"]["signed"] is False
+
+    def test_an_older_platform_with_no_signing_url_is_not_asked(self, monkeypatch):
+        monkeypatch.delenv("HOPSWORKS_AGENT_CARD_SIGN_URL", raising=False)
+        platform = _Platform()
+        app = self._app(platform)
+        run(app._a2a._sign())
+        assert platform.requests == []
+
+    def test_the_request_carries_the_deployments_own_key(self, monkeypatch):
+        import requests
+        from hopsworks_agents.protocol.platform import PlatformClient
+
+        seen = {}
+
+        class Answer:
+            status_code = 200
+
+            def json(self):
+                return {"signature": {"protected": "p", "signature": "s"}}
+
+        def post(url, json, headers, verify, timeout):
+            seen.update(url=url, headers=headers, body=json)
+            return Answer()
+
+        monkeypatch.setattr(requests, "post", post)
+        monkeypatch.setenv("SERVING_API_KEY", "dep-key.secret")
+        client = PlatformClient()
+        monkeypatch.setattr(
+            client, "_connect", lambda: type("C", (), {"_verify": "/ca.pem"})()
+        )
+        answer = client._post_as_deployment(self.SIGN_URL, {"payload": "{}"})
+        assert answer["signature"]["signature"] == "s"
+        assert seen["headers"] == {"Authorization": "ApiKey dep-key.secret"}
+        assert seen["url"] == self.SIGN_URL
 
     def test_a_local_run_asks_nobody(self, monkeypatch):
         monkeypatch.delenv("HOPSWORKS_AGENT_PUBLIC_URL", raising=False)
