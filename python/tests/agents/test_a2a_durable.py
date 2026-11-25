@@ -902,6 +902,7 @@ class TestReviewOfTheLease:
                 return await lease_rows(lost)
 
             await wait_for(leased)
+            await stored_as_working(b, task.id)
             await change_leases(lost, heartbeat_at=datetime.datetime(2000, 1, 1))
             store = survivor._a2a.stores.task_store
             real_get, calls = store.get, {"n": 0}
