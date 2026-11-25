@@ -188,7 +188,8 @@ The per-feature-group `sink_job` shown here is for ingesting a **single** table.
 A SQL source (the SQL databases, Snowflake, Redshift, BigQuery and SAP HANA) is ingested from a table or from a SQL query, never both.
 For a table, give the feature group a `DataSource` with its `database` and `table`, such as one from `get_tables()`.
 For a query, give it `DataSource(storage_connector=..., query="SELECT ...")` with no `table`: the job runs the query against the connector's database, so a filter or a join can be ingested without a view.
-A `DataSource` with both a `table` and a `query` is rejected with HTTP 400 and error code 270136; a cluster without query ingestion (HWORKS-3799) rejects a query with no `table` with the same code.
+A `DataSource` with both a `table` and a `query` is rejected with HTTP 400 and error code 270136; a cluster older than Hopsworks 5.3 rejects a query with no `table` with the same code.
+The query must be a single `SELECT` or `WITH` statement; anything else is rejected with the same code.
 An incremental load of a query filters its cursor column over the query's result, so the query must return that column; full loads run the query as written, while incremental loads wrap it in a derived table, where SQL Server and Teradata reject an `ORDER BY` and SQL Server rejects a `WITH` clause.
 
 ```python
