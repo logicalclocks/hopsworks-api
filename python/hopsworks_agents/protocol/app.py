@@ -56,6 +56,7 @@ from .models import (
     new_response_id,
 )
 from .pending import EXPIRED_GRACE, RETENTION, _PendingQuestions, _ProcessPending
+from .skills import DeploymentSkills
 from .tracing import resolve_framework, setup_tracing, turn_span
 
 
@@ -135,6 +136,7 @@ class AgentApp(FastAPI):
         fetch_urls: list[str] | None = None,
         input_media_types: list[str] | None = None,
         output_media_types: list[str] | None = None,
+        platform_skills: str | list[str] | None = None,
         **fastapi_kwargs: Any,
     ):
         super().__init__(title=name, description=description, **fastapi_kwargs)
@@ -217,6 +219,9 @@ class AgentApp(FastAPI):
         # framework: explicit arg > AGENT_FRAMEWORK env (platform-injected) >
         # 'custom'. Drives which OpenInference instrumentor tracing activates.
         self.framework = resolve_framework(framework)
+        self.platform_skills = DeploymentSkills(
+            platform_skills, framework=self.framework
+        )
         # platform-injected when the deployment runs with tools mocked or
         # pointed at scratch resources; reported in the manifest so an eval
         # runner can verify it rather than trust a naming convention

@@ -71,7 +71,7 @@ def get_project(ctx: click.Context) -> Project:
     cfg = require_auth(ctx)
     try:
         # In internal mode pass ``internal=True`` so the SDK takes its own
-        # ``REST_ENDPOINT`` + JWT path. Otherwise pass the user's API key.
+        # endpoint and mounted credential path.
         project = auth.login(
             host=cfg.host or "",
             api_key_value=cfg.api_key,

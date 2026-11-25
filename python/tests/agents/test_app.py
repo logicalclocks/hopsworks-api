@@ -1,5 +1,6 @@
 import asyncio
 import json
+from pathlib import Path
 
 import hopsworks_agents.protocol.app as app_module
 import pytest
@@ -526,6 +527,47 @@ class TestFrameworkAndTracing:
         monkeypatch.delenv("AGENT_FRAMEWORK", raising=False)
         app = AgentApp(framework=framework)
         assert app.framework == expected
+
+    def test_claude_discovers_only_selected_packaged_skills(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("AGENT_FRAMEWORK", "claude_agents")
+        monkeypatch.setenv("HOPSWORKS_AGENT_SKILLS", "hops-analytics, hops-trino-sql")
+        app = AgentApp()
+        skills = app.platform_skills
+        directory = Path(skills.claude_dirs[0]) / ".claude" / "skills"
+        assert sorted(p.name for p in directory.iterdir()) == skills.names
+        assert (directory / "hops-analytics/references/silver-tasks.md").is_file()
+        assert not (tmp_path / ".claude").exists()
+        assert "hops-trino-sql" in skills.catalogue()
+        assert "# Trino SQL" in skills.read_skill("hops-trino-sql")
+
+        disabled = AgentApp(platform_skills="none").platform_skills
+        assert disabled.names == disabled.claude_dirs == []
+        assert disabled.catalogue() == ""
+
+    @pytest.mark.parametrize(
+        "framework", ["langgraph", "llamaindex", "openai_agents", "custom"]
+    )
+    def test_framework_skill_tool_obeys_selection(self, framework):
+        skills = AgentApp(
+            framework=framework, platform_skills=["hops-analytics"]
+        ).platform_skills
+        assert skills.claude_dirs == []
+        assert skills.names == ["hops-analytics"]
+        assert "hops-trino-sql" not in skills.catalogue()
+        for unselected in ("hops-trino-sql", "../hops-analytics"):
+            with pytest.raises(ValueError, match="not enabled"):
+                skills.read_skill(unselected)
+
+    def test_platform_skill_defaults_and_invalid_selection(self, monkeypatch):
+        monkeypatch.delenv("HOPSWORKS_AGENT_SKILLS", raising=False)
+        assert AgentApp(framework="custom").platform_skills.names == []
+        claude_app = AgentApp(framework="claude-agent-sdk")
+        assert "hops-trino-sql" in claude_app.platform_skills.names
+        with pytest.raises(ValueError, match="Unknown Hopsworks skill"):
+            AgentApp(platform_skills=["typo"])
 
     def test_unknown_framework_falls_back(self, monkeypatch):
         monkeypatch.delenv("AGENT_FRAMEWORK", raising=False)

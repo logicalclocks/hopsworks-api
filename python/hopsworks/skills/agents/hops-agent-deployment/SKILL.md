@@ -244,6 +244,13 @@ Check with `hops agent info my_agent` (the **Framework** and **Chat contract** r
 
 An agent scales like a model deployment: pass `scaling_configuration=PredictorScalingConfig(...)` to `deploy_agent` (instances, the metric and its target; `min_instances=0` rests at zero when idle and wakes on the first request, the SDK's default minimum being 1). The choices and their rules are in [hops-autoscaling](../../scaling/hops-autoscaling/SKILL.md).
 
+### Let the deployed agent use Hopsworks skills
+
+- `AgentApp` selects all packaged playbooks by default for `claude_agents`. Pick `platform_skills="none"`, `"all"`, or a list of folder names from `hops skills list`. Omit `hops-trino-sql` if the agent already has a SQL tool. The environment equivalent is `HOPSWORKS_AGENT_SKILLS=all|none|name1,name2`; code takes precedence. Keep `skills=` on `AgentApp` for the A2A Agent Card.
+- For Claude, set `skills = agent_app.platform_skills` and pass `ClaudeAgentOptions(setting_sources=["project"], add_dirs=skills.claude_dirs, skills=skills.names, allowed_tools=["Bash(hops *)"])`. The SDK enables the Skill tool for those names. Scope Bash to the commands the agent needs.
+- For LangGraph, LlamaIndex, OpenAI Agents or custom handlers, select the skills explicitly (default `none`). Add `skills.catalogue()` to the system prompt, register `skills.read_skill(name)` as a tool, and supply tools for the CLI operations that agent should perform.
+- A serving pod supplies `REST_ENDPOINT`, the project identity and a credential mount (`SECRETS_DIR=/keys`). The internal SDK client tries `token.jwt` then `api.key`; deployments mount their own `api.key`. Check access with `hops job list` inside the agent container.
+
 ### Git-backed agents
 
 When the source lives in Git, give the repository instead of a local path. The repository is cloned on each start, so a restart or redeploy picks up new commits. Providers: `GitHub`, `GitLab`, `BitBucket`; a private repository needs the user's git provider configured in Hopsworks.
