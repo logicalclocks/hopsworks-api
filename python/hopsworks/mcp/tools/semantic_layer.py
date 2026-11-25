@@ -612,7 +612,7 @@ class SemanticLayerTools:
             ctx: The MCP context, provided automatically.
 
         Returns:
-            The dashboard's id, title and URL, such as `https://<host>/hopsworks-api/superset/dashboard/12/?projectId=119`.
+            The dashboard's id, title and URL, such as `https://<host>/hopsworks-api/superset/superset/dashboard/12/?projectId=119`.
         """
         if ctx:
             await ctx.info(

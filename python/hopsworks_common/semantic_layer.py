@@ -1148,7 +1148,7 @@ class SemanticProject:
             saved_query: Name of a saved query whose metrics and group-bys the dashboard shows, instead of `metrics` and `group_by`.
 
         Returns:
-            The dashboard's Superset `id`, its `title`, and the `url` that opens it through Hopsworks, such as `https://<host>/hopsworks-api/superset/dashboard/12/?projectId=119`.
+            The dashboard's Superset `id`, its `title`, and the `url` that opens it through Hopsworks, such as `https://<host>/hopsworks-api/superset/superset/dashboard/12/?projectId=119`.
 
         Raises:
             ValueError: If neither `metrics` nor `saved_query` is given, or `saved_query` is given with `metrics` or `group_by`.
