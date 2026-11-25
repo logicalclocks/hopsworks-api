@@ -12,6 +12,7 @@ methods where available.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -100,7 +101,30 @@ def connector_info(ctx: click.Context, name: str) -> None:
         ["Type", type(sc).__name__],
         ["Description", output.first_line(getattr(sc, "description", ""))],
     ]
+    for label, attr in _INFO_FIELDS.get(getattr(sc, "type", None), ()):
+        value = getattr(sc, attr, None)
+        rows.append([label, "-" if value is None else value])
     output.print_table(["FIELD", "VALUE"], rows)
+
+
+# The fields of a files-only data source, which has no tables to browse, so
+# ``info`` is where its settings are read; the credentials are never among them.
+_INFO_FIELDS: dict[str, tuple[tuple[str, str], ...]] = {
+    "SFTP": (
+        ("Host", "host"),
+        ("Port", "port"),
+        ("Username", "username"),
+        ("Root path", "path"),
+        ("Auth type", "auth_type"),
+        ("Credentials set", "credentials_set"),
+    ),
+    "GOOGLE_DRIVE": (
+        ("Key path", "key_path"),
+        ("Folder ID", "folder_id"),
+        ("Folder name", "folder_name"),
+        ("Service account", "service_account_email"),
+    ),
+}
 
 
 def _list_connectors(fs: Any) -> list[dict[str, Any]]:
@@ -283,7 +307,20 @@ def connector_create_jdbc(
 @click.option("--bucket", required=True, help="S3 bucket name.")
 @click.option("--access-key", help="AWS access key ID.")
 @_secret_option("s3", "--secret-key", "AWS secret access key.")
-@click.option("--region", help="AWS region.")
+@click.option(
+    "--region",
+    help="AWS region. With --endpoint it defaults to us-east-1, which stores without regions accept.",
+)
+@click.option(
+    "--endpoint",
+    help="S3-compatible store as http(s)://host[:port], e.g. MinIO or Dell ECS. "
+    "Needs --access-key and --secret-key.",
+)
+@click.option(
+    "--path-style-access",
+    is_flag=True,
+    help="Name the bucket in the URL path instead of the host; most S3-compatible stores need it.",
+)
 @click.option("--description", default="", help="Free-form description.")
 @click.pass_context
 def connector_create_s3(
@@ -293,6 +330,8 @@ def connector_create_s3(
     access_key: str | None,
     secret_key: str | None,
     region: str | None,
+    endpoint: str | None,
+    path_style_access: bool,
     description: str,
 ) -> None:
     """Register an S3 connector.
@@ -304,6 +343,8 @@ def connector_create_s3(
         access_key: AWS access key.
         secret_key: AWS secret key.
         region: AWS region.
+        endpoint: S3-compatible store, or None for AWS.
+        path_style_access: Whether to address the bucket in the URL path.
         description: Description.
     """
     body = {
@@ -319,6 +360,10 @@ def connector_create_s3(
         body["secretKey"] = secret_key
     if region:
         body["region"] = region
+    if endpoint:
+        body["endpoint"] = endpoint
+    if path_style_access:
+        body["pathStyleAccess"] = True
     _create_connector(ctx, body)
 
 
@@ -391,8 +436,10 @@ class _Opt:
     """One CLI option and the connector property it fills.
 
     ``kind`` is ``str``, ``int``, ``flag`` (sent only when set), ``bool`` (an
-    on/off pair, sent only when either is given) or ``args`` (repeatable
-    ``key=value``, sent as the connector's argument list).
+    on/off pair, sent only when either is given), ``args`` (repeatable
+    ``key=value``, sent as the connector's argument list), ``file`` (a local
+    file whose text is sent, so a key never has to be pasted) or ``path`` (a
+    local file the spec's ``prepare`` handles, not sent as a field).
     A ``secret`` option also reads ``HOPSWORKS_DS_<CONNECTOR>_<OPTION>`` and
     accepts ``-`` for stdin, so the value never has to be an argument.
     """
@@ -403,7 +450,7 @@ class _Opt:
     required: bool = False
     kind: str = "str"
     choices: tuple[str, ...] = ()
-    default: str | None = None
+    default: str | int | None = None
     secret: bool = False
 
 
@@ -417,6 +464,15 @@ class _Spec:
     opts: tuple[_Opt, ...]
     check: Callable[[dict[str, Any]], str | None] | None = None
     epilog: str = ""
+    # Completes the body from the options once they are checked, e.g. by
+    # uploading a file or deriving a field; returns how to undo what it did
+    # outside the body, run when the connector is not created after all.
+    prepare: (
+        Callable[
+            [click.Context, dict[str, Any], dict[str, Any]], Callable[[], None] | None
+        ]
+        | None
+    ) = None
 
 
 def _given(values: dict[str, Any], flag: str) -> bool:
@@ -648,6 +704,34 @@ def _check_hopsworks(v: dict[str, Any]) -> str | None:
     return None
 
 
+_GMAIL_AUTH_NEEDS = {
+    "OAUTH": ("--client-id", "--client-secret", "--refresh-token"),
+    "SERVICE_ACCOUNT": ("--key-path",),
+}
+
+
+def _check_gmail(v: dict[str, Any]) -> str | None:
+    auth = v["auth_type"]
+    others = [f for a, flags in _GMAIL_AUTH_NEEDS.items() if a != auth for f in flags]
+    return _needs(v, f"--auth-type {auth}", *_GMAIL_AUTH_NEEDS[auth]) or _refuses(
+        v, f"--auth-type {auth}", *others
+    )
+
+
+_OUTLOOK_TENANT_ALIASES = ("common", "consumers", "organizations")
+
+
+def _check_outlook(v: dict[str, Any]) -> str | None:
+    if v["auth_type"] == "OAUTH":
+        return _needs(v, "--auth-type OAUTH", "--refresh-token")
+    tenant = (v.get(_dest("--tenant-id")) or "").lower()
+    if not tenant or tenant in _OUTLOOK_TENANT_ALIASES:
+        return "--auth-type CLIENT_CREDENTIALS needs --tenant-id, the mailbox's tenant id or domain."
+    return _needs(v, "--auth-type CLIENT_CREDENTIALS", "--client-secret") or _refuses(
+        v, "--auth-type CLIENT_CREDENTIALS", "--refresh-token"
+    )
+
+
 def _check_bigquery(v: dict[str, Any]) -> str | None:
     if (
         _given(v, "--project-id")
@@ -660,6 +744,147 @@ def _check_bigquery(v: dict[str, Any]) -> str | None:
         "bigquery without a query project, dataset or table",
         "--materialization-dataset",
     )
+
+
+def _check_sftp(v: dict[str, Any]) -> str | None:
+    host = v.get("host") or ""
+    # The same rule as the backend: a host is neither a URL nor user@host:port.
+    if "/" in host or "@" in host or ":" in host or any(c.isspace() for c in host):
+        return "--host takes the bare host name or address, without a scheme, user, port or path."
+    port = v.get("port")
+    if port is not None and not 1 <= port <= 65535:
+        return "--port is between 1 and 65535."
+    path = v.get("path") or ""
+    if not path.startswith("/") or ".." in path.split("/"):
+        return "--path is an absolute path on the server, starting with / and without .. segments."
+    problem = _one_of(v, "sftp", "--password", "--private-key-file")
+    if problem:
+        return problem
+    if _given(v, "--passphrase") and not _given(v, "--private-key-file"):
+        return "--passphrase needs --private-key-file."
+    if _given(v, "--private-key-file"):
+        first = next(
+            (
+                line
+                for line in _file_text(v["private_key_file"]).splitlines()
+                if line.strip()
+            ),
+            "",
+        )
+        if not (first.startswith("-----BEGIN ") and first.endswith("PRIVATE KEY-----")):
+            return "--private-key-file is not a PEM private key (-----BEGIN ... PRIVATE KEY-----)."
+    return None
+
+
+def _prepare_sftp(ctx: click.Context, v: dict[str, Any], body: dict[str, Any]) -> None:
+    body["authType"] = "PRIVATE_KEY" if _given(v, "--private-key-file") else "PASSWORD"
+
+
+_DRIVE_FOLDER_ID = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _check_google_drive(v: dict[str, Any]) -> str | None:
+    if not _DRIVE_FOLDER_ID.match(v.get("folder_id") or ""):
+        return "--folder-id is the folder's Drive ID, letters, digits, - and _ only; it is the last part of the folder's URL."
+    problem = _one_of(v, "google-drive", "--key-file", "--key-path")
+    if problem:
+        return problem
+    if _given(v, "--key-file"):
+        return _service_account_key_problem(v["key_file"])
+    return None
+
+
+def _service_account_key_problem(local_path: str) -> str | None:
+    try:
+        key = json.loads(_file_text(local_path))
+    except ValueError:
+        return f"--key-file {local_path} is not JSON."
+    if (
+        not isinstance(key, dict)
+        or not key.get("client_email")
+        or not key.get("private_key")
+    ):
+        return f"--key-file {local_path} is not a service account key: it has no client_email and private_key."
+    return None
+
+
+def _prepare_google_drive(
+    ctx: click.Context, v: dict[str, Any], body: dict[str, Any]
+) -> Callable[[], None] | None:
+    if not _given(v, "--key-file"):
+        return None
+    body["keyPath"], created = _upload_key_file(ctx, body["name"], v["key_file"])
+    return lambda: _discard_upload(ctx, created)
+
+
+def _file_text(local_path: str) -> str:
+    try:
+        with open(local_path, encoding="utf-8") as handle:
+            return handle.read()
+    except UnicodeDecodeError as exc:
+        raise click.ClickException(
+            f"{local_path} is not UTF-8 text; a key file is a PEM or JSON text file."
+        ) from exc
+    except OSError as exc:
+        raise click.ClickException(f"Could not read {local_path}: {exc}") from exc
+
+
+# The upload path is built from the connector name, so the name must not be able
+# to walk out of Resources/datasources/.
+_UPLOAD_NAME = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _upload_key_file(
+    ctx: click.Context, connector_name: str, local_path: str
+) -> tuple[str, list[str]]:
+    """Upload a key file to ``Resources/datasources/<connector>/`` of the project.
+
+    A file already there belongs to an existing data source, so it is never replaced.
+
+    Returns:
+        The HopsFS path to send and the project-relative paths this call created, the file first, to undo it by.
+    """
+    if not _UPLOAD_NAME.match(connector_name):
+        raise click.ClickException(
+            f"--key-file needs a data source name of letters, digits, - and _, not {connector_name!r}; "
+            "upload the key yourself and pass --key-path instead."
+        )
+    project = session.get_project(ctx)
+    target_dir = f"Resources/datasources/{connector_name}"
+    relative = f"{target_dir}/{os.path.basename(local_path)}"
+    dataset_api = project.get_dataset_api()
+    created: list[str] = []
+    try:
+        if dataset_api.exists(relative):
+            raise click.ClickException(
+                f"{relative} already exists in the project; pass --key-path "
+                f"/Projects/{project.name}/{relative} to reuse it, or choose another name."
+            )
+        for directory in (os.path.dirname(target_dir), target_dir):
+            if not dataset_api.exists(directory):
+                dataset_api.mkdir(directory)
+                if directory == target_dir:
+                    created.append(directory)
+        dataset_api.upload(local_path, target_dir, overwrite=False)
+        created.insert(0, relative)
+    except click.ClickException:
+        _discard_upload(ctx, created)
+        raise
+    except Exception as exc:  # noqa: BLE001
+        _discard_upload(ctx, created)
+        raise click.ClickException(f"Key upload failed: {exc}") from exc
+    output.info("Uploaded key to %s", relative)
+    return f"/Projects/{project.name}/{relative}", created
+
+
+def _discard_upload(ctx: click.Context, created: list[str]) -> None:
+    """Remove what an upload created, the file before its directory."""
+    dataset_api = session.get_project(ctx).get_dataset_api()
+    for relative in created:
+        try:
+            dataset_api.remove(relative)
+        except Exception as exc:  # noqa: BLE001
+            output.warn("Could not remove the uploaded %s: %s", relative, exc)
 
 
 _ARGS = _Opt(
@@ -1346,6 +1571,86 @@ _SPECS: dict[str, _Spec] = {
         ),
         check=_check_hopsworks,
     ),
+    "gmail": _Spec(
+        "featurestoreGmailConnectorDTO",
+        "GMAIL",
+        "Register a Gmail mailbox. Copy it into a feature group with `hops datasource sync`.",
+        (
+            _Opt(
+                "--mailbox", "mailbox", "Email address of the mailbox.", required=True
+            ),
+            _Opt(
+                "--auth-type",
+                "authType",
+                "OAUTH for a refresh token granted by the mailbox owner, SERVICE_ACCOUNT for "
+                "a Workspace service account with domain-wide delegation.",
+                required=True,
+                choices=tuple(_GMAIL_AUTH_NEEDS),
+            ),
+            _Opt("--client-id", "clientId", "OAuth client id, for --auth-type OAUTH."),
+            _Opt(
+                "--client-secret",
+                "clientSecret",
+                "OAuth client secret, for --auth-type OAUTH.",
+                secret=True,
+            ),
+            _Opt(
+                "--refresh-token",
+                "refreshToken",
+                "OAuth refresh token with the gmail.readonly scope, for --auth-type OAUTH.",
+                secret=True,
+            ),
+            _Opt(
+                "--key-path",
+                "keyPath",
+                "HopsFS path of the service account's JSON key, for --auth-type SERVICE_ACCOUNT. "
+                "Hopsworks stores its contents, so the file can be deleted afterwards.",
+            ),
+        ),
+        check=_check_gmail,
+    ),
+    "outlook": _Spec(
+        "featurestoreOutlookConnectorDTO",
+        "OUTLOOK",
+        "Register an Outlook mailbox, read through Microsoft Graph. Copy it into a feature group with `hops datasource sync`.",
+        (
+            _Opt(
+                "--mailbox", "mailbox", "Email address of the mailbox.", required=True
+            ),
+            _Opt(
+                "--auth-type",
+                "authType",
+                "OAUTH for a refresh token granted by the mailbox owner, CLIENT_CREDENTIALS for "
+                "an app with the Mail.Read application permission in the mailbox's tenant.",
+                required=True,
+                choices=("OAUTH", "CLIENT_CREDENTIALS"),
+            ),
+            _Opt(
+                "--tenant-id",
+                "tenantId",
+                "Microsoft Entra tenant id or domain; defaults to common for --auth-type OAUTH.",
+            ),
+            _Opt(
+                "--client-id",
+                "clientId",
+                "Application (client) id of the app registration.",
+                required=True,
+            ),
+            _Opt(
+                "--client-secret",
+                "clientSecret",
+                "Client secret; required for --auth-type CLIENT_CREDENTIALS, omitted for a public client.",
+                secret=True,
+            ),
+            _Opt(
+                "--refresh-token",
+                "refreshToken",
+                "Refresh token granted with Mail.Read offline_access, for --auth-type OAUTH.",
+                secret=True,
+            ),
+        ),
+        check=_check_outlook,
+    ),
     "bigquery": _Spec(
         "featurestoreBigqueryConnectorDTO",
         "BIGQUERY",
@@ -1415,6 +1720,78 @@ _SPECS: dict[str, _Spec] = {
         ),
         epilog="Copy or sync folders with `hops datasource sharepoint`.",
     ),
+    "sftp": _Spec(
+        "featurestoreSftpConnectorDTO",
+        "SFTP",
+        "Register an SFTP server, to copy its files into datasets with `hops datasource ingest-files`.",
+        (
+            _Opt(
+                "--host",
+                "host",
+                "Host name or address of the server, without a scheme or a path.",
+                required=True,
+            ),
+            _Opt("--port", "port", "TCP port of the server.", kind="int", default=22),
+            _Opt("--username", "username", "User to log in as.", required=True),
+            _Opt(
+                "--path",
+                "path",
+                "Absolute root path on the server; ingest-files prefixes are relative to it.",
+                default="/",
+            ),
+            _Opt(
+                "--password",
+                "password",
+                "Password of the user. Alternative to --private-key-file.",
+                secret=True,
+            ),
+            _Opt(
+                "--private-key-file",
+                "privateKey",
+                "Local PEM private key of the user, read and stored in Hopsworks. Alternative to --password.",
+                kind="file",
+            ),
+            _Opt(
+                "--passphrase",
+                "passphrase",
+                "Passphrase of an encrypted private key.",
+                secret=True,
+            ),
+        ),
+        check=_check_sftp,
+        prepare=_prepare_sftp,
+        epilog="Copy files with `hops datasource ingest-files`; the data source holds no tables.",
+    ),
+    "google-drive": _Spec(
+        "featurestoreGoogleDriveConnectorDTO",
+        "GOOGLE_DRIVE",
+        "Register a Google Drive folder, to copy its files into datasets with `hops datasource ingest-files`.",
+        (
+            _Opt(
+                "--key-file",
+                "keyPath",
+                "Local JSON key of the service account; uploaded to "
+                "Resources/datasources/<name>/ in the project. Alternative to --key-path.",
+                kind="path",
+            ),
+            _Opt(
+                "--key-path",
+                "keyPath",
+                "Service-account key already in the project, as a full HopsFS path. "
+                "Alternative to --key-file.",
+            ),
+            _Opt(
+                "--folder-id",
+                "folderId",
+                "ID of the Drive folder shared with the service account, the last part of its URL.",
+                required=True,
+            ),
+            _Opt("--folder-name", "folderName", "Display name of the folder."),
+        ),
+        check=_check_google_drive,
+        prepare=_prepare_google_drive,
+        epilog="Copy files with `hops datasource ingest-files`; the data source holds no tables.",
+    ),
 }
 
 
@@ -1464,6 +1841,10 @@ def _option(opt: _Opt, connector: str) -> Callable[[Any], Any]:
         return click.option(opt.flag, default=None, **kwargs)
     if opt.kind == "args":
         return click.option(opt.flag, multiple=True, **kwargs)
+    if opt.kind in ("file", "path"):
+        return click.option(
+            opt.flag, type=click.Path(exists=True, dir_okay=False), **kwargs
+        )
     if opt.choices:
         kwargs["type"] = click.Choice(opt.choices, case_sensitive=False)
     elif opt.kind == "int":
@@ -1511,13 +1892,25 @@ def _build_create_command(name: str, spec: _Spec) -> click.Command:
             value = values.get(_dest(opt.flag))
             if value is None or value == () or (opt.kind == "flag" and not value):
                 continue
+            if opt.kind == "path":
+                continue
             if opt.kind == "args":
                 value = _parse_arguments(opt.flag, value)
+            elif opt.kind == "file":
+                value = _file_text(value)
             _set_path(body, opt.json, value)
-        if test:
-            _test_connector(ctx, body)
-        else:
-            _create_connector(ctx, body)
+        undo = spec.prepare(ctx, values, body) if spec.prepare else None
+        try:
+            if test:
+                _test_connector(ctx, body)
+            else:
+                _create_connector(ctx, body)
+        except BaseException:
+            if undo:
+                undo()
+            raise
+        if test and undo:
+            undo()
 
     # Click renders a command's docstring as its help, so the docstring is the
     # summary alone; the options carry their own help and the parameters are
@@ -1662,14 +2055,20 @@ def _provided_connector(ctx: click.Context, name: str) -> Any:
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Data source '{name}' not found: {exc}") from exc
     sc = getattr(ds, "storage_connector", ds)
-    if not hasattr(sc, "set_credentials"):
-        raise click.ClickException(
-            f"Data source '{name}' does not take member credentials."
-        )
-    if getattr(sc, "credentials_mode", None) == "SHARED":
+    mode = getattr(sc, "credentials_mode", None)
+    if mode == "SHARED":
         raise click.ClickException(
             f"Data source '{name}' has shared credentials; its owner sets them on the "
             "data source itself."
+        )
+    # Only a data source with provided credentials binds a member's own; every
+    # other type (SFTP, Gmail, ...) keeps its owner's credentials, set at
+    # creation or with set_credentials() and update() in the SDK.
+    if mode != "PROVIDED" or not hasattr(sc, "set_credentials"):
+        raise click.ClickException(
+            f"Data source '{name}' does not take member credentials; its owner sets "
+            "them with `hops datasource create`, or with set_credentials() and "
+            "update() in the SDK."
         )
     return sc
 
@@ -1909,6 +2308,184 @@ def connector_databases(ctx: click.Context, name: str) -> None:
     output.print_table(["DATABASE"], [[db] for db in databases or []])
 
 
+@datasource_group.command("sync")
+@click.argument("name")
+@click.option(
+    "--feature-group",
+    help="Feature group to upsert the emails into; defaults to one named after the mailbox, "
+    "e.g. jane_doe_gmails for jane.doe@gmail.com or jane_doe_outlooks for jane.doe@outlook.com.",
+)
+@click.option(
+    "--attachments-path",
+    help="Directory inside a dataset for attachment files; defaults to Resources/gmail/<feature group> "
+    "or Resources/outlook/<feature group>.",
+)
+@click.option(
+    "--query", help="Gmail search query, as typed in the Gmail search box; Gmail only."
+)
+@click.option(
+    "--label",
+    "labels",
+    multiple=True,
+    help="Gmail label id, e.g. INBOX, or Outlook folder id; repeatable. A message in any of them is copied; "
+    "'hops datasource labels' lists them.",
+)
+@click.option(
+    "--strategy",
+    type=click.Choice(["INCREMENTAL_TIMESTAMP", "FULL_LOAD"], case_sensitive=False),
+    default="INCREMENTAL_TIMESTAMP",
+    show_default=True,
+    help="INCREMENTAL_TIMESTAMP adds new messages; FULL_LOAD copies them all again and removes the rest.",
+)
+@click.option("--start-date", help="Earliest receive time to copy, e.g. 2026-01-01.")
+@click.option(
+    "--schedule",
+    type=click.Choice(["hourly", "daily"], case_sensitive=False),
+    help="Run at the top of every hour, or daily at 00:00 UTC.",
+)
+@click.option(
+    "--job-name",
+    help="Job name; defaults to <data source>_gmail_sync or _outlook_sync.",
+)
+@click.option("--environment", help="Python environment for the job.")
+@click.option(
+    "--start/--no-start", default=True, show_default=True, help="Start a run now."
+)
+@click.pass_context
+def connector_sync(
+    ctx: click.Context,
+    name: str,
+    feature_group: str | None,
+    attachments_path: str | None,
+    query: str | None,
+    labels: tuple[str, ...],
+    strategy: str,
+    start_date: str | None,
+    schedule: str | None,
+    job_name: str | None,
+    environment: str | None,
+    start: bool,
+) -> None:
+    """Create or update a job that copies a Gmail or Outlook data source into a Delta feature group.
+
+    Args:
+        ctx: Click context.
+        name: Gmail or Outlook data source name.
+        feature_group: Feature group name.
+        attachments_path: Directory for attachment files.
+        query: Gmail search query.
+        labels: Gmail label ids or Outlook folder ids; a message in any of them is copied.
+        strategy: INCREMENTAL_TIMESTAMP or FULL_LOAD.
+        start_date: Earliest receive time to copy.
+        schedule: hourly or daily.
+        job_name: Job name.
+        environment: Python environment for the job.
+        start: Start a run now when True.
+    """
+    from hsfs.storage_connector import OutlookConnector
+
+    fs = session.get_feature_store(ctx)
+    try:
+        data_source = fs.get_data_source(name)
+        if isinstance(data_source.storage_connector, OutlookConnector):
+            if query:
+                raise click.ClickException(
+                    "--query is Gmail only; select Outlook messages with --label folder ids"
+                )
+            selection = {"folders": list(labels)}
+        else:
+            selection = {"query": query, "labels": list(labels)}
+        job = data_source.sync(
+            feature_group_name=feature_group,
+            attachments_path=attachments_path,
+            **selection,
+            loading_strategy=strategy.upper(),
+            initial_value=start_date,
+            schedule=schedule,
+            job_name=job_name,
+            environment=environment,
+            start=start,
+        )
+    except click.ClickException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not set up the sync job: {exc}") from exc
+    if output.JSON_MODE:
+        output.print_json({"job": job.name, "started": start, "schedule": schedule})
+        return
+    output.success(
+        f"Sync job {job.name} saved"
+        + (" and running" if start else "")
+        + (f", scheduled {schedule}" if schedule else "")
+    )
+
+
+@datasource_group.command("labels")
+@click.argument("name")
+@click.pass_context
+def connector_labels(ctx: click.Context, name: str) -> None:
+    """List the Gmail labels or Outlook folders of a data source's mailbox that a sync can select.
+
+    Args:
+        ctx: Click context.
+        name: Gmail or Outlook data source name.
+    """
+    fs = session.get_feature_store(ctx)
+    try:
+        sc = fs.get_data_source(name).storage_connector
+        lister = getattr(sc, "get_labels", None) or sc.get_folders
+        labels = lister()
+    except AttributeError as exc:
+        raise click.ClickException(
+            f"{name} is not a Gmail or Outlook data source"
+        ) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not list labels: {exc}") from exc
+    if output.JSON_MODE:
+        output.print_json(labels)
+        return
+    output.print_table(["ID", "NAME"], [[i, n] for i, n in labels.items()])
+
+
+@datasource_group.command("sync-jobs")
+@click.argument("name")
+@click.pass_context
+def connector_sync_jobs(ctx: click.Context, name: str) -> None:
+    """List the sync jobs of a Gmail or Outlook data source.
+
+    Args:
+        ctx: Click context.
+        name: Gmail or Outlook data source name.
+    """
+    fs = session.get_feature_store(ctx)
+    try:
+        sc = fs.get_data_source(name).storage_connector
+        jobs = sc.list_sync_jobs()
+    except AttributeError as exc:
+        raise click.ClickException(
+            f"{name} is not a Gmail or Outlook data source"
+        ) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not list sync jobs: {exc}") from exc
+    if output.JSON_MODE:
+        output.print_json(
+            [
+                {
+                    "job": j.job_name,
+                    "featureGroup": j.feature_group_name,
+                    "attachments": j.path,
+                    "strategy": j.loading_strategy,
+                }
+                for j in jobs
+            ]
+        )
+        return
+    output.print_table(
+        ["JOB", "FEATURE GROUP", "ATTACHMENTS", "STRATEGY"],
+        [[j.job_name, j.feature_group_name, j.path, j.loading_strategy] for j in jobs],
+    )
+
+
 @datasource_group.command("tables")
 @click.argument("name")
 @click.option("--database", help="Database to list tables from.")
@@ -2029,6 +2606,220 @@ def connector_infer_metadata(
 #
 # A SharePoint data source is not read as tables: its syncs copy library folders
 # into datasets, so it gets its own command group.
+
+
+_FILES_SOURCE_TYPES = ("S3", "GCS", "ADLS", "SFTP", "GOOGLE_DRIVE")
+
+
+def _files_source(ctx: click.Context, name: str) -> Any:
+    fs = session.get_feature_store(ctx)
+    try:
+        sc = fs.get_data_source(name).storage_connector
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Data source '{name}' not found: {exc}") from exc
+    if sc is None:
+        raise click.ClickException(f"Data source '{name}' not found.")
+    if getattr(sc, "type", None) not in _FILES_SOURCE_TYPES:
+        raise click.ClickException(
+            f"Data source '{name}' is {getattr(sc, 'type', None)}, not S3, GCS, "
+            "ADLS, SFTP or Google Drive."
+        )
+    return sc
+
+
+def _files_job_dict(job: Any, execution_id: Any = None) -> dict[str, Any]:
+    result = {
+        "job": job.name,
+        "dataset": job.dataset_name,
+        "prefix": job.prefix,
+        "include": job.include,
+        "exclude": job.exclude,
+        "mirrorDeletions": job.mirror_deletions,
+        "indexFeatureGroup": job.index_feature_group,
+        "maxFileSizeMb": job.max_file_size_mb,
+        "copyWorkers": job.copy_workers,
+        "transformScript": job.transform_script,
+        "keepOriginal": job.keep_original,
+        "schedule": job.schedule,
+    }
+    if execution_id is not None:
+        result["executionId"] = execution_id
+    return result
+
+
+_FILES_JOB_HEADERS = ["JOB", "DATASET", "PREFIX", "SCHEDULE", "MIRROR", "INDEX"]
+
+
+def _files_job_rows(jobs: list[Any]) -> list[list[Any]]:
+    return [
+        [
+            j.name,
+            j.dataset_name,
+            j.prefix or "/",
+            j.schedule or "once",
+            "yes" if j.mirror_deletions else "no",
+            j.index_feature_group or "-",
+        ]
+        for j in jobs
+    ]
+
+
+@datasource_group.command("ingest-files")
+@click.argument("name")
+@click.option(
+    "--dataset", required=True, help="Dataset the files are copied into (owned or new)."
+)
+@click.option(
+    "--prefix",
+    default="",
+    help="Prefix inside the bucket, container, SFTP root path or Drive folder, relative to it; everything when unset.",
+)
+@click.option(
+    "--include", multiple=True, help="Glob of files to copy. Repeat for several."
+)
+@click.option(
+    "--exclude", multiple=True, help="Glob of files to skip. Repeat for several."
+)
+@click.option(
+    "--mirror-deletions",
+    is_flag=True,
+    help="Delete files from the dataset that are gone from the source.",
+)
+@click.option(
+    "--index",
+    "index_files",
+    is_flag=True,
+    help="Keep an index feature group files_<dataset>, one row per file.",
+)
+@click.option("--index-name", help="Name of the index feature group. Implies --index.")
+@click.option(
+    "--max-file-size-mb", type=int, help="Skip larger files; unset or 0 for no limit."
+)
+@click.option(
+    "--copy-workers",
+    type=click.IntRange(1, 16),
+    default=4,
+    show_default=True,
+    help="Files downloaded at the same time; 1 copies one file at a time.",
+)
+@click.option(
+    "--transform-script",
+    help="Path in the project of a .py file whose HopsFileTransformer runs on every file before it is stored, e.g. Resources/transform.py.",
+)
+@click.option(
+    "--keep-original",
+    is_flag=True,
+    help="With --transform-script: also store each file as it is in the source; outputs go under _transformed/.",
+)
+@click.option(
+    "--cron",
+    help="Schedule, a Quartz cron expression in UTC, seconds first, e.g. '0 0 2 ? * *' for daily at 02:00.",
+)
+@click.option(
+    "--name", "job_name", help="Job name; <source>_<dataset>_files when unset."
+)
+@click.option("--no-run", is_flag=True, help="Create the job without running it.")
+@click.pass_context
+def connector_ingest_files(
+    ctx: click.Context,
+    name: str,
+    dataset: str,
+    prefix: str,
+    include: tuple[str, ...],
+    exclude: tuple[str, ...],
+    mirror_deletions: bool,
+    index_files: bool,
+    index_name: str | None,
+    max_file_size_mb: int | None,
+    copy_workers: int,
+    transform_script: str | None,
+    keep_original: bool,
+    cron: str | None,
+    job_name: str | None,
+    no_run: bool,
+) -> None:
+    """Copy the files under a prefix of an S3, GCS, ADLS, SFTP or Google Drive data source into a dataset.
+
+    Creates a files ingestion job and, unless --no-run, starts its first run.
+
+    Args:
+        ctx: Click context.
+        name: Data source name.
+        dataset: Dataset to copy into.
+        prefix: Prefix inside the bucket or container.
+        include: Include globs.
+        exclude: Exclude globs.
+        mirror_deletions: Whether deletions are mirrored.
+        index_files: Whether to keep an index feature group.
+        index_name: Name of the index feature group.
+        max_file_size_mb: File size cap in MB.
+        copy_workers: Number of files downloaded at the same time.
+        transform_script: Project path of the script that transforms every file.
+        keep_original: Whether the files are also stored as they are in the source.
+        cron: Cron expression of the schedule.
+        job_name: Name of the job.
+        no_run: Whether to skip the first run.
+    """
+    if keep_original and not transform_script:
+        raise click.ClickException("--keep-original needs --transform-script.")
+    if index_name is not None and not index_name.strip():
+        raise click.ClickException("--index-name must not be empty.")
+    if max_file_size_mb is not None and max_file_size_mb < 0:
+        raise click.ClickException("--max-file-size-mb must be 0 or more.")
+    index: bool | str = index_name if index_name else index_files
+    sc = _files_source(ctx, name)
+    job = _call(
+        "Create",
+        lambda: sc.ingest_files(
+            dataset=dataset,
+            prefix=prefix,
+            include=list(include),
+            exclude=list(exclude),
+            mirror_deletions=mirror_deletions,
+            index=index,
+            max_file_size_mb=max_file_size_mb,
+            copy_workers=copy_workers,
+            transform_script=transform_script,
+            keep_original=keep_original,
+            schedule=cron,
+            name=job_name,
+        ),
+    )
+    execution_id = None
+    if not no_run:
+        execution = _call("Run", lambda: job.run(await_termination=False))
+        execution_id = getattr(execution, "id", None)
+    if output.JSON_MODE:
+        output.print_json(_files_job_dict(job, execution_id))
+        return
+    output.print_table(_FILES_JOB_HEADERS, _files_job_rows([job]))
+    if execution_id is None:
+        output.success("✓ Created job %s into dataset %s", job.name, job.dataset_name)
+    else:
+        output.success(
+            "✓ Created job %s into dataset %s, execution %s started",
+            job.name,
+            job.dataset_name,
+            execution_id,
+        )
+
+
+@datasource_group.command("files-jobs")
+@click.argument("name")
+@click.pass_context
+def connector_files_jobs(ctx: click.Context, name: str) -> None:
+    """List the files ingestion jobs of an S3, GCS, ADLS, SFTP or Google Drive data source.
+
+    Args:
+        ctx: Click context.
+        name: Data source name.
+    """
+    sc = _files_source(ctx, name)
+    jobs = _call("Listing files jobs", sc.get_files_ingestion_jobs)
+    if output.JSON_MODE:
+        output.print_json([_files_job_dict(j) for j in jobs])
+        return
+    output.print_table(_FILES_JOB_HEADERS, _files_job_rows(jobs))
 
 
 def _sharepoint(ctx: click.Context, name: str) -> Any:
@@ -2645,7 +3436,7 @@ def _create_connector(ctx: click.Context, body: dict[str, Any]) -> None:
     from hopsworks_common.core import rest
 
     try:
-        rest._send_request(
+        stored = rest._send_request(
             "POST",
             rest._project_path(
                 "featurestores", getattr(fs, "id", None), "storageconnectors"
@@ -2654,4 +3445,11 @@ def _create_connector(ctx: click.Context, body: dict[str, Any]) -> None:
         )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Create failed: {exc}") from exc
+    # A cluster that predates S3-compatible storage drops the endpoint and creates an AWS data source.
+    if body.get("endpoint") and not (stored or {}).get("endpoint"):
+        raise click.ClickException(
+            f"Connector {body['name']} was created without its endpoint, so it targets AWS S3: "
+            "the Hopsworks cluster predates S3-compatible storage. "
+            "Upgrade Hopsworks to 5.3 or later before using --endpoint."
+        )
     output.success("✓ Created connector %s", body["name"])

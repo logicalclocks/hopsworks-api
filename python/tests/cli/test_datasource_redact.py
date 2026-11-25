@@ -25,7 +25,7 @@ _OPTION_LISTS = {
     "headers",
     "parameters",
 }
-_NO_SECRET = (sc.GoogleSheetsConnector, sc.HopsFSConnector)
+_NO_SECRET = (sc.GoogleSheetsConnector, sc.HopsFSConnector, sc.GoogleDriveConnector)
 _CONNECTION_STRINGS = {"connection_string"}
 # The constructor slots that hold a secret, per connector class.
 _SECRETS = {
@@ -33,6 +33,7 @@ _SECRETS = {
     "CRMAndAnalyticsConnector": ["api_key", "password", "dev_token", "refresh_token"],
     "ElasticsearchConnector": ["password", "api_key", "trust_store_password"],
     "GcsConnector": ["encryption_key"],
+    "GmailConnector": ["client_secret", "refresh_token"],
     "GlueConnector": ["access_key", "secret_key", "session_token"],
     "HopsworksConnector": ["api_key"],
     "KafkaConnector": [
@@ -42,6 +43,7 @@ _SECRETS = {
     ],
     "MongoDBConnector": ["password"],
     "OpenSearchConnector": ["password", "trust_store_password"],
+    "OutlookConnector": ["client_secret", "refresh_token"],
     "RedshiftConnector": ["database_password"],
     "S3Connector": [
         "access_key",
@@ -50,6 +52,7 @@ _SECRETS = {
         "session_token",
     ],
     "SapHanaConnector": ["password"],
+    "SftpConnector": ["password", "private_key", "passphrase"],
     "SharePointConnector": ["client_secret"],
     "SnowflakeConnector": ["password", "token", "private_key", "passphrase"],
     "SqlConnector": ["password", "wallet_password"],
@@ -108,6 +111,13 @@ def _build(cls: type) -> tuple[sc.StorageConnector, list[str]]:
             "bearer_token": _marker("bearer"),
         }
         markers += [_marker("rest-header"), _marker("bearer")]
+    if cls is sc.SftpConnector:
+        # The constructor takes one credential, a password or a key; the other
+        # marker is slotted in after, so the redaction is checked for both.
+        password = kwargs.pop("password")
+        connector = cls(**kwargs)
+        connector._password = password
+        return connector, markers
     return cls(**kwargs), markers
 
 
@@ -204,3 +214,12 @@ def test_info_json_of_a_shopify_source_prints_neither_credential():
         printed = json.dumps(redact(payload), default=str)
         assert "MARKER" not in printed
         assert json.loads(printed)["shopUrl"] == "https://s.myshopify.com"
+
+
+def test_the_credentials_set_flag_is_not_a_credential():
+    connector, _ = _build(sc.SftpConnector)
+    connector._credentials_set = True
+    payload = redact(connector.to_dict())
+    assert payload["credentialsSet"] is True
+    assert payload["host"] == connector.to_dict()["host"]
+    assert "password" not in payload and "privateKey" not in payload

@@ -15,6 +15,7 @@
 #
 
 import json
+import logging
 import re
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -273,6 +274,18 @@ class TestServingApi:
 
         # Assert
         assert path == ["v1", project_namespace, "vllmdepl"]
+
+    @pytest.mark.parametrize(("project_name", "project_namespace"), NAMESPACE_CASES)
+    def test_istio_project_openai_path_addresses_the_namespace(
+        self, project_name, project_namespace
+    ):
+        # The LLM gateway is addressed by namespace only; the project name
+        # is not an input of the path.
+        assert ServingApi()._get_istio_project_openai_path(project_namespace) == [
+            "v1",
+            project_namespace,
+            "v1",
+        ]
 
     @pytest.mark.parametrize("project_namespace", ["myproject", "pre-created-ns"])
     @pytest.mark.parametrize("base_only", [False, True])
@@ -571,6 +584,59 @@ class TestServingApi:
         assert args[1] == ["project", 1, "serving", "vllmImageTags"]
         assert response == _VLLM_IMAGE_TAGS_RESPONSE
 
+    def test_llm_gateway_switch_addresses_the_project_serving_path(self, mocker):
+        api = ServingApi()
+        hopsworks_client = _patch_client(mocker, {"enabled": False, "available": True})
+
+        assert api._get_llm_gateway() == {"enabled": False, "available": True}
+        args, _ = hopsworks_client._send_request.call_args
+        assert args[:2] == ("GET", ["project", 1, "serving", "llmGateway"])
+
+        hopsworks_client._send_request.return_value = _switch_response(
+            200, {"enabled": False, "available": True}
+        )
+        assert api._set_llm_gateway(False) == {"enabled": False, "available": True}
+        args, kwargs = hopsworks_client._send_request.call_args
+        assert args[:2] == ("PUT", ["project", 1, "serving", "llmGateway"])
+        assert json.loads(kwargs["data"]) == {"enabled": False}
+
+    def test_deployment_llm_gateway_posts_to_the_serving_id(self, mocker):
+        api = ServingApi()
+        hopsworks_client = _patch_client(mocker, _switch_response(200, None))
+        depl = MagicMock()
+        depl.id = 5
+
+        assert api._set_deployment_llm_gateway(depl, True) is None
+
+        args, kwargs = hopsworks_client._send_request.call_args
+        assert args[:2] == ("POST", ["project", 1, "serving", 5, "llmGateway"])
+        assert json.loads(kwargs["data"]) == {"enabled": True}
+
+    @pytest.mark.parametrize("status, logged", [(200, False), (202, True)])
+    def test_llm_gateway_switch_logs_a_pending_change(
+        self, mocker, caplog, status, logged
+    ):
+        api = ServingApi()
+        body = {"enabled": True, "available": True}
+        _patch_client(mocker, _switch_response(status, body))
+        depl = MagicMock()
+        depl.id = 5
+
+        with caplog.at_level(logging.INFO, logger="hsml.core.serving_api"):
+            assert api._set_llm_gateway(True) == body
+            assert api._set_deployment_llm_gateway(depl, True) == body
+
+        pending = [r for r in caplog.records if "within a minute" in r.message]
+        assert len(pending) == (2 if logged else 0)
+
+
+def _switch_response(status: int, body: dict | None) -> MagicMock:
+    response = MagicMock()
+    response.status_code = status
+    response.content = b"" if body is None else json.dumps(body).encode()
+    response.json.return_value = body
+    return response
+
 
 class TestGrpcChannelLockIsPerDeployment:
     def test_a_slow_first_channel_does_not_hold_up_another_deployment(self, mocker):
@@ -737,3 +803,50 @@ class TestVersioning:
         assert args[1] == ["project", 1, "serving", 5, "rollback"]
         assert json.loads(kwargs["data"]) == {"version": 2}
         deployment.update_from_response_json.assert_called_once_with(response)
+
+    def test_get_deployment_sharing_reads_the_serving_id(self, mocker):
+        api = ServingApi()
+        body = {"allProjects": False, "projects": ["b"]}
+        hopsworks_client = _patch_client(mocker, body)
+        depl = MagicMock()
+        depl.id = 5
+
+        assert api._get_deployment_sharing(depl) == body
+
+        args, _ = hopsworks_client._send_request.call_args
+        assert args[:2] == ("GET", ["project", 1, "serving", 5, "sharing"])
+
+    @pytest.mark.parametrize("status, logged", [(200, False), (202, True)])
+    def test_change_deployment_sharing_patches_the_change_and_logs_a_pending_one(
+        self, mocker, caplog, status, logged
+    ):
+        api = ServingApi()
+        body = {"allProjects": False, "projects": ["b"]}
+        hopsworks_client = _patch_client(mocker, _switch_response(status, body))
+        depl = MagicMock()
+        depl.id = 5
+
+        with caplog.at_level(logging.INFO, logger="hsml.core.serving_api"):
+            assert api._change_deployment_sharing(depl, None, ["b"], ["a"]) == body
+
+        args, kwargs = hopsworks_client._send_request.call_args_list[0]
+        assert args[:2] == ("PATCH", ["project", 1, "serving", 5, "sharing"])
+        # No allProjects keeps the stored value.
+        assert json.loads(kwargs["data"]) == {"add": ["b"], "remove": ["a"]}
+        pending = [r for r in caplog.records if "within a minute" in r.message]
+        assert len(pending) == (1 if logged else 0)
+
+    def test_change_deployment_sharing_sends_all_projects_when_given(self, mocker):
+        api = ServingApi()
+        hopsworks_client = _patch_client(mocker, _switch_response(200, {}))
+        depl = MagicMock()
+        depl.id = 5
+
+        api._change_deployment_sharing(depl, False, [], [])
+
+        _, kwargs = hopsworks_client._send_request.call_args_list[0]
+        assert json.loads(kwargs["data"]) == {
+            "add": [],
+            "remove": [],
+            "allProjects": False,
+        }

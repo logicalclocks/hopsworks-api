@@ -186,6 +186,7 @@ class Job:
         end_time: datetime | None = None,
         logical_date: datetime | None = None,
         env_vars: dict[str, str] | None = None,
+        resources: dict[str, Any] | None = None,
     ) -> Execution:
         """Run the job.
 
@@ -210,6 +211,25 @@ class Job:
 
             # Download logs
             out_log_path, err_log_path = execution.download_logs()
+            ```
+
+        Example (more resources for one run):
+            ```python
+            # This run gets 16 GB and a GPU; the cores, and everything else, stay the job's.
+            # The job itself is not changed: the next plain run uses its own configuration.
+            execution = job.run(resources={"resourceConfig": {"memory": 16384, "gpus": 1}})
+
+            # A Spark job uses the names of its configuration. With dynamic allocation, the
+            # default of a Spark job, the number of executors is set by its maximum
+            execution = spark_job.run(
+                resources={
+                    "spark.executor.memory": 16384,
+                    "spark.dynamicAllocation.maxExecutors": 8,
+                }
+            )
+
+            # What the run was given; None for a run with the job's resources
+            print(execution.resources)
             ```
 
         Example (Python App / Streamlit):
@@ -256,6 +276,24 @@ class Job:
             env_vars:
                 Optional dict of arbitrary env vars to inject into this execution. Values take
                 precedence over anything with the same name from the job config or the scheduler.
+            resources:
+                Optional resources for this execution alone, as a partial job configuration: only
+                the compute fields to change, under the names they have in the job configuration
+                (see `job.config`). A field that is not given keeps the job's value, and the job
+                is not modified. Python, Docker, ingestion and agent jobs take `resourceConfig`
+                (`cores`, `memory`, `gpus`, `shmSize`, `diskGb`). Python, ingestion and agent jobs
+                also take `hopsfsMountConfig` (`memory`, `cores`, `namenodeConnections`); a Docker
+                job does not mount HopsFS, and an ingestion job on a cluster without the HopsFS CSI
+                driver runs the mount inside its own container, so it takes `namenodeConnections`
+                only. Spark jobs take `spark.driver.cores`, `spark.driver.memory`,
+                `spark.executor.cores`, `spark.executor.memory`, `spark.executor.instances` and the
+                `spark.dynamicAllocation.*` settings. `spark.executor.instances` applies to a job
+                with static executors (`spark.dynamicAllocation.enabled` false, as every Spark job
+                is on a cluster that queues Spark with Kueue); with dynamic allocation the number
+                of executors follows `spark.dynamicAllocation.minExecutors` and `maxExecutors`.
+                Ray jobs take `driverCores`, `driverMemory`, `driverGpus`, `workerCores`,
+                `workerMemory`, `workerGpus`, `workerMinInstances`, `workerMaxInstances` and
+                `hopsfsMountConfig`. Not available for Python Apps.
 
         Returns:
             The execution object for the submitted run.
@@ -273,6 +311,7 @@ class Job:
             end_time=end_time,
             logical_date=logical_date,
             env_vars=env_vars,
+            resources=resources,
         )
         if self._job_type == "PYTHON_APP":
             print("Python App started, waiting for it to become ready...")

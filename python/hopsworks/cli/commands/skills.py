@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 from pathlib import Path
 
 import click
@@ -224,15 +225,18 @@ def skills_show(name: str) -> None:
 # loads a skill's name and description at startup and its body only when the
 # task calls for it, whereas anything in AGENTS.md is loaded in full, every time.
 
-# Where each agent looks for project-local skills. The three directory-based
-# ones mirror what the terminal images link in the user's home. opencode reads
-# a config array instead of a conventional directory, so it gets a directory of
-# its own plus a pointer to it in the project's opencode.json.
+# Where each agent looks for project-local skills. The directory-based ones
+# mirror what the terminal images link in the user's home; copilot, pi and
+# Hermes share the cross-agent .agents/skills, so one copy serves all three.
+# opencode reads a config array instead of a conventional directory, so it gets
+# a directory of its own plus a pointer to it in the project's opencode.json.
 AGENT_SKILL_DIRS = {
     "claude": ".claude/skills",
     "codex": ".codex/skills",
     "copilot": ".agents/skills",
+    "hermes": ".agents/skills",
     "opencode": ".opencode/skills",
+    "pi": ".agents/skills",
 }
 OPENCODE_CONFIG = "opencode.json"
 
@@ -298,19 +302,27 @@ def skills_install(agents: tuple[str, ...], target_dir: str, force: bool) -> Non
         raise click.ClickException(f"No skills found under {source}.")
 
     results = {}
-    for agent in agents:
+    by_dir: dict[str, scaffold.ScaffoldResult] = {}
+    for agent in dict.fromkeys(agents):
         base = AGENT_SKILL_DIRS[agent]
-        results[agent] = scaffold.scaffold(
-            root,
-            {f"{base}/{rel}": body for rel, body in payload.items()},
-            manifest=f"{base}/{SKILLS_MANIFEST}",
-            force=force,
-        )
+        if base not in by_dir:
+            by_dir[base] = scaffold.scaffold(
+                root,
+                {f"{base}/{rel}": body for rel, body in payload.items()},
+                manifest=f"{base}/{SKILLS_MANIFEST}",
+                force=force,
+            )
+        results[agent] = by_dir[base]
         if agent == "opencode":
             _register_opencode_path(root, base)
 
-    for agent, result in results.items():
-        _report(agent, result)
+    for base, result in by_dir.items():
+        _report([a for a in results if AGENT_SKILL_DIRS[a] == base], result)
+    if "hermes" in results:
+        # Hermes loads a repository's skills only once the repository is trusted.
+        output.info(
+            "Run `hermes skills trust %s` so Hermes loads them.", shlex.quote(str(root))
+        )
 
     if output.JSON_MODE:
         output.print_json(
@@ -403,8 +415,8 @@ def _register_opencode_path(root: Path, skills_dir: str) -> bool:
     return True
 
 
-def _report(agent: str, result: scaffold.ScaffoldResult) -> None:
-    """Print one line per agent, naming only the counts that are non-zero."""
+def _report(agents: list[str], result: scaffold.ScaffoldResult) -> None:
+    """Print one line per skills directory, naming only the counts that are non-zero."""
     parts = []
     for label, paths in (
         ("added", result.written),
@@ -414,11 +426,12 @@ def _report(agent: str, result: scaffold.ScaffoldResult) -> None:
     ):
         if paths:
             parts.append(f"{len(paths)} {label}")
-    target = AGENT_SKILL_DIRS[agent]
+    names = ", ".join(agents)
+    target = AGENT_SKILL_DIRS[agents[0]]
     if parts:
-        output.success("✓ %s: %s in %s/", agent, ", ".join(parts), target)
+        output.success("✓ %s: %s in %s/", names, ", ".join(parts), target)
     else:
-        output.info("= %s: already up to date in %s/", agent, target)
+        output.info("= %s: already up to date in %s/", names, target)
 
 
 # endregion

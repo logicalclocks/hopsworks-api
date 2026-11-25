@@ -40,11 +40,15 @@ class ProjectMember:
         user=None,
         team_role=None,
         timestamp=None,
+        custom_role=None,
         **kwargs,
     ):
         self._project_id = project.get("id") if isinstance(project, dict) else None
         self._user = user_mod.User.from_response_json(user)
         self._role = team_role
+        self._custom_role = (
+            custom_role.get("name") if isinstance(custom_role, dict) else None
+        )
         self._timestamp = timestamp
         self._project_members_api = project_members_api.ProjectMembersApi()
 
@@ -90,8 +94,20 @@ class ProjectMember:
     @public
     @property
     def role(self) -> str | None:
-        """Project role of the member, for example `"Data owner"` or `"Data scientist"`."""
+        """Project role of the member, for example `"Data owner"` or `"Data scientist"`.
+
+        For a member holding a custom role, the built-in role it is based on; [`custom_role`][hopsworks_common.project_member.ProjectMember.custom_role] names the custom role.
+        """
         return self._role
+
+    @public
+    @property
+    def custom_role(self) -> str | None:
+        """Name of the custom project role the member holds, or `None` when they hold a built-in role.
+
+        A custom role is its base role, [`role`][hopsworks_common.project_member.ProjectMember.role], with some permissions removed by a cluster administrator.
+        """
+        return self._custom_role
 
     @public
     @property
@@ -115,17 +131,19 @@ class ProjectMember:
 
         Parameters:
             role: The new project role, one of `Data owner`, `Data scientist`,
-                `Observer`, `Feature store restricted`.
+                `Observer`, `Feature store restricted`, or a custom project role.
 
         Returns:
-            This `ProjectMember`, updated with the new role.
+            This `ProjectMember`, updated with the role the backend reports.
 
         Raises:
-            ValueError: If `role` is not a settable project role.
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a project owner.
+            ValueError: If `role` is not a role of the project.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a project owner or may not give the role.
         """
-        self._project_members_api.update_role(self.email, role)
-        self._role = role
+        updated = self._project_members_api.update_role(self.email, role)
+        if updated is not None:
+            self._role = updated.role
+            self._custom_role = updated.custom_role
         return self
 
     @public
@@ -169,6 +187,7 @@ class ProjectMember:
         return {
             "user": self._user.to_dict() if self._user else None,
             "teamRole": self._role,
+            "customRole": {"name": self._custom_role} if self._custom_role else None,
         }
 
     def __str__(self):

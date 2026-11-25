@@ -11,9 +11,9 @@ agents/ — develop and operate agent tasks and agent deployments
 dashboards/ — Streamlit / custom apps and Superset dashboards
 data/ — data discovery, data sources, Trino SQL, dbt, Spark, table maintenance
 platform/ — cross-cutting platform knowledge and compute (jobs, environments, UI navigation, collaboration, kubectl debugging), not tied to one FTI stage
-Every skill under python/hopsworks/skills/ must have a reference in the top-level README.md.
+Every skill under python/hopsworks/skills/ must have a reference in python/hopsworks/skills/README.md, the top-level skills index.
 
-Each skill entry in the top-level README.md must link the skill name to its SKILL.md.
+Each skill entry in python/hopsworks/skills/README.md must link the skill name to its SKILL.md.
 
 Each bucket folder has a README.md that lists every skill in the bucket with a one-line description, with the skill name linked to its SKILL.md.
 

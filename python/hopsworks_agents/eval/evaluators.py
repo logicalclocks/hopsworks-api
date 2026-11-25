@@ -307,11 +307,13 @@ class NoToolErrorEvaluator:
 
 
 class FunctionEvaluator:
-    """Wrap a plain function, the interface the design documents.
+    """Wrap a plain function, for code that builds a run directly.
 
-    The shape is::
-
-    def _grade(task, trial, trace) -> dict
+    The shape is ``fn(task, trial, trace) -> dict`` with ``score``, ``passed``,
+    ``reason`` and ``assertions``. A suite cannot name this: what a suite names
+    is a ``python`` check (:mod:`hopsworks_agents.eval.checks`), which resolves
+    code from the project rather than from the spec and shows it the stable
+    :class:`~hopsworks_agents.eval.checks.CheckContext` instead of these objects.
     """
 
     type = "function"
@@ -354,7 +356,14 @@ def _run_evaluators(
     results: list[EvaluatorResult] = []
     for evaluator in evaluators:
         try:
-            results.append(evaluator._grade(task, trial, trace))
+            many = getattr(evaluator, "_grade_many", None)
+            if many is not None:
+                # One row, several results: a source of checks reports one per
+                # check it declares. Everything downstream reads results, not
+                # evaluators, so the extra rows need nothing else.
+                results.extend(many(task, trial, trace))
+            else:
+                results.append(evaluator._grade(task, trial, trace))
         except Exception as err:  # noqa: BLE001 — a bad evaluator is not a bad agent
             results.append(
                 EvaluatorResult(

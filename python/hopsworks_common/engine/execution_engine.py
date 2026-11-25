@@ -40,44 +40,79 @@ class ExecutionEngine:
         self._log = logging.getLogger(__name__)
 
     def _download_logs(
-        self, execution: Execution, path: str | None = None
+        self,
+        execution: Execution,
+        path: str | None = None,
+        attempt: int | None = None,
     ) -> tuple[str | None, str | None]:
         """Download execution logs to current directory.
 
         Parameters:
             execution: Execution to download logs for.
             path: Path to download the logs.
+            attempt: Attempt to download the logs of, counted from 1; the latest one by default.
 
         Returns:
             Downloaded stdout and stderr log path.
 
         Raises:
-            hopsworks.client.exceptions.JobExecutionException: If path is provided but does not exist.
+            hopsworks.client.exceptions.JobExecutionException: If path is provided but does not exist, the execution has no such attempt, or an earlier attempt left no log files.
         """
         if path is not None and not os.path.exists(path):
             raise JobExecutionException(f"Path {path} does not exist")
         if path is None:
             path = os.getcwd()
 
-        job_logs_dir = f"logs-job-{execution.job_name}-exec-{str(execution.id)}_{str(uuid.uuid4())[:16]}"
+        if attempt is not None:
+            # Attempt numbers only mean something against the current rerun_count: on an
+            # object fetched before a re-run, the latest-attempt paths belong to another
+            # attempt and the earlier ones are not listed yet.
+            execution = self._execution_api._get(execution._job, execution.id)
+        stdout_path, stderr_path = self._attempt_log_paths(execution, attempt)
+
+        attempt_suffix = f"-attempt-{attempt}" if attempt is not None else ""
+        job_logs_dir = f"logs-job-{execution.job_name}-exec-{str(execution.id)}{attempt_suffix}_{str(uuid.uuid4())[:16]}"
         download_log_dir = os.path.join(path, job_logs_dir)
 
         if not os.path.exists(download_log_dir):
             os.mkdir(download_log_dir)
 
         out_path = None
-        if execution.stdout_path is not None and self._dataset_api.exists(
-            execution.stdout_path
-        ):
-            out_path = self._download_log(execution.stdout_path, download_log_dir)
+        if stdout_path is not None and self._dataset_api.exists(stdout_path):
+            out_path = self._download_log(stdout_path, download_log_dir)
 
         err_path = None
-        if execution.stderr_path is not None and self._dataset_api.exists(
-            execution.stderr_path
-        ):
-            err_path = self._download_log(execution.stderr_path, download_log_dir)
+        if stderr_path is not None and self._dataset_api.exists(stderr_path):
+            err_path = self._download_log(stderr_path, download_log_dir)
+
+        earlier_attempt = attempt is not None and attempt <= execution.rerun_count
+        if earlier_attempt and out_path is None and err_path is None:
+            # Nothing more will be written for an attempt that is over, so this is not
+            # "not there yet": say so instead of returning two Nones.
+            raise JobExecutionException(
+                f"No log files were kept for attempt {attempt} of execution {execution.id} "
+                f"(looked for stdout at {stdout_path} and stderr at {stderr_path})."
+            )
 
         return out_path, err_path
+
+    @staticmethod
+    def _attempt_log_paths(
+        execution: Execution, attempt: int | None
+    ) -> tuple[str | None, str | None]:
+        """Stdout and stderr path of one attempt of an execution.
+
+        The execution's own paths are the latest attempt's, numbered `rerun_count + 1`; a re-run moves the earlier ones aside and the backend lists them in `attempts`.
+        """
+        latest = execution.rerun_count + 1
+        if attempt is None or attempt == latest:
+            return execution.stdout_path, execution.stderr_path
+        for earlier in execution.attempts:
+            if earlier.get("attempt") == attempt:
+                return earlier.get("stdout_path"), earlier.get("stderr_path")
+        raise JobExecutionException(
+            f"Execution {execution.id} has no attempt {attempt}; it has attempts 1 to {latest}."
+        )
 
     def _download_log(self, path, download_log_dir):
         max_num_retries = 12
@@ -169,7 +204,7 @@ class ExecutionEngine:
 
         MAX_LAG = 3.0
 
-        is_yarn_job = job.job_type is not None and (
+        is_spark_job = job.job_type is not None and (
             job.job_type.lower() == "spark" or job.job_type.lower() == "pyspark"
         )
 
@@ -182,7 +217,7 @@ class ExecutionEngine:
             time.sleep(MAX_LAG)
             updated_execution = self._execution_api._get(job, execution.id)
             if execution_state != updated_execution.state:
-                if is_yarn_job:
+                if is_spark_job:
                     self._log.info(
                         f"Waiting for execution to finish. Current state: {updated_execution.state}. Final status: {updated_execution.final_status}"
                     )
@@ -216,7 +251,7 @@ class ExecutionEngine:
             time.sleep(5)  # Helps for log aggregation to flush to filesystem
 
         if updated_execution.success is False:
-            if is_yarn_job:
+            if is_spark_job:
                 status = updated_execution.final_status
             else:
                 status = updated_execution.state

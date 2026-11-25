@@ -97,11 +97,12 @@ Apply `access` and `share`: share the feature groups with the projects named (`h
 Run one window of each job (`hops job run <job> --start-time <t0> --end-time <t1> --wait`), and prove each `refresh_checks` check with evidence from the runs: row counts and table versions before and after a rerun of the same window, the rows a refresh wrote against the window, a late row's effect on its period.
 Rerun the `example_queries` and `reconcile` checks after the refresh, record every result under `verification`, and run `hops factory system status <slug>`, fixing what it flags.
 A mart with a failing check is not `built`: fix it, or ask the user, and do not start its dashboards.
+**Semantic layer.** A mart with `semantic_models:` is registered and tested as a semantic project as references/gold-marts.md, Semantic layer, says.
 
 ### dashboards
 
 Build the Superset dashboards the mart's `requirements.dashboards` describes, in the user's words; with it empty, set the phase `done` with the note "no dashboards asked for" and build nothing.
-Load **hops-superset**. For each dashboard: ask with `AskUserQuestion` only what the text leaves open (which metric a chart shows, a filter's default), then write `marts/<mart>/dashboards/<name>.py`, which creates the dashboard or updates it in place and prints its URL, with datasets over the mart's gold tables through Trino, charts for the questions it answers and filters on the mart's dimensions; run it, open each chart's data (`hops superset chart info`), and check it is not empty and agrees with the mart's verified numbers.
+Load **hops-superset**. For each dashboard: ask with `AskUserQuestion` only what the text leaves open (which metric a chart shows, a filter's default), then write `marts/<mart>/dashboards/<name>.py`, which creates the dashboard or updates it in place and prints its URL, with datasets over the mart's gold tables through Trino (a semantic project's metrics: references/gold-marts.md), charts for the questions it answers and filters on the mart's dimensions; run it, open each chart's data (`hops superset chart info`), and check it is not empty and agrees with the mart's verified numbers.
 Record each in the mart's `dashboards` as `{name, id, url, script, charts}`, and commit the scripts.
 Set the mart's `applied` to its spec (`name`, `description`, `cadence`, `freshness_hours`, `requirements`), its `status: built`, and report its tables, jobs, schedule, checks and dashboards with their URLs, in a few lines.
 

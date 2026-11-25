@@ -153,7 +153,7 @@ class ServingApi:
             name,
         ]
         headers = {"content-type": "application/json"}
-        json_value = json.dumps(value)
+        json_value = tag.Tag._encode(value)
         _client._send_request("PUT", path_params, headers=headers, data=json_value)
 
     def _delete_tag(
@@ -263,6 +263,119 @@ class ServingApi:
         _client = client._get_instance()
         path_params = ["project", _client._project_id, "serving", "tritonImageTags"]
         return _client._send_request("GET", path_params)
+
+    def _get_llm_gateway(self) -> dict[str, Any]:
+        """Get the LLM gateway switch and whether the cluster publishes the endpoint.
+
+        Returns:
+            A dict with the keys `enabled` and `available`.
+        """
+        _client = client._get_instance()
+        path_params = ["project", _client._project_id, "serving", "llmGateway"]
+        return _client._send_request("GET", path_params)
+
+    def _set_llm_gateway(self, enabled: bool) -> dict[str, Any]:
+        """Switch the LLM gateway on or off for the whole project.
+
+        Parameters:
+            enabled: Whether the LLM gateway serves the project's deployments.
+
+        Returns:
+            A dict with the keys `enabled` and `available`.
+        """
+        _client = client._get_instance()
+        path_params = ["project", _client._project_id, "serving", "llmGateway"]
+        return self._send_switch("PUT", path_params, {"enabled": enabled})
+
+    def _set_deployment_llm_gateway(
+        self, deployment_instance: deployment.Deployment, enabled: bool
+    ):
+        """Switch one deployment on or off the LLM gateway.
+
+        Parameters:
+            deployment_instance: Metadata object of the deployment.
+            enabled: Whether the LLM gateway serves the deployment.
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "serving",
+            deployment_instance.id,
+            "llmGateway",
+        ]
+        return self._send_switch("POST", path_params, {"enabled": enabled})
+
+    def _get_deployment_sharing(
+        self, deployment_instance: deployment.Deployment
+    ) -> dict[str, Any]:
+        """Get the projects a deployment is shared with.
+
+        Parameters:
+            deployment_instance: Metadata object of the deployment.
+
+        Returns:
+            A dict with the keys `allProjects` and `projects` (project names).
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "serving",
+            deployment_instance.id,
+            "sharing",
+        ]
+        return _client._send_request("GET", path_params)
+
+    def _change_deployment_sharing(
+        self,
+        deployment_instance: deployment.Deployment,
+        all_projects: bool | None,
+        add: list[str],
+        remove: list[str],
+    ) -> dict[str, Any] | None:
+        """Change the projects a deployment is shared with, applied by the backend to what it stores.
+
+        Parameters:
+            deployment_instance: Metadata object of the deployment.
+            all_projects: Whether the deployment is shared with every project; `None` keeps the stored value.
+            add: Names of the projects to share with.
+            remove: Names of the projects to stop sharing with.
+
+        Returns:
+            A dict with the keys `allProjects` and `projects`.
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "serving",
+            deployment_instance.id,
+            "sharing",
+        ]
+        body: dict[str, Any] = {"add": add, "remove": remove}
+        if all_projects is not None:
+            body["allProjects"] = all_projects
+        return self._send_switch("PATCH", path_params, body)
+
+    def _send_switch(
+        self, method: str, path_params: list, body: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Send a switch or access change and return the response body, if any.
+
+        The backend answers 202 when it stored the change but could not apply it yet; it retries on its own.
+        """
+        _client = client._get_instance()
+        response = _client._send_request(
+            method,
+            path_params,
+            headers={"content-type": "application/json"},
+            data=json.dumps(body),
+            stream=True,
+        )
+        if response.status_code == 202:
+            _logger.info("The change is saved; the backend applies it within a minute.")
+        return response.json() if response.content else None
 
     def _get_schema(
         self,
@@ -432,7 +545,7 @@ class ServingApi:
         self,
         deployment_instance: deployment.Deployment,
         active: bool | None,
-        sampling_percentage: int | None,
+        sampling_percentage: float | None,
         duration_days: int | None = None,
     ) -> dict[str, Any]:
         """Switch a running deployment's tracing without redeploying it, returning the stored tracing config."""
@@ -464,7 +577,7 @@ class ServingApi:
         until_ms: int | None,
         batch_size: int,
     ) -> int:
-        """Delete one batch of the deployment's trace rows from each trace table, returning the rows deleted."""
+        """Delete one batch of the deployment's trace rows, returning the rows deleted."""
         _client = client._get_instance()
         path_params = [
             "project",
@@ -864,6 +977,17 @@ class ServingApi:
             "models",
             deployment_instance.name + ":predict",
         ]
+
+    def _get_istio_project_openai_path(self, project_namespace: str) -> list[str]:
+        """Get the Istio path of the project-wide OpenAI-compatible endpoint.
+
+        Parameters:
+            project_namespace: Kubernetes namespace of the project.
+
+        Returns:
+            List of path segments.
+        """
+        return ["v1", project_namespace, "v1"]
 
     def _get_istio_inference_path(
         self, deployment_instance, base_only: bool = False

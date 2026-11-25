@@ -534,3 +534,67 @@ def test_a_typed_source_name_becomes_an_identifier():
         "help_desk_docs",
         "files_2",
     ]
+
+
+def test_a_realtime_systems_tracing_is_recorded_as_asked(tmp_path, monkeypatch, quiet):
+    path = _answers(
+        tmp_path,
+        slug="fraud-live",
+        description="whether a transaction is fraud",
+        system_type="realtime",
+        sla={"realtime": {"p99_ms": 100, "throughput_qps": 10}},
+        consumers="api",
+        data_sources=[{"name": "tx", "kind": "synthetic", "story": "10k tx"}],
+        app={"wanted": False},
+        repo={"create": False, "url": "https://gitlab.com/acme/fraud-live.git"},
+        monitoring={
+            "feature_logging": False,
+            "tracing": {
+                "enabled": True,
+                "sampling_percentage": "0.1",
+                "duration_days": 14,
+            },
+        },
+    )
+    done = _run(tmp_path, monkeypatch, [], "--answers", path)
+    assert done.exit_code == 0, done.output
+    assert _doc(tmp_path / "fraud-live")["requirements"]["monitoring"] == {
+        "feature_logging": False,
+        "tracing": {"sampling_percentage": 0.1, "duration_days": 14},
+    }
+
+
+def test_tracing_switched_off_in_the_form_asks_for_nothing():
+    answers = build._normalized(
+        {
+            "monitoring": {
+                "feature_logging": False,
+                "watch": "",
+                "tracing": {
+                    "enabled": False,
+                    "sampling_percentage": "10",
+                    "duration_days": 7,
+                },
+            },
+        },
+        "realtime",
+    )
+    assert "monitoring" not in answers
+
+
+@pytest.mark.parametrize(
+    ("kind", "tracing", "message"),
+    [
+        ("batch", {"enabled": True}, "for a realtime system"),
+        ("realtime", {"enabled": True, "sampling_percentage": 101}, "0 to 100"),
+        ("realtime", {"enabled": True, "duration_days": 0}, "at least 1"),
+        (
+            "realtime",
+            {"enabled": True, "duration_days": "a week"},
+            "monitoring.tracing",
+        ),
+    ],
+)
+def test_a_tracing_answer_outside_its_range_is_refused(kind, tracing, message):
+    with pytest.raises(click.BadParameter, match=message):
+        build._tracing_record(tracing, kind)

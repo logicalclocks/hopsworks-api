@@ -155,11 +155,12 @@ requirements:                         # owner: reqs
     training:  {run: scheduled, cadence: "0 0 3 1 * ?", promote: when the test metric holds on the new split}
     inference: {run: scheduled, cadence: "0 0 4 1 * ?"}   # batch; a realtime system runs a deployment instead
     ordering: cadence | dag           # cadence gaps sized from measured durations, or one Airflow DAG per system
-    alerts: {receiver: ml-oncall, on: [job_failed, freshness_missed, retrain_rejected]}
+    alerts: {receiver: ml-oncall, events: [job_failed, freshness_missed, retrain_rejected]}
   consumers: ui | api | both
   reference_code: /opt/hopsworks-api/python/hopsworks/skills/ml/hops-reqs/references/recommender   # optional: a path or URL of sample code the system is based on; the build reads it first
   monitoring:                         # batch and realtime; built by infer, recorded in inference.monitoring
     feature_logging: true             # every prediction logs its features: the feature view's logging_enabled
+    tracing: {sampling_percentage: 10, duration_days: 7}   # realtime only; absent = no tracing: the deployment is created with prediction latency tracing
     watch: drift in monthly_charges against the training data; a failed or late job   # the user's words, turned into checks and alerts
   open_questions: []                  # non-empty blocks the data phase
   started: 2026-09-22T09:02Z          # every phase block records started and finished; /hops status derives durations and estimates
@@ -222,6 +223,7 @@ training:                             # owner: train (the training agent); budge
           note: event_time present and generalises_to new_periods, so time-ordered with test last}
   harness: {evaluate: src/telco_churn/evaluate.py, commit: 3f9e2a1, training_dataset_version: 1}   # frozen before the first run; travels in every run bundle
   runs:                               # research mode: every run registers a version of telco_churn_research; the row exists before the job is submitted
+                                      # a run in the Terminal has ran_in: terminal and elapsed_s in place of execution
     - {run_id: train-1-1, n: 1, attempt: 1, commit: 8c1d0e4, bundle: runs/train-1-1, execution: 1101, state: finished,
        model: {name: telco_churn_research, version: 1}, algorithm: xgboost, changed: baseline, pr_auc_validation: 0.58, status: keep, met: false}
     - {run_id: train-2-1, n: 2, attempt: 1, commit: b72f9aa, bundle: runs/train-2-1, execution: 1104, state: finished,
@@ -273,13 +275,14 @@ inference:                            # owner: infer (the inference agent); budg
     last_run: {when: 2026-09-22T11:40Z, run_id: tests-inference-1, commit: 9a1b2c3, unit: "7 passed", integration: "5 passed", parity: "200/200", test_objects_deleted: true}
   monitoring:                         # what requirements.monitoring asked for, as built; absent when nothing was asked
     feature_logging: {feature_view: telco_churn_fv, version: 1, log_feature_group: telco_churn_fv_1_logging, rows: 5200, at: 2026-09-22T11:35Z}
+    tracing: {deployment: telcochurn, sampling_percentage: 10, active_until: 2026-09-29T11:35Z, stages: [feature_lookup, transformations, model_predict, feature_log]}   # realtime, as built
     checks:                           # one per thing watched; `from` quotes the part of requirements.monitoring.watch it serves
-      - {name: monthly_charges_drift, on: {feature_view: telco_churn_fv, version: 1}, feature: monthly_charges,
+      - {name: monthly_charges_drift, subject: {feature_view: telco_churn_fv, version: 1}, feature: monthly_charges,
          compare: {metric: mean, threshold: 0.2, relative: true, reference: training_dataset 1}, cron: "0 0 5 1 * ?", job: telco_churn_fv_1_run_feature_monitoring,
          from: drift in monthly_charges against the training data}
     alerts:                           # every job of the system on failure, every check on shift
-      - {on: {job: telco-churn-inference}, status: failed, receiver: ml-oncall, severity: critical}
-      - {on: {feature_view: telco_churn_fv, version: 1}, status: feature_monitor_shift_detected, receiver: ml-oncall, severity: warning}
+      - {subject: {job: telco-churn-inference}, status: failed, receiver: ml-oncall, severity: critical}
+      - {subject: {feature_view: telco_churn_fv, version: 1}, status: feature_monitor_shift_detected, receiver: ml-oncall, severity: warning}
     unavailable: []                   # what the cluster could not do, e.g. feature monitoring off (270234); never silently dropped
   status: pending | running | met | unmet | accepted | stale
 

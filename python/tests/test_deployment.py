@@ -2118,6 +2118,58 @@ class TestDeployment:
         assert url == "https://example.com/v1/project/name/v1"
         mock_predictor_get_openai_url.assert_called_once()
 
+    # get anthropic url
+
+    def test_get_anthropic_url_drops_the_trailing_v1(self, mocker, backend_fixtures):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch.object(
+            p, "get_openai_url", return_value="https://example.com/v1/ns/depl/v1"
+        )
+
+        assert d.get_anthropic_url() == "https://example.com/v1/ns/depl"
+
+    def test_get_anthropic_url_is_none_when_there_is_no_openai_url(
+        self, mocker, backend_fixtures
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch.object(p, "get_openai_url", return_value=None)
+
+        assert d.get_anthropic_url() is None
+
+    # get openai client
+
+    def test_get_openai_client_uses_the_deployment_url(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch.object(
+            p, "get_openai_url", return_value="https://example.com/v1/ns/depl/v1"
+        )
+        build = mocker.patch("hsml.deployment._build_openai_client")
+
+        # Act
+        result = d.get_openai_client(timeout=3)
+
+        # Assert
+        build.assert_called_once_with("https://example.com/v1/ns/depl/v1", timeout=3)
+        assert result is build.return_value
+
+    def test_get_openai_client_raises_when_there_is_no_url(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange: non-vLLM deployments have no OpenAI-compatible URL.
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch.object(p, "get_openai_url", return_value=None)
+        build = mocker.patch("hsml.deployment._build_openai_client")
+
+        # Act / Assert
+        with pytest.raises(ModelServingException, match="vLLM"):
+            d.get_openai_client()
+        build.assert_not_called()
+
     # get inference url
 
     def test_get_inference_url_delegates_to_predictor(self, mocker, backend_fixtures):
@@ -2464,3 +2516,171 @@ class TestDeploymentSchemaAndFeatureView:
         assert schema.output["kind"] == "feature_vectors"
         assert schema.inferred is True
         assert d.schema is schema
+
+
+class TestDeploymentLlmGateway:
+    def _deployment(self, mocker):
+        mocker.patch("hsml.predictor.Predictor._validate_serving_tool")
+        p = predictor.Predictor(
+            id=7,
+            name="llm",
+            model_server=PREDICTOR.MODEL_SERVER_VLLM,
+            serving_tool=PREDICTOR.SERVING_TOOL_KSERVE,
+        )
+        return deployment.Deployment(predictor=p, name="llm")
+
+    def test_defaults_to_on_and_is_omitted_from_to_dict(self, mocker):
+        d = self._deployment(mocker)
+
+        assert d.llm_gateway is True
+        assert "llmGateway" not in d._predictor.to_dict()
+
+    def test_setter_is_serialized(self, mocker):
+        d = self._deployment(mocker)
+
+        d.llm_gateway = False
+
+        assert d.llm_gateway is False
+        assert d._predictor.to_dict()["llmGateway"] is False
+
+    def test_read_from_the_backend_json(self, mocker, backend_fixtures):
+        p_json = copy.deepcopy(
+            backend_fixtures["predictor"]["get_deployment_vllm_kserve_vllm_variant"][
+                "response"
+            ]
+        )
+        p_json["llmGateway"] = False
+
+        kwargs = predictor.Predictor.extract_fields_from_json(humps.decamelize(p_json))
+
+        assert kwargs["llm_gateway"] is False
+
+    def test_set_llm_gateway_posts_and_updates_the_local_value(self, mocker):
+        d = self._deployment(mocker)
+        post = mocker.patch.object(d._serving_api, "_set_deployment_llm_gateway")
+
+        d.set_llm_gateway(False)
+
+        post.assert_called_once_with(d, False)
+        assert d.llm_gateway is False
+
+
+class TestDeploymentSharing:
+    def _deployment(self, mocker):
+        mocker.patch("hsml.predictor.Predictor._validate_serving_tool")
+        p = predictor.Predictor(
+            id=7,
+            name="llm",
+            model_server=PREDICTOR.MODEL_SERVER_VLLM,
+            serving_tool=PREDICTOR.SERVING_TOOL_KSERVE,
+        )
+        return deployment.Deployment(predictor=p, name="llm")
+
+    def _stored(self, mocker, d, all_projects=False, projects=()):
+        mocker.patch.object(
+            d._serving_api,
+            "_get_deployment_sharing",
+            return_value={"allProjects": all_projects, "projects": list(projects)},
+        )
+
+        # As the backend applies a change: to what it stores, naming no project while all are shared.
+        def change(_, all_change, add, remove):
+            everyone = all_projects if all_change is None else all_change
+            names = [n for n in [*projects, *add] if n not in remove]
+            return {
+                "allProjects": everyone,
+                "projects": [] if everyone else list(dict.fromkeys(names)),
+            }
+
+        return mocker.patch.object(
+            d._serving_api, "_change_deployment_sharing", side_effect=change
+        )
+
+    def test_shared_with_reads_the_backend(self, mocker):
+        d = self._deployment(mocker)
+        self._stored(mocker, d, True, ["b"])
+
+        assert d.shared_with == {"all_projects": True, "projects": ["b"]}
+
+    def test_share_with_sends_only_the_added_projects(self, mocker):
+        d = self._deployment(mocker)
+        change = self._stored(mocker, d, False, ["a"])
+
+        result = d.share_with(projects=["b", "a"])
+
+        # Never what was read: the backend applies the change to what it stores.
+        change.assert_called_once_with(d, None, ["b", "a"], [])
+        d._serving_api._get_deployment_sharing.assert_not_called()
+        assert result == {"all_projects": False, "projects": ["a", "b"]}
+
+    def test_share_with_accepts_a_single_name(self, mocker):
+        d = self._deployment(mocker)
+        change = self._stored(mocker, d)
+
+        d.share_with(projects="b")
+
+        change.assert_called_once_with(d, None, ["b"], [])
+
+    def test_share_with_all_projects(self, mocker):
+        d = self._deployment(mocker)
+        change = self._stored(mocker, d, False, ["a"])
+
+        result = d.share_with(all_projects=True)
+
+        change.assert_called_once_with(d, True, [], [])
+        assert result == {"all_projects": True, "projects": []}
+
+    def test_share_with_all_projects_false_restricts(self, mocker):
+        d = self._deployment(mocker)
+        change = self._stored(mocker, d, True, [])
+
+        d.share_with(all_projects=False)
+
+        change.assert_called_once_with(d, False, [], [])
+
+    def test_share_with_needs_an_argument(self, mocker):
+        d = self._deployment(mocker)
+        change = self._stored(mocker, d)
+
+        with pytest.raises(ValueError):
+            d.share_with()
+
+        change.assert_not_called()
+
+    def test_a_change_without_a_body_reads_the_sharing_back(self, mocker):
+        d = self._deployment(mocker)
+        self._stored(mocker, d, False, ["a"])
+        mocker.patch.object(
+            d._serving_api, "_change_deployment_sharing", return_value=None
+        )
+
+        assert d.share_with(projects=["b"]) == {
+            "all_projects": False,
+            "projects": ["a"],
+        }
+
+    def test_unshare_sends_only_the_removed_projects(self, mocker):
+        d = self._deployment(mocker)
+        change = self._stored(mocker, d, False, ["a", "b"])
+
+        result = d.unshare(projects=["a", "missing"])
+
+        change.assert_called_once_with(d, None, [], ["a", "missing"])
+        assert result == {"all_projects": False, "projects": ["b"]}
+
+    def test_unshare_all_projects(self, mocker):
+        d = self._deployment(mocker)
+        change = self._stored(mocker, d, True, [])
+
+        d.unshare(all_projects=True)
+
+        change.assert_called_once_with(d, False, [], [])
+
+    def test_unshare_needs_an_argument(self, mocker):
+        d = self._deployment(mocker)
+        change = self._stored(mocker, d)
+
+        with pytest.raises(ValueError):
+            d.unshare()
+
+        change.assert_not_called()

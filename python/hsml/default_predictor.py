@@ -31,7 +31,7 @@ from typing import Any
 
 import humps
 from hopsworks_apigen import public
-from hopsworks_common import tracing
+from hopsworks_common import request_metrics, tracing
 from hopsworks_common.client.exceptions import (
     FeatureStoreException,
     ModelServingException,
@@ -460,6 +460,10 @@ class DefaultPredict:
         ```
     """
 
+    # How the request stages name the feature view and the model, <name>:<version>; set by __init__.
+    _feature_view_stage_name = ""
+    _model_stage_name = ""
+
     def __init__(self, deployment, async_logger=None):
         self.deployment = deployment
         # Everything below comes from the pod's own revision (its env vars and
@@ -593,6 +597,21 @@ class DefaultPredict:
             )
         self.reserved_columns = self._reserved_columns()
         self.max_batch_rows = self.schema.max_batch_rows
+        self._feature_view_stage_name = (
+            f"{self.feature_view.name}:{self.feature_view.version}"
+            if self.feature_view is not None
+            else ""
+        )
+        # A feature view deployment has no model, so its predict stage is named by the deployment.
+        self._model_stage_name = (
+            f"{self.hopsworks_model.name}:{self.hopsworks_model.version}"
+            if self.hopsworks_model is not None
+            else str(getattr(deployment, "name", ""))
+        )
+        if tracing._is_available():
+            request_metrics._declare("model_predict", self._model_stage_name)
+            if self.logging_enabled:
+                request_metrics._declare("feature_log", self._feature_view_stage_name)
 
         if self.hopsworks_model is None:
             self.feature_view.init_serving(
@@ -1154,7 +1173,11 @@ class DefaultPredict:
                 datetime.now(timezone.utc),
             )
             if tracing._enabled:
-                with tracing._child_span("feature_log", {"hopsworks.rows": len(rows)}):
+                with tracing._stage(
+                    "feature_log",
+                    self._feature_view_stage_name,
+                    {"hopsworks.rows": len(rows)},
+                ):
                     self._log_worker._submit(entry)
             else:
                 self._log_worker._submit(entry)
@@ -1456,8 +1479,10 @@ class DefaultPredict:
         try:
             rows = self.prepare_rows(inputs)
             if tracing._enabled:
-                with tracing._child_span(
-                    "feature_lookup", {"hopsworks.rows": len(rows)}
+                with tracing._stage(
+                    "feature_lookup",
+                    self._feature_view_stage_name,
+                    {"hopsworks.rows": len(rows)},
                 ):
                     vectors = fetch(rows)
                     if inspect.isawaitable(vectors):
@@ -1474,7 +1499,7 @@ class DefaultPredict:
                     f"{len(rows)} rows.",
                 )
             if tracing._enabled:
-                with tracing._child_span("model_predict"):
+                with tracing._stage("model_predict", self._model_stage_name):
                     output = self.model_predict(vectors)
             else:
                 output = self.model_predict(vectors)

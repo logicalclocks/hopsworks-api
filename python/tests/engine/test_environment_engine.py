@@ -53,6 +53,53 @@ def clock(*readings):
 
 
 class TestEnvironmentEngine:
+    @pytest.mark.parametrize("timeout", [0, 0.1, 1, 5])
+    def test_does_not_start_http_work_after_sleep_exhausts_the_budget(
+        self, mocker, timeout
+    ):
+        engine = environment_engine.EnvironmentEngine()
+        now = [0]
+        mocker.patch.object(
+            environment_engine.time, "monotonic", side_effect=lambda: now[0]
+        )
+        mocker.patch.object(
+            environment_engine.time,
+            "sleep",
+            side_effect=lambda seconds: now.__setitem__(0, now[0] + seconds),
+        )
+        poll = mocker.Mock(return_value=None)
+
+        with pytest.raises(EnvironmentException, match="Timed out"):
+            engine._await_command(poll, "test command", timeout)
+
+        poll.assert_not_called()
+        assert now[0] == timeout
+
+    @pytest.mark.parametrize("result", [None, Artifact("SUCCESS"), Artifact("ONGOING")])
+    def test_http_budget_is_clipped_and_late_results_do_not_hide_expiry(
+        self, mocker, result
+    ):
+        engine = environment_engine.EnvironmentEngine()
+        now = [0]
+        mocker.patch.object(
+            environment_engine.time, "monotonic", side_effect=lambda: now[0]
+        )
+        mocker.patch.object(
+            environment_engine.time,
+            "sleep",
+            side_effect=lambda seconds: now.__setitem__(0, now[0] + seconds),
+        )
+
+        def poll(request_timeout):
+            assert request_timeout == 2
+            now[0] += request_timeout
+            return result
+
+        with pytest.raises(EnvironmentException, match="Timed out"):
+            engine._await_command(poll, "test command", 7)
+
+        assert now[0] == 7
+
     def test_returns_when_the_command_succeeds(self, mocker):
         engine = environment_engine.EnvironmentEngine()
         mocker.patch.object(environment_engine.time, "sleep")

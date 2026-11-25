@@ -48,6 +48,40 @@ class TestExecutionApiStart:
         j.name = "my_job"
         return j
 
+    def test_resources_are_sent_in_the_json_body(
+        self, mock_client, mock_from_response, job
+    ):
+        resources = {"resourceConfig": {"memory": 16384, "gpus": 1}}
+
+        ExecutionApi()._start(job, args="--flag value", resources=resources)
+
+        _, kwargs = mock_client._send_request.call_args
+        assert kwargs["headers"] == {"content-type": "application/json"}
+        assert json.loads(kwargs["data"]) == {
+            "args": "--flag value",
+            "resources": resources,
+        }
+
+    def test_resources_without_args_leave_the_args_to_the_job(
+        self, mock_client, mock_from_response, job
+    ):
+        # No "args" key: the backend then runs the job's default arguments.
+        ExecutionApi()._start(job, resources={"spark.executor.memory": 16384})
+
+        _, kwargs = mock_client._send_request.call_args
+        assert json.loads(kwargs["data"]) == {
+            "resources": {"spark.executor.memory": 16384}
+        }
+
+    def test_empty_resources_keep_the_plain_text_start(
+        self, mock_client, mock_from_response, job
+    ):
+        ExecutionApi()._start(job, args="--flag value", resources={})
+
+        _, kwargs = mock_client._send_request.call_args
+        assert kwargs["headers"] == {"content-type": "text/plain"}
+        assert kwargs["data"] == "--flag value"
+
     def test_legacy_args_sets_text_plain_content_type(
         self, mock_client, mock_from_response, job
     ):
@@ -85,10 +119,10 @@ class TestExecutionApiStart:
         assert body["args"] == "--flag value"
         assert body["envVars"] == {
             "FOO": "bar",
-            "HOPS_END_TIME": end_time.isoformat(),
+            "HOPS_END_TIME": "2026-04-02T00:00:00Z",
         }
-        assert body["logicalDate"] == logical_date.isoformat()
-        assert body["dataIntervalEnd"] == end_time.isoformat()
+        assert body["logicalDate"] == "2026-04-01T00:00:00Z"
+        assert body["dataIntervalEnd"] == "2026-04-02T00:00:00Z"
 
 
 class TestJobApiLaunch:
@@ -195,3 +229,24 @@ class TestExecutionPodLog:
         assert podlog.log == "line1\nline2"
         assert podlog.pod_name == "ingest-table-0"
         assert podlog.container_name == "dlt"
+
+
+class TestStartTimeFormat:
+    def test_a_window_bound_is_utc_with_z_as_the_scheduler_sets_it(self):
+        from datetime import datetime, timedelta, timezone
+
+        from hopsworks_common import util
+        from hopsworks_common.core.execution_api import _to_iso
+
+        stockholm = timezone(timedelta(hours=1))
+        assert (
+            _to_iso(datetime(2026, 2, 20, 1, 0, tzinfo=stockholm))
+            == "2026-02-20T00:00:00Z"
+        )
+        assert _to_iso(datetime(2026, 2, 20)) == "2026-02-20T00:00:00Z"
+        assert (
+            _to_iso(datetime(2026, 2, 20, 0, 0, 0, 123456, tzinfo=timezone.utc))
+            == "2026-02-20T00:00:00.123456Z"
+        )
+        for value in ("2026-02-20T00:00:00Z", "2026-02-20T00:00:00.123456Z"):
+            util._get_timestamp_from_date_string(value)

@@ -201,6 +201,27 @@ class JobApi:
         ]
         _client._send_request("DELETE", path_params)
 
+    def _delete_files_job(
+        self, name: str, delete_files: bool = False, delete_index: bool = False
+    ) -> None:
+        """Delete a files ingestion job, optionally with its dataset and index feature group.
+
+        Parameters:
+            name: Name of the job.
+            delete_files: Also delete the dataset the files were copied into.
+            delete_index: Also delete the index feature group the job created.
+        """
+        _client = client._get_instance()
+        path_params = ["project", _client._project_id, "jobs", name]
+        _client._send_request(
+            "DELETE",
+            path_params,
+            query_params={
+                "deleteFiles": bool(delete_files),
+                "deleteIndex": bool(delete_index),
+            },
+        )
+
     def _update_job(self, name: str, config: dict) -> job.Job:
         """Update the job.
 
@@ -356,7 +377,7 @@ class JobApi:
             name,
         ]
         headers = {"content-type": "application/json"}
-        json_value = json.dumps(value)
+        json_value = tag.Tag._encode(value)
         _client._send_request("PUT", path_params, headers=headers, data=json_value)
 
     def _delete_tag(self, job: job.Job, name: str) -> None:

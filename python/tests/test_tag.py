@@ -136,6 +136,16 @@ class TestTag:
         with pytest.raises(ValueError, match="Tag value cannot be None"):
             tag.Tag._normalize([{"name": "test_name", "value": None}])
 
+    def test_encode_none_raises_error(self):
+        # Act & Assert
+        with pytest.raises(ValueError, match="Tag value cannot be None"):
+            tag.Tag._encode(None)
+
+    @pytest.mark.parametrize("value", ["risk", "null", 0, False, [], {"a": 1}])
+    def test_encode_sends_json(self, value):
+        # Act & Assert
+        assert json_module.loads(tag.Tag._encode(value)) == value
+
     def test_created_on_defaults_to_none(self):
         # Arrange
         t = tag.Tag(name="test_name", value="test_value")

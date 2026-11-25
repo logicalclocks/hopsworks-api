@@ -21,6 +21,8 @@ import json
 import os
 import re
 import shutil
+import threading
+import urllib.parse
 import uuid
 import warnings
 from datetime import date, datetime, timezone
@@ -143,6 +145,20 @@ if HAS_AVRO:
     import avro
 
 _logger = logging.getLogger(__name__)
+
+# Bucket name to the endpoint of the store this process uses it with, None for AWS S3.
+# Kept for the process rather than per Engine or per SparkContext: reconnecting builds a new Engine, and every
+# SparkContext of a PySpark process runs in the same JVM, whose Hadoop filesystem cache outlives a stopped context.
+_S3_BUCKET_STORES: dict[str, str | None] = {}
+# Held across checking and recording a data source's buckets, so concurrent reads cannot both claim one bucket.
+_S3_BUCKET_LOCK = threading.Lock()
+
+
+def _s3_path_bucket(path):
+    if not path:
+        return None
+    parts = urllib.parse.urlsplit(path)
+    return parts.netloc if parts.scheme in ("s3", "s3a") else None
 
 
 class Engine:
@@ -2025,6 +2041,34 @@ class Engine:
     def _setup_s3_hadoop_conf(self, storage_connector, path):
         FS_S3_GLOBAL_CONF = "fs.s3a.global-conf"
 
+        # Before any configuration changes, so a refused data source leaves the session as it was.
+        path_bucket = _s3_path_bucket(path)
+        endpoint = getattr(storage_connector, "endpoint", None)
+        # The endpoint is set for the data source's own bucket only, so another bucket would reach AWS or another store.
+        if (
+            endpoint
+            and path_bucket
+            and storage_connector.bucket
+            and path_bucket != storage_connector.bucket
+        ):
+            raise FeatureStoreException(
+                f"Data source '{storage_connector.name}' uses its endpoint for bucket '{storage_connector.bucket}' only, "
+                f"so it cannot use {path} in bucket '{path_bucket}'."
+            )
+        # A Glue data source has no bucket of its own, and an AWS data source may read an absolute path in another
+        # bucket, which Spark opens with whatever that bucket is configured for: the path's bucket is claimed too.
+        self._claim_s3_buckets(
+            storage_connector,
+            [b for b in (storage_connector.bucket, path_bucket) if b],
+        )
+
+        # Iceberg opens s3:// manifest paths even when the top-level location uses s3a://.
+        # Spark Connect and already initialized Iceberg catalogs need the mapping at server or driver startup.
+        if not self._is_connect:
+            self._set_hadoop_conf_if_unset(
+                "fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem"
+            )
+
         # The argument arrive here as strings
         if storage_connector.arguments.get(FS_S3_GLOBAL_CONF, "True").lower() == "true":
             # For legacy behaviour set the S3 values at global level
@@ -2038,7 +2082,65 @@ class Engine:
             self._set_s3_hadoop_conf(
                 storage_connector, f"fs.s3a.bucket.{storage_connector.bucket}"
             )
+            self._set_s3_endpoint_hadoop_conf(
+                storage_connector, f"fs.s3a.bucket.{storage_connector.bucket}"
+            )
         return path.replace("s3://", "s3a://", 1) if path is not None else None
+
+    def _claim_s3_buckets(self, storage_connector, buckets):
+        """Record which store this process uses the bucket names with, all or none of them.
+
+        s3a keeps one filesystem per bucket name, and Hadoop's filesystem cache outlives a stopped SparkContext, so a
+        second store under the same bucket name in the same process would silently read and write the first one.
+
+        Raises:
+            FeatureStoreException: The process already uses one of the bucket names with another store.
+        """
+        endpoint = getattr(storage_connector, "endpoint", None) or None
+        with _S3_BUCKET_LOCK:
+            for bucket in buckets:
+                known = _S3_BUCKET_STORES.get(bucket, endpoint)
+                if known != endpoint:
+                    raise FeatureStoreException(
+                        f"Data source '{storage_connector.name}' uses bucket '{bucket}' on {endpoint or 'AWS S3'}, "
+                        f"but this Spark application already uses that bucket name on {known or 'AWS S3'}. "
+                        "Spark keeps one S3 client per bucket name for as long as its process runs, "
+                        "so use this data source in a new Spark application process, such as a new job run."
+                    )
+            for bucket in buckets:
+                _S3_BUCKET_STORES[bucket] = endpoint
+
+    def _set_s3_endpoint_hadoop_conf(self, storage_connector, prefix):
+        # Bucket scope only, and after the forwarded Spark options so it wins over them:
+        # at global scope it would redirect later data sources on AWS in the same session.
+        endpoint = getattr(storage_connector, "endpoint", None)
+        if not endpoint:
+            return
+        # Without a provider of its own the bucket inherits a global temporary-credentials
+        # provider and session token that an IAM-role data source set earlier in the session,
+        # and would send that token to this store.
+        if (
+            not storage_connector.session_token
+            and "fs.s3a.aws.credentials.provider"
+            not in storage_connector.spark_options()
+        ):
+            self._set_hadoop_conf(
+                f"{prefix}.aws.credentials.provider",
+                "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
+            )
+        self._set_hadoop_conf(f"{prefix}.endpoint", endpoint)
+        self._set_hadoop_conf(
+            f"{prefix}.path.style.access",
+            "true" if storage_connector.path_style_access else "false",
+        )
+        self._set_hadoop_conf(
+            f"{prefix}.connection.ssl.enabled",
+            "true" if endpoint.startswith("https://") else "false",
+        )
+        # The backend and the Java SDK sign with the typed region, so a forwarded
+        # fs.s3a.endpoint.region must not override it here.
+        if storage_connector.region:
+            self._set_hadoop_conf(f"{prefix}.endpoint.region", storage_connector.region)
 
     def _set_s3_hadoop_conf(self, storage_connector, prefix):
         if storage_connector.access_key:

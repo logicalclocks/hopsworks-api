@@ -10,12 +10,15 @@ into bucket folders:
 ## data/ — discovery, sources, SQL, Spark, table maintenance
 - [hops-airflow](data/hops-airflow/SKILL.md) — orchestrate Hopsworks jobs with Airflow DAGs.
 - [hops-data-discovery](data/hops-data-discovery/SKILL.md) — find FGs, data sources, search, files.
-- [hops-data-sources](data/hops-data-sources/SKILL.md) — mount external tables / DLTHub ingestion / copy or sync SharePoint folders into a dataset.
-- [hops-sharepoint-search](data/hops-sharepoint-search/SKILL.md) — search the files a SharePoint sync copied in, through its index feature group, with the DuckDB CLI.
+- [hops-data-sources](data/hops-data-sources/SKILL.md) — mount external tables / DLTHub ingestion / copy or sync SharePoint folders or S3, GCS and ADLS files into a dataset.
+- [hops-email-search](data/hops-email-search/SKILL.md) — Search emails a Gmail or Outlook data source copied into a feature group, with DuckDB.
+- [hops-files-search](data/hops-files-search/SKILL.md) — search the files a SharePoint sync or an S3/GCS/ADLS files ingestion copied in, through the index feature group, with the DuckDB CLI.
 - [hops-delta](data/hops-delta/SKILL.md) — maintain Delta feature groups: optimize, vacuum, write modes and layout.
 - [hops-partitioning](data/hops-partitioning/SKILL.md) — Whether a derived feature group should be partitioned by time, from the source table's files.
 - [hops-analytics](data/hops-analytics/SKILL.md) — Analytics layers: the analytics_table tag, incremental silver tables from bronze feature groups, and gold layers of Kimball data marts from silver.
 - [hops-dbt](data/hops-dbt/SKILL.md) — dbt models over feature groups in Trino, with tests and an execution graph.
+- [hops-semantic](data/hops-semantic/SKILL.md): metrics in YAML over feature groups, scaffolded, compiled, tagged, discovered and queried.
+- [hops-semantic-views](data/hops-semantic-views/SKILL.md): scope a semantic view to one domain and keep it under 100k tokens so agents can read it whole.
 - [hops-spark](data/hops-spark/SKILL.md) — PySpark on Hopsworks (Spark Connect + Delta).
 - [hops-synthetic-data](data/hops-synthetic-data/SKILL.md) — seeded synthetic batch tables or event streams into feature groups.
 - [hops-table-maintenance](data/hops-table-maintenance/SKILL.md) — Table layout maintenance for offline feature groups.

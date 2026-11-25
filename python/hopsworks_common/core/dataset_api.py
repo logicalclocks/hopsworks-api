@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import copy
-import json
 import logging
 import math
 import os
@@ -737,9 +736,13 @@ class DatasetApi:
             "type": "DATASET",
         }
         headers = {"content-type": "application/json"}
-        return _client._send_request(
+        response = _client._send_request(
             "POST", path_params, headers=headers, query_params=query_params
-        )["attributes"]["path"]
+        )
+        # A subdirectory comes back as an inode, whose attributes carry its path.
+        # A top-level dataset comes back as a dataset, whose attributes the backend leaves empty.
+        created_path = response.get("attributes", {}).get("path")
+        return created_path or util._convert_to_abs(path, _client._project_name)
 
     @public
     @usage._method_logger
@@ -1167,7 +1170,7 @@ class DatasetApi:
             path,
         ]
         headers = {"content-type": "application/json"}
-        json_value = json.dumps(value)
+        json_value = tag.Tag._encode(value)
         _client._send_request("PUT", path_params, headers=headers, data=json_value)
 
     @public

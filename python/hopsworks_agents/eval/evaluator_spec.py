@@ -15,11 +15,14 @@ is measured the same way. There is no inference: checks derived from whatever a
 task happened to declare would make two tasks in one suite incomparable, which
 is the thing a suite exists to prevent.
 
-**Nothing here executes caller-supplied code.** ``FunctionEvaluator`` is
-deliberately absent: it wraps a Python callable, and resolving one from a
-string in a task row would turn "author a task" into "run code in the job".
-Deterministic Python evaluators remain available to code that builds a run
-directly.
+**The spec never carries code.** A ``python`` row names a file in the project,
+a repository, or a module in the job's environment, and every check the source
+declares with ``@check`` runs, each reported under its own name; the code is
+resolved by the job, which runs as the project, from a place a project member
+already had to be able to write. Checks live on suites
+and in the library and never on tasks, so a task promoted from production or
+imported from a file cannot bring one in. ``FunctionEvaluator`` stays the
+in-process wrapper for code that builds a run directly.
 """
 
 from __future__ import annotations
@@ -82,6 +85,7 @@ SPEC_TYPES = (
     "pairwise",
     "sql_state",
     "human_review",
+    "python",
 )
 
 
@@ -94,9 +98,29 @@ def _one(
     *,
     judge_completer: Callable[[str], str] | None,
     query: Callable[[str], Any] | None,
+    sources: Any = None,
 ) -> Evaluator | None:
     kind = str(entry.get("type") or "").strip()
     name = str(entry.get("name") or kind or "evaluator")
+
+    if kind == "python":
+        # Imported here: the checks module pulls in the loader plumbing, and a
+        # suite without a custom check should not need it.
+        from .checks import PythonSourceEvaluator, _parse_source, _validate_entry
+
+        try:
+            _validate_entry(entry)
+            source = _parse_source(entry)
+        except ValueError as err:
+            raise SpecError(str(err)) from err
+        return PythonSourceEvaluator(
+            name,
+            source,
+            only=entry.get("only"),
+            exclude=entry.get("exclude"),
+            params=entry.get("params"),
+            sources=sources,
+        )
 
     if kind == "exact_match":
         return ExactMatchEvaluator(
@@ -233,12 +257,18 @@ def _evaluators_from_spec(
     *,
     judge_completer: Callable[[str], str] | None = None,
     query: Callable[[str], Any] | None = None,
+    sources: Any = None,
 ) -> list[Evaluator]:
     """Every evaluator a spec asks for.
 
     Raises :class:`SpecError` on anything malformed. The caller decides what a
     bad spec means — the backend refuses it at authoring time, so by the time a
     run reads one it should already be valid.
+
+    ``sources`` is the job's :class:`hopsworks_agents.eval.checks._CheckSources`,
+    which resolves where a ``python`` check's code is. Without one, only checks
+    from an importable module can load, and nothing here touches a file or a
+    repository -- which is what lets authoring validate a spec with no I/O.
     """
     if not spec:
         return []
@@ -256,11 +286,17 @@ def _evaluators_from_spec(
         if not isinstance(entry, dict):
             raise SpecError(f"entry {index + 1} is not an object")
         try:
-            evaluator = _one(entry, judge_completer=judge_completer, query=query)
+            evaluator = _one(
+                entry, judge_completer=judge_completer, query=query, sources=sources
+            )
         except SpecError as err:
             raise SpecError(f"entry {index + 1}: {err}") from err
         if evaluator is not None:
             evaluators.append(evaluator)
+    if sources is not None:
+        # Every built-in's name is spoken for before any python source names
+        # its checks, so a declared check never writes over a built-in's row.
+        sources._reserve([e.name for e in evaluators if e.type != "python"])
     return evaluators
 
 
@@ -312,6 +348,7 @@ def _evaluators_for_suite(
     *,
     judge_completer: Callable[[str], str] | None = None,
     query: Callable[[str], Any] | None = None,
+    sources: Any = None,
 ) -> list[Evaluator]:
     """The checks every task in this suite is graded by.
 
@@ -326,5 +363,8 @@ def _evaluators_for_suite(
     measurement stays identical.
     """
     return _evaluators_from_spec(
-        _flatten_rows(suite.evaluators), judge_completer=judge_completer, query=query
+        _flatten_rows(suite.evaluators),
+        judge_completer=judge_completer,
+        query=query,
+        sources=sources,
     )

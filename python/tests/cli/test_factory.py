@@ -572,6 +572,219 @@ def test_create_writes_the_system_and_its_build_command(
     assert launched == ["/hops-factory-churn-review q3-review"]
 
 
+def test_a_blueprints_phase_minutes_replace_the_factorys_estimates(
+    tmp_path, monkeypatch, logged_in
+):
+    _recording(monkeypatch, tmp_path)
+    answers = tmp_path / "answers.json"
+    answers.write_text(
+        json.dumps(
+            {
+                "name": "q3-review",
+                "question": "why",
+                "cadence": "daily",
+                "compare": {"weeks": 9},
+                # As a preset's fixed answers send them.
+                "phase_minutes": {"build": 3},
+            }
+        )
+    )
+    done = CliRunner().invoke(
+        cli, ["factory", "run", "churn-review", "--answers", str(answers)]
+    )
+    assert done.exit_code == 0, done.output
+    doc = yaml.safe_load((tmp_path / "q3-review" / "system.yaml").read_text())
+    assert doc["factory"]["phases"] == [
+        {"key": "build", "label": "Build", "minutes": 3},
+        {"key": "verify", "label": "Verify"},
+    ]
+    assert "phase_minutes" not in doc["requirements"]
+
+
+def test_the_finetune_factory_writes_its_lora_requirements(
+    tmp_path, monkeypatch, logged_in
+):
+    resources = (
+        Path(__file__).resolve().parents[4]
+        / "hopsworks-ee/hopsworks-common/src/main/resources/factories"
+    )
+    if not resources.is_dir():
+        pytest.skip("hopsworks-ee is not beside this checkout")
+    registered, launched = _recording(monkeypatch, tmp_path)
+    text = (resources / "ml-finetune.yaml").read_text()
+    monkeypatch.setattr(
+        factory_api, "_get", lambda name, version=None: _definition(text, version=1)
+    )
+    answers = tmp_path / "answers.json"
+    answers.write_text(
+        json.dumps(
+            {
+                "slug": "support-qwen",
+                "description": "answer support tickets in our tone",
+                "model": {"base": "Qwen/Qwen2.5-7B-Instruct"},
+                "data": {"source": "files", "dataset": "Resources/tickets.jsonl"},
+                "compute": {"runtime": "ray", "workers": 2, "gpus_per_worker": 4},
+                "lora": {"quantization": "nf4", "r": 32, "alpha": 64},
+            }
+        )
+    )
+    done = CliRunner().invoke(
+        cli, ["factory", "run", "ml-finetune", "--answers", str(answers)]
+    )
+    assert done.exit_code == 0, done.output
+    doc = yaml.safe_load((tmp_path / "support-qwen" / "system.yaml").read_text())
+    requirements = doc["requirements"]
+    assert requirements["model"]["base"] == "Qwen/Qwen2.5-7B-Instruct"
+    assert requirements["compute"]["runtime"] == "ray"
+    assert requirements["lora"]["quantization"] == "nf4"
+    assert requirements["lora"]["r"] == 32
+    assert [p["key"] for p in doc["factory"]["phases"]] == [
+        "reqs",
+        "data",
+        "baseline",
+        "training",
+        "evaluation",
+        "serving",
+        "app",
+        "verify",
+    ]
+    command = (
+        tmp_path
+        / "support-qwen"
+        / ".claude"
+        / "commands"
+        / "hops-factory-ml-finetune.md"
+    ).read_text()
+    assert "**hops-online-inference**" in command
+    assert "ray-torch-training-pipeline" in command
+    assert launched == ["/hops-factory-ml-finetune support-qwen"]
+    assert registered == [("support-qwen", "support-qwen", "ml-finetune")]
+
+
+def test_the_rag_factory_writes_its_directories_and_retrieval(
+    tmp_path, monkeypatch, logged_in
+):
+    resources = (
+        Path(__file__).resolve().parents[4]
+        / "hopsworks-ee/hopsworks-common/src/main/resources/factories"
+    )
+    if not resources.is_dir():
+        pytest.skip("hopsworks-ee is not beside this checkout")
+    registered, launched = _recording(monkeypatch, tmp_path)
+    text = (resources / "ml-rag.yaml").read_text()
+    monkeypatch.setattr(
+        factory_api, "_get", lambda name, version=None: _definition(text, version=1)
+    )
+    answers = tmp_path / "answers.json"
+    answers.write_text(
+        json.dumps(
+            {
+                "slug": "policy-search",
+                "description": "answer staff questions about our HR policies",
+                "documents": {"directories": ["Resources/policies", "Resources/hr"]},
+                "embedding": {"model": "BAAI/bge-m3"},
+                "retrieval": {"k": "auto"},
+                "serving": {"architecture": "one_app"},
+            }
+        )
+    )
+    done = CliRunner().invoke(
+        cli, ["factory", "run", "ml-rag", "--answers", str(answers)]
+    )
+    assert done.exit_code == 0, done.output
+    doc = yaml.safe_load((tmp_path / "policy-search" / "system.yaml").read_text())
+    requirements = doc["requirements"]
+    assert requirements["documents"]["directories"] == [
+        "Resources/policies",
+        "Resources/hr",
+    ]
+    assert requirements["embedding"]["model"] == "BAAI/bge-m3"
+    assert requirements["serving"]["architecture"] == "one_app"
+    assert [p["key"] for p in doc["factory"]["phases"]] == [
+        "reqs",
+        "survey",
+        "index",
+        "retrieval",
+        "agent",
+        "app",
+        "verify",
+    ]
+    command = (
+        tmp_path / "policy-search" / ".claude" / "commands" / "hops-factory-ml-rag.md"
+    ).read_text()
+    assert "**hops-agent-deployment**" in command
+    assert "find_neighbors" in command
+    assert launched == ["/hops-factory-ml-rag policy-search"]
+    assert registered == [("policy-search", "policy-search", "ml-rag")]
+
+
+def test_the_custom_factory_records_the_new_factory_and_its_checks(
+    tmp_path, monkeypatch, logged_in
+):
+    resources = (
+        Path(__file__).resolve().parents[4]
+        / "hopsworks-ee/hopsworks-common/src/main/resources/factories"
+    )
+    if not resources.is_dir():
+        pytest.skip("hopsworks-ee is not beside this checkout")
+    registered, launched = _recording(monkeypatch, tmp_path)
+    text = (resources / "custom-factory.yaml").read_text()
+    monkeypatch.setattr(
+        factory_api, "_get", lambda name, version=None: _definition(text, version=1)
+    )
+    answers = tmp_path / "answers.json"
+    answers.write_text(
+        json.dumps(
+            {
+                "slug": "churn-models",
+                "description": "predict which customers churn next month",
+                "new_factory": {"title": "Churn models", "purpose": ["ml"]},
+            }
+        )
+    )
+    done = CliRunner().invoke(
+        cli, ["factory", "run", "custom-factory", "--answers", str(answers)]
+    )
+    assert done.exit_code == 0, done.output
+    doc = yaml.safe_load((tmp_path / "churn-models" / "system.yaml").read_text())
+    requirements = doc["requirements"]
+    assert requirements["system_type"] == "factory"
+    assert requirements["new_factory"]["purpose"] == ["ml"]
+    assert [p["key"] for p in doc["factory"]["phases"]] == [
+        "reqs",
+        "design",
+        "write",
+        "publish",
+        "verify",
+    ]
+    command = (
+        tmp_path
+        / "churn-models"
+        / ".claude"
+        / "commands"
+        / "hops-factory-custom-factory.md"
+    ).read_text()
+    assert "**hops-factory**" in command
+    assert "hops factory validate factory.yaml" in command
+    assert launched == ["/hops-factory-custom-factory churn-models"]
+    assert registered == [("churn-models", "churn-models", "custom-factory")]
+
+
+@pytest.mark.parametrize(
+    ("value", "ok"),
+    [
+        (["Resources/docs", "Jupyter/papers/"], True),
+        (["/Projects/p/Resources/docs"], False),
+        (["Resources/../../etc"], False),
+        (["/"], False),
+        ("Resources/docs", False),
+    ],
+)
+def test_a_directories_answer_names_directories_in_the_project(value, ok):
+    field = {"id": "dirs", "type": "directories", "label": "Directories"}
+    assert (factory_spec._field_problems(field, value, "Directories") == []) == ok
+
+
 def test_rerunning_the_answers_resumes_with_the_recorded_version(
     tmp_path, monkeypatch, logged_in
 ):

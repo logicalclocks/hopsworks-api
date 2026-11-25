@@ -119,6 +119,8 @@ fg = fs.get_or_create_feature_group(
 | `embedding_index=EmbeddingIndex(...)` | FG contains vector embeddings (see Embeddings section) |
 | `offline_backfill_every_hr=N` | Schedule automatic materialization every N hours |
 | `ttl=timedelta(days=30)` | Auto-expire old rows from online store |
+| `online_config=OnlineConfig(secondary_indexes=[["a","b"]])` | Online lookups or SQL filters on non-key columns (see "Online table indexes") |
+| `online_disk=True` | Keep the online table's non-key, non-indexed columns on disk instead of in memory |
 | `time_travel_format="ICEBERG"` | Offline table format: `"DELTA"` (default), `"ICEBERG"`, `"HUDI"`, or `None` |
 | `partitioned_by=["day(event_ts)"]` | Native partition transforms (ICEBERG / HUDI only; see below) |
 | `partition_key=["col"]` | Hive-style partitioning on real columns (any format) |
@@ -126,6 +128,35 @@ fg = fs.get_or_create_feature_group(
 | `zorder_by=["a","b"]` | Z-order clustering, max 4 columns (ICEBERG / HUDI only) |
 | `sort_order=["a asc","b desc"]` | Persistent Iceberg write sort order (ICEBERG only) |
 | `bucket_index={"field":"id","num_buckets":16}` | Hudi bucket index (HUDI only) |
+
+### Online table indexes
+
+The online table (RonDB) is indexed on its primary key only, unless you declare more indexes when you create the feature group:
+
+```python
+from hsfs.online_config import OnlineConfig
+
+fg = fs.create_feature_group(
+    name="transactions",
+    version=1,
+    primary_key=["cc_num", "tid"],
+    event_time="event_time",
+    online_enabled=True,
+    stream=True,
+    online_config=OnlineConfig(
+        primary_key_index_type="ORDERED",  # "HASH" or "ORDERED"
+        secondary_indexes=[["cc_num", "event_time"], ["merchant"]],
+    ),
+)
+```
+
+- `secondary_indexes` is a list of column lists; each inner list is one index, named `idx_<col1>_<col2>...`, and the name must fit in 64 characters.
+- `primary_key_index_type="ORDERED"` adds an ordered index to the primary key, so a prefix of it (`cc_num` alone above) is a range lookup; `"HASH"` serves only exact full-key lookups.
+  With `ttl` set, ordered is the default.
+- Indexes are set when the online table is created and cannot be added later: to add one, create a new version of the feature group.
+- A column stored online as `text` or `blob`, such as a `string` with very long values, cannot be indexed.
+- Indexed and primary key columns always stay in memory, even with `online_disk=True`, so each index costs memory per row.
+- `online_config` also takes a dict: `{"secondary_indexes": [["merchant"]]}`.
 
 ---
 

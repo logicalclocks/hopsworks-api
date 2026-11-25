@@ -1,0 +1,13 @@
+{
+  "semantic_project": "ecommerce_semantic",
+  "examples": [
+    "Net revenue by month over the last 12 months",
+    "Net revenue by region per quarter this year",
+    "Which customer segment had the highest average order value last quarter?",
+    "Top 5 product categories by gross profit this year",
+    "Return rate by sales channel per month this year",
+    "Revenue from new versus returning customers in Europe last month",
+    "Year-over-year revenue growth by month",
+    "Gross margin by brand for Electronics in 2025"
+  ]
+}

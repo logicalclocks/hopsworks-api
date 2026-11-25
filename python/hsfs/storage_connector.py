@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import base64
+import copy
 import logging
 import os
 import posixpath
@@ -25,6 +26,7 @@ import warnings
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
+from urllib.parse import urlsplit
 
 import humps
 from cryptography.hazmat.backends import default_backend
@@ -46,6 +48,7 @@ from hsfs.core import (
     data_source_api,
     data_source_credentials_api,
     elasticsearch_api,
+    files_ingestion,
     sharepoint_api,
     sharepoint_sync,
     storage_connector_api,
@@ -53,7 +56,11 @@ from hsfs.core import (
 
 
 if TYPE_CHECKING:
+    from datetime import date, datetime
+
     from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
+    from hopsworks_common.job import Job
+    from hopsworks_common.tag import Tag
 
     if HAS_NUMPY:
         import numpy as np
@@ -97,6 +104,10 @@ class StorageConnector(ABC):
     ELASTICSEARCH = "ELASTICSEARCH"
     HOPSWORKS = "HOPSWORKS"
     SHAREPOINT = "SHAREPOINT"
+    GMAIL = "GMAIL"
+    OUTLOOK = "OUTLOOK"
+    SFTP = "SFTP"
+    GOOGLE_DRIVE = "GOOGLE_DRIVE"
 
     NOT_FOUND_ERROR_CODE = 270042
 
@@ -121,6 +132,10 @@ class StorageConnector(ABC):
         ELASTICSEARCH: "featurestoreElasticsearchConnectorDTO",
         HOPSWORKS: "featurestoreHopsworksConnectorDTO",
         SHAREPOINT: "featurestoreSharePointConnectorDTO",
+        GMAIL: "featurestoreGmailConnectorDTO",
+        OUTLOOK: "featurestoreOutlookConnectorDTO",
+        SFTP: "featurestoreSftpConnectorDTO",
+        GOOGLE_DRIVE: "featurestoreGoogleDriveConnectorDTO",
         CRM: "featurestoreCRMConnectorDTO",
         GOOGLE_SHEETS: "featurestoreGoogleSheetsConnectorDTO",
         UNITY_CATALOG: "featurestoreUnityCatalogConnectorDTO",
@@ -143,6 +158,9 @@ class StorageConnector(ABC):
         self._storage_connector_api = storage_connector_api.StorageConnectorApi()
         self._trino_catalog_api = trino_catalog_api.TrinoCatalogApi()
         self._data_source_api = data_source_api.DataSourceApi()
+        # Set by from_response_json and update_from_response_json: the subclasses call this constructor without
+        # their **kwargs, so the response key would not reach it.
+        self._missing_mandatory_tags: list[dict[str, Any]] = []
 
     @classmethod
     def from_response_json(
@@ -166,6 +184,10 @@ class StorageConnector(ABC):
         | ElasticsearchConnector
         | HopsworksConnector
         | SharePointConnector
+        | GmailConnector
+        | OutlookConnector
+        | SftpConnector
+        | GoogleDriveConnector
     ):
         if isinstance(json_dict, list) or "items" in json_dict:
             return cls._from_response_json_list(json_dict)
@@ -175,7 +197,11 @@ class StorageConnector(ABC):
         for subcls in cls.__subclasses__():
             if subcls.type == sc_type:
                 _ = json_decamelized.pop("storage_connector_type")
-                return subcls(**json_decamelized)
+                connector = subcls(**json_decamelized)
+                connector._missing_mandatory_tags = (
+                    json_decamelized.get("missing_mandatory_tags") or []
+                )
+                return connector
         raise ValueError(
             f"Unknown storage_connector_type {sc_type!r}; expected one of "
             f"{sorted({s.type for s in cls.__subclasses__() if isinstance(s.type, str)})}."
@@ -228,12 +254,20 @@ class StorageConnector(ABC):
         | ElasticsearchConnector
         | HopsworksConnector
         | SharePointConnector
+        | GmailConnector
+        | OutlookConnector
+        | SftpConnector
+        | GoogleDriveConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
         if self.type == json_decamelized["storage_connector_type"]:
             _ = json_decamelized.pop("storage_connector_type")
+            known_missing = self._missing_mandatory_tags
             self.__init__(**json_decamelized)
+            # Only the getters ask for the mandatory tags; a refetch without them keeps what the getter read.
+            missing = json_decamelized.get("missing_mandatory_tags")
+            self._missing_mandatory_tags = known_missing if missing is None else missing
         else:
             raise ValueError("Failed to update storage connector information.")
         return self
@@ -244,6 +278,10 @@ class StorageConnector(ABC):
 
     def _check_new(self) -> None:
         """Refuse to create the data source when its fields cannot be stored as given."""
+        return
+
+    def _check_stored(self, stored: StorageConnector) -> None:
+        """Refuse a save or update that the backend accepted without storing a field this client sent."""
         return
 
     def to_dict(self) -> dict[str, int | str | None]:
@@ -257,7 +295,10 @@ class StorageConnector(ABC):
         }
 
     @public
-    def save(self) -> StorageConnector:
+    def save(
+        self,
+        tags: Tag | dict[str, Any] | list[Tag | dict[str, Any]] | None = None,
+    ) -> StorageConnector:
         """Persist this storage connector to the feature store.
 
         Example:
@@ -274,17 +315,28 @@ class StorageConnector(ABC):
                 bucket="my-bucket",
                 region="eu-north-1",
             )
-            sc.save()
+            sc.save(tags=[{"name": "data_owner", "value": "email@hopsworks.ai"}])
             ```
+
+        Parameters:
+            tags:
+                Tags to attach to the data source as it is created, in the same request.
+                Each tag names its tag schema and carries a value that the schema validates.
+                Tags that are mandatory for data sources must be passed here, since the data source is not created without them.
 
         Returns:
             The saved storage connector with its assigned id.
 
         Raises:
             ValueError: If a SQL data source with provided credentials is given a username, password, wallet or wallet password, since each member sets their own with `set_credentials()`.
+            hopsworks.client.exceptions.FeatureStoreException: If `tags` are passed to a Hopsworks backend older than 5.3, which cannot store data source tags.
+                Also if an S3 data source has an endpoint, which such a backend cannot store: the request is not sent, or, when the backend's version is unknown, the data source is stored without the endpoint and targets AWS S3.
+            hopsworks.client.exceptions.RestAPIError: If a tag that is mandatory for data sources is missing from `tags`, if a tag value does not match its schema, or if the backend encounters another error when handling the request.
         """
         self._check_new()
-        return self._storage_connector_api._create(self)
+        stored = self._storage_connector_api._create(self, tags)
+        self._check_stored(stored)
+        return stored
 
     @public
     def update(self) -> StorageConnector:
@@ -304,8 +356,16 @@ class StorageConnector(ABC):
 
         Returns:
             The updated storage connector.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If an S3 data source has an endpoint and the backend is older than 5.3, which cannot store it: the request is not sent, or, when the backend's version is unknown, the data source is stored without the endpoint and targets AWS S3.
+            hopsworks.client.exceptions.RestAPIError: If the data source lacks a tag that is mandatory for data sources, which has to be added with [`add_tag`][hsfs.storage_connector.StorageConnector.add_tag] first, or if the backend encounters another error when handling the request.
         """
-        return self._storage_connector_api._update(self)
+        # The response overwrites this instance, so keep what was sent to compare against it.
+        requested = copy.copy(self)
+        updated = self._storage_connector_api._update(self)
+        requested._check_stored(updated)
+        return updated
 
     @public
     def get_trino_catalog_template(self) -> dict[str, Any]:
@@ -418,6 +478,125 @@ class StorageConnector(ABC):
             scope=scope,
         )
 
+    _FILES_INGESTION_TYPES = ("S3", "GCS", "ADLS", "SFTP", "GOOGLE_DRIVE")
+
+    @public
+    def ingest_files(
+        self,
+        dataset: str,
+        prefix: str = "",
+        include: list[str] | None = None,
+        exclude: list[str] | None = None,
+        mirror_deletions: bool = False,
+        index: bool | str = False,
+        max_file_size_mb: int | None = None,
+        schedule: str | None = None,
+        resources: dict[str, Any] | None = None,
+        name: str | None = None,
+        fail_on_first_error: bool = False,
+        files_per_page: int = 100,
+        copy_workers: int = 4,
+        transform_script: str | None = None,
+        keep_original: bool = False,
+    ) -> files_ingestion.FilesIngestionJob:
+        """Create a job that copies the files under a prefix of this S3, GCS, ADLS, SFTP or Google Drive data source into a dataset.
+
+        The job is created on the server at once; run it with
+        [`FilesIngestionJob.run`][hsfs.core.files_ingestion.FilesIngestionJob.run].
+        Each run lists the prefix, copies new and changed files, keeps unchanged ones and, with `mirror_deletions`, deletes from the dataset the files that are gone from the source.
+        The dataset may exist (the caller must own it) or is created; one files job owns a dataset, so a second job on the same dataset is refused.
+        Per-file failures do not stop the run: the copies that succeeded stay, the run ends as failed, and the execution's `files_progress` lists the failed files.
+        Needs the Data Owner role.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+            fs = project.get_feature_store()
+
+            sc = fs.get_data_source("my_s3").storage_connector
+            job = sc.ingest_files(
+                dataset="acme_docs_handbook",
+                prefix="handbook/2026/",
+                include=["**/*.pdf"],
+                schedule="0 0 2 ? * *",
+                index=True,
+            )
+            execution = job.run(await_termination=True)
+            print(execution.files_progress["copied"], job.last_stats["status"])
+            ```
+
+        Parameters:
+            dataset: Name of the dataset the files are copied into; an existing one you own, or a new one.
+            prefix: Prefix inside the bucket, container, SFTP root path or Drive folder, relative to it, e.g. `"handbook/2026/"`; `""` for everything under it.
+            include: Glob patterns of the files to copy, e.g. `["**/*.pdf"]`; every file when empty.
+            exclude: Glob patterns of the files to skip.
+            mirror_deletions: Delete files from the dataset that are gone from the source, so the dataset equals the prefix after each run.
+            index: `True` to keep a Delta feature group `files_<dataset>` with one row per file, a name to use instead, or `False` for no index.
+            max_file_size_mb: Files larger than this are skipped and counted as oversized; `None` or `0` copies any size.
+            schedule: Quartz cron expression in UTC, seconds first, e.g. `"0 0 2 ? * *"` for daily at 02:00; `None` creates no schedule.
+            resources: Pod resources of a run, e.g. `{"cores": 1, "memory": 2048, "gpus": 0}`.
+            name: Job name; `<connector>_<dataset>_files` with `_` for every character outside letters, digits and `_`, when `None`.
+            fail_on_first_error: Stop a run at the first file that fails instead of copying the rest.
+            files_per_page: Number of files listed per request to the source.
+            copy_workers: Number of files downloaded at the same time, 1 to 16; `1` copies one file at a time. The transform script, when there is one, still runs on one file at a time.
+            transform_script: Path in the project of a `.py` file whose `HopsFileTransformer` runs on every downloaded file before it is stored, such as `Resources/transform.py`; `None` copies the files as they are.
+            keep_original: With a transform script, also store each file as it is in the source; the output of the transform then goes under `_transformed/` in the dataset.
+
+        Returns:
+            The created files ingestion job.
+
+        Raises:
+            ValueError: If this data source is not S3, GCS, ADLS, SFTP or Google Drive, or a setting is invalid.
+            hopsworks.client.exceptions.RestAPIError: If the dataset belongs to another files job, the data source has no usable credentials, or the caller is not a data owner.
+        """
+        if self.type not in self._FILES_INGESTION_TYPES:
+            raise ValueError(
+                f"Data source '{self._name}' is {self.type}; files can only be "
+                "ingested from S3, GCS, ADLS, SFTP or Google Drive data sources."
+            )
+        job = files_ingestion.FilesIngestionJob(
+            self,
+            dataset,
+            prefix=prefix,
+            include=include,
+            exclude=exclude,
+            mirror_deletions=mirror_deletions,
+            index=index,
+            max_file_size_mb=max_file_size_mb,
+            schedule=schedule,
+            resources=resources,
+            name=name,
+            fail_on_first_error=fail_on_first_error,
+            files_per_page=files_per_page,
+            copy_workers=copy_workers,
+            transform_script=transform_script,
+            keep_original=keep_original,
+        )
+        job.save()
+        return job
+
+    @public
+    def get_files_ingestion_jobs(self) -> list[files_ingestion.FilesIngestionJob]:
+        """List the files ingestion jobs of the project that read from this data source.
+
+        Returns:
+            The jobs created with [`ingest_files`][hsfs.storage_connector.StorageConnector.ingest_files] for this data source.
+        """
+        from hopsworks_common.core.job_api import JobApi
+
+        jobs = []
+        for job in JobApi().get_jobs():
+            config = job.config if isinstance(job.config, dict) else {}
+            files_config = config.get("filesConfig") or {}
+            if (
+                config.get("mode") == files_ingestion.MODE_FILES
+                and files_config.get("storageConnectorId") == self._id
+            ):
+                jobs.append(files_ingestion.FilesIngestionJob.from_job(job))
+        return jobs
+
     @public
     @property
     def type(self) -> str | None:
@@ -441,6 +620,15 @@ class StorageConnector(ABC):
     def description(self) -> str | None:
         """User provided description of the storage connector."""
         return self._description
+
+    @public
+    @property
+    def missing_mandatory_tags(self) -> list[dict[str, Any]]:
+        """Mandatory tags this data source does not carry, as reported when it was last fetched.
+
+        Adding a tag does not update this list on the object in hand; fetch the data source again to see the change.
+        """
+        return self._missing_mandatory_tags
 
     @public
     @abstractmethod
@@ -636,6 +824,112 @@ class StorageConnector(ABC):
         return []
 
     @public
+    def add_tag(self, name: str, value: Any) -> None:
+        """Attach a tag to the storage connector.
+
+        A tag consists of a name-value pair.
+        Tag names are unique identifiers across the whole cluster.
+        The value of a tag can be any valid json -- primitives, arrays or json objects.
+        Attaching a tag that is already attached replaces its value.
+        Only a data owner of the project that owns the feature store can attach tags, and the online feature store connectors cannot be tagged.
+
+        Example:
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            sc = fs.get_data_source("conn_name").storage_connector
+
+            sc.add_tag(name="example_tag", value={"owner": "risk"})
+            ```
+
+        Parameters:
+            name: Name of the tag to be added.
+            value: Value of the tag to be added.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        self._storage_connector_api._add_tag(self, name, value)
+
+    @public
+    def delete_tag(self, name: str) -> None:
+        """Delete a tag attached to the storage connector.
+
+        The tag is removed for every data source that uses this connector, not only for this object.
+        Only a data owner of the project that owns the feature store can delete tags.
+
+        Parameters:
+            name: Name of the tag to be removed.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        self._storage_connector_api._delete_tag(self, name)
+
+    @public
+    def get_tag(self, name: str) -> Any | None:
+        """Get the value of a tag attached to the storage connector.
+
+        Parameters:
+            name: Name of the tag to get.
+
+        Returns:
+            Tag value or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        attached = self.get_tag_metadata(name)
+        return attached.value if attached is not None else None
+
+    @public
+    def get_tags(self) -> dict[str, Any]:
+        """Retrieve all tags attached to the storage connector.
+
+        Returns:
+            The dictionary of tag names and values.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return {
+            tag_name: attached.value
+            for tag_name, attached in self.get_tags_metadata().items()
+        }
+
+    @public
+    def get_tag_metadata(self, name: str) -> Tag | None:
+        """Get a tag with its metadata, including the time it was attached.
+
+        Unlike [`StorageConnector.get_tag`][hsfs.storage_connector.StorageConnector.get_tag], which returns only the tag's value, this returns the [`Tag`][hopsworks.tag.Tag] object, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Parameters:
+            name: Name of the tag to get.
+
+        Returns:
+            The tag object or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._storage_connector_api._get_tags_metadata(self, name).get(name)
+
+    @public
+    def get_tags_metadata(self) -> dict[str, Tag]:
+        """Retrieve all tags attached to the storage connector, with their metadata.
+
+        Unlike [`StorageConnector.get_tags`][hsfs.storage_connector.StorageConnector.get_tags], which returns only the tag values, this keeps the [`Tag`][hopsworks.tag.Tag] objects, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Returns:
+            The dictionary of tag names to tag objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._storage_connector_api._get_tags_metadata(self)
+
+    @public
     def get_databases(self) -> list[str]:
         """Retrieve the list of available databases.
 
@@ -657,6 +951,8 @@ class StorageConnector(ABC):
             StorageConnector.GOOGLE_SHEETS,
             StorageConnector.REST,
             StorageConnector.SHAREPOINT,
+            StorageConnector.GMAIL,
+            StorageConnector.OUTLOOK,
         ]:
             raise ValueError("This connector type does not support fetching databases.")
         self._require_credentials()
@@ -686,7 +982,12 @@ class StorageConnector(ABC):
             A list of DataSource objects representing the tables.
             For Google Sheets connectors, each entry represents a sheet name.
         """
-        if self.type in [StorageConnector.REST, StorageConnector.SHAREPOINT]:
+        if self.type in [
+            StorageConnector.REST,
+            StorageConnector.SHAREPOINT,
+            StorageConnector.GMAIL,
+            StorageConnector.OUTLOOK,
+        ]:
             raise ValueError("This connector type does not support fetching tables.")
         self._require_credentials()
         if not database and self.type != StorageConnector.CRM:
@@ -768,7 +1069,10 @@ class StorageConnector(ABC):
 
     @public
     def get_data(
-        self, data_source: ds.DataSource, use_cached: bool = True
+        self,
+        data_source: ds.DataSource,
+        use_cached: bool = True,
+        file_columns: list[str] | None = None,
     ) -> DataSourceData | None:
         """Retrieve the data from the data source.
 
@@ -786,6 +1090,9 @@ class StorageConnector(ABC):
         Parameters:
             data_source (DataSource): The data source to retrieve data from.
             use_cached (bool): Whether to use cached data if available. Only supported for CRM, Google Sheets, and REST connectors. Defaults to `True`.
+            file_columns: SQL Server only: `varbinary(max)` or `image` columns to store as files, besides the FILESTREAM columns; `[]` for the FILESTREAM columns alone.
+                Leave it `None` to read the source schema, as for an external feature group.
+                Each file column is returned as a string path feature and a bigint `<column>_size` feature, and the preview shows its size instead of the bytes.
 
         Returns:
             An object containing the data retrieved from the data source, or `None` when the backend answered with an empty body.
@@ -793,6 +1100,10 @@ class StorageConnector(ABC):
         Raises:
             hopsworks.client.exceptions.DataSourceException: If the schema fetch failed for the data source.
         """
+        if self.type in (StorageConnector.GMAIL, StorageConnector.OUTLOOK):
+            raise ValueError(
+                "Mail data sources are not previewed; copy the mailbox with sync() and read its feature group."
+            )
         if self.type in [
             StorageConnector.REST,
             StorageConnector.CRM,
@@ -806,7 +1117,7 @@ class StorageConnector(ABC):
                 data_source.rest_endpoint = RestEndpointConfig()
             return self._get_no_sql_data(data_source, use_cached)
         self._require_credentials()
-        data = self._data_source_api._get_data(data_source)
+        data = self._data_source_api._get_data(data_source, file_columns=file_columns)
         # When the source refuses the read, the backend still answers 200 and reports the failure
         # in schemaFetchFailed, so the UI can render the source's own message.
         # Read the features off that reply and the schema is simply empty, with the reason in a
@@ -916,6 +1227,8 @@ class StorageConnector(ABC):
             StorageConnector.REST,
             StorageConnector.CRM,
             StorageConnector.GOOGLE_SHEETS,
+            StorageConnector.GMAIL,
+            StorageConnector.OUTLOOK,
         ]:
             raise ValueError("This connector type does not support fetching metadata.")
         return self._data_source_api._get_metadata(data_source)
@@ -1083,6 +1396,29 @@ class HopsFSConnector(StorageConnector):
 
 @public
 class S3Connector(StorageConnector):
+    """A data source on an S3 bucket, in AWS or in an S3-compatible store.
+
+    Set [`endpoint`][hsfs.storage_connector.S3Connector.endpoint] to use an S3-compatible store such as MinIO, Dell ECS or Ceph.
+    Such a data source needs an access key and a secret key, and cannot use IAM roles.
+    Without a region it gets `us-east-1`, which stores without regions accept.
+
+    Example:
+        ```python
+        sc = hsfs.storage_connector.S3Connector(
+            id=None,
+            name="ecs_landing",
+            featurestore_id=fs.id,
+            bucket="landing",
+            region="us-east-1",
+            access_key="...",
+            secret_key="...",
+            endpoint="https://s3.example.com:9021",
+            path_style_access=True,
+        )
+        sc.save()
+        ```
+    """
+
     type = StorageConnector.S3
 
     def __init__(
@@ -1102,11 +1438,15 @@ class S3Connector(StorageConnector):
         session_token: str | None = None,
         iam_role: str | None = None,
         arguments: dict[str, Any] | None = None,
+        endpoint: str | None = None,
+        path_style_access: bool | None = None,
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
 
         # S3
+        self._endpoint = endpoint
+        self._path_style_access = path_style_access
         self._access_key = access_key
         self._secret_key = secret_key
         self._server_encryption_algorithm = server_encryption_algorithm
@@ -1183,8 +1523,32 @@ class S3Connector(StorageConnector):
 
         These are set using the `Spark Options` field in the UI when creating the connector.
         Example: `{"fs.s3a.endpoint": "s3.eu-west-1.amazonaws.com", "fs.s3a.path.style.access": "true"}`.
+        For an S3-compatible store, set [`endpoint`][hsfs.storage_connector.S3Connector.endpoint] instead, which every Hopsworks client honours.
         """
         return self._arguments
+
+    @public
+    @property
+    def endpoint(self) -> str | None:
+        """The S3-compatible store this data source targets, as `http(s)://host[:port]`.
+
+        `None` means AWS S3.
+        The backend refuses an endpoint without an access key and a secret key, together with an IAM role, or next to the `fs.s3a.endpoint` and `fs.s3a.path.style.access` Spark options it replaces.
+        A data source with an endpoint and no region gets the region `us-east-1`.
+        An update that leaves it `None` keeps the stored endpoint; an empty string removes it.
+        Changing it moves the data source, and the data it already holds stays on the previous store.
+        """
+        return self._endpoint
+
+    @public
+    @property
+    def path_style_access(self) -> bool | None:
+        """Whether requests to the endpoint name the bucket in the URL path instead of the host name.
+
+        Most S3-compatible stores need it, since their host names do not resolve per bucket.
+        It applies only together with an [`endpoint`][hsfs.storage_connector.S3Connector.endpoint], and `None` reads as `False`.
+        """
+        return self._path_style_access
 
     def to_dict(self) -> dict[str, Any]:
         payload = super().to_dict()
@@ -1202,9 +1566,19 @@ class S3Connector(StorageConnector):
                 "arguments": [
                     {"name": k, "value": v} for k, v in self._arguments.items()
                 ],
+                "endpoint": self._endpoint,
+                "pathStyleAccess": self._path_style_access,
             }
         )
         return payload
+
+    def _check_stored(self, stored: StorageConnector) -> None:
+        if self._endpoint and self._endpoint.strip() and not stored._endpoint:
+            raise FeatureStoreException(
+                f"Data source '{self._name}' was saved without its endpoint, so it targets AWS S3: "
+                "the Hopsworks cluster predates S3-compatible storage. "
+                "Upgrade Hopsworks to 5.3 or later before using an endpoint."
+            )
 
     def spark_options(self) -> dict[str, str]:
         return self._arguments
@@ -1230,7 +1604,15 @@ class S3Connector(StorageConnector):
 
     @public
     def connector_options(self) -> dict[str, Any]:
-        """Return options to be passed to an external S3 connector library."""
+        """Return options to be passed to an external S3 connector library.
+
+        The keys follow DuckDB's S3 secret: `endpoint` is a `host[:port]`, `use_ssl` a boolean and `url_style` either `path` or `vhost`.
+        With an [`endpoint`][hsfs.storage_connector.S3Connector.endpoint] set, all three come from it and [`path_style_access`][hsfs.storage_connector.S3Connector.path_style_access].
+        Otherwise they come from the `fs.s3a.endpoint`, `fs.s3a.connection.ssl.enabled` and `fs.s3a.path.style.access` Spark options, when those are set.
+
+        Info: `"false"` in the Spark options takes effect, ~=5.3.0
+            Before 5.3.0, `use_ssl` was the option's string as given and `url_style` was `path` for any value of `fs.s3a.path.style.access`, so `"false"` read as true.
+        """
         self._refetch()
         options = {
             "access_key": self.access_key,
@@ -1238,23 +1620,29 @@ class S3Connector(StorageConnector):
             "session_token": self.session_token,
             "region": self.region,
         }
+        if self.endpoint:
+            parts = urlsplit(self.endpoint)
+            options["endpoint"] = parts.netloc
+            options["use_ssl"] = parts.scheme == "https"
+            options["url_style"] = "path" if self.path_style_access else "vhost"
+            return options
         if not self.arguments:
             return options
+        # Spark's s3a and DuckDB name the same settings differently:
+        # https://hadoop.apache.org/docs/stable/hadoop-aws/tools/hadoop-aws/connecting.html
+        # https://duckdb.org/docs/stable/core_extensions/httpfs/s3api
         if self.arguments.get("fs.s3a.endpoint"):
             options["endpoint"] = self.arguments.get("fs.s3a.endpoint")
         if self.arguments.get("fs.s3a.connection.ssl.enabled"):
-            # use_ssl is used by s3 secrets in duckdb
-            # where as fs.s3a.connection.ssl.enabled is used by spark s3a connector
-            # hadoop : https://hadoop.apache.org/docs/stable/hadoop-aws/tools/hadoop-aws/connecting.html#Low-level_Network.2FHttp_Options
-            # duckdb : https://duckdb.org/docs/stable/core_extensions/httpfs/s3api
-            options["use_ssl"] = self.arguments.get("fs.s3a.connection.ssl.enabled")
+            options["use_ssl"] = (
+                str(self.arguments.get("fs.s3a.connection.ssl.enabled")).lower()
+                == "true"
+            )
         if self.arguments.get("fs.s3a.path.style.access"):
-            # url_style is used by duckdb s3 connector
-            # where as fs.s3a.path.style.access is used by spark s3a connector
-            # hadoop: https://hadoop.apache.org/docs/stable/hadoop-aws/tools/hadoop-aws/connecting.html#Third_party_stores
-            # duckdb: https://duckdb.org/docs/stable/core_extensions/httpfs/s3api
             options["url_style"] = (
-                "path" if self.arguments.get("fs.s3a.path.style.access") else "vhost"
+                "path"
+                if str(self.arguments.get("fs.s3a.path.style.access")).lower() == "true"
+                else "vhost"
             )
         return options
 
@@ -1290,6 +1678,9 @@ class S3Connector(StorageConnector):
 
         Returns:
             `DataFrame`.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: With the Spark engine, if the data source has an endpoint and `path` is in another bucket, or if the Spark application already uses the bucket name with another store.
         """
         if path is None:
             path = ""
@@ -6871,3 +7262,1240 @@ class GoogleSheetsConnector(StorageConnector):
 
     def spark_options(self) -> dict[str, Any]:
         return {}
+
+
+@public
+class MailAccessToken:
+    """A short-lived access token that reads the mailbox of a Gmail or Outlook data source.
+
+    The backend mints it from the data source's stored credentials, which never leave Hopsworks.
+    It is read-only, `gmail.readonly` for Gmail and `Mail.Read` for Outlook, and expires within an hour.
+    """
+
+    def __init__(
+        self,
+        access_token: str,
+        expires_at: int | None = None,
+        mailbox: str | None = None,
+        scope: str | None = None,
+        user_path: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        self._token = access_token
+        self._expires_at = expires_at
+        self._mailbox = mailbox
+        self._scope = scope
+        self._user_path = user_path
+
+    @public
+    @property
+    def token(self) -> str:
+        """The bearer token, sent as `Authorization: Bearer <token>` to the Gmail API or Microsoft Graph."""
+        return self._token
+
+    @public
+    @property
+    def expires_at(self) -> int | None:
+        """When the token expires, in epoch milliseconds."""
+        return self._expires_at
+
+    @public
+    @property
+    def mailbox(self) -> str | None:
+        """The email address of the mailbox the token reads."""
+        return self._mailbox
+
+    @public
+    @property
+    def scope(self) -> str | None:
+        """The OAuth scope the token was requested with."""
+        return self._scope
+
+    @public
+    @property
+    def user_path(self) -> str | None:
+        """For Outlook, the Microsoft Graph path of the mailbox after `/v1.0/`, `users/<mailbox>`; `None` for Gmail."""
+        return self._user_path
+
+    def __repr__(self) -> str:
+        return f"MailAccessToken(mailbox={self._mailbox!r}, expires_at={self._expires_at!r})"
+
+
+@public
+class MailSyncJobConfig:
+    """The configuration of a job that copies a Gmail or Outlook data source into a feature group.
+
+    Returned by `get_sync_job` and `list_sync_jobs` of [`GmailConnector`][hsfs.storage_connector.GmailConnector] and [`OutlookConnector`][hsfs.storage_connector.OutlookConnector].
+    """
+
+    def __init__(
+        self,
+        job_name: str,
+        feature_group_name: str,
+        path: str,
+        query: str | None = None,
+        labels: list[str] | None = None,
+        loading_strategy: str | None = None,
+        initial_value: int | None = None,
+        environment_name: str | None = None,
+        connector_name: str | None = None,
+        mailbox: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        self._job_name = job_name
+        self._feature_group_name = feature_group_name
+        self._path = path
+        self._query = query or ""
+        self._labels = labels or []
+        self._loading_strategy = loading_strategy
+        self._initial_value = initial_value
+        self._environment_name = environment_name
+        self._connector_name = connector_name
+        self._mailbox = mailbox
+
+    @classmethod
+    def from_response_json(cls, json_dict: dict[str, Any]) -> MailSyncJobConfig:
+        return cls(**humps.decamelize(json_dict))
+
+    @public
+    @property
+    def job_name(self) -> str:
+        """Name of the job, as listed on the Jobs page."""
+        return self._job_name
+
+    @public
+    @property
+    def feature_group_name(self) -> str:
+        """Name of the Delta feature group, version 1, that the job upserts the emails into."""
+        return self._feature_group_name
+
+    @public
+    @property
+    def path(self) -> str:
+        """Directory the attachments are written to, relative to the project root."""
+        return self._path
+
+    @public
+    @property
+    def query(self) -> str:
+        """Gmail search query that selects the messages; empty for all of them, and always for Outlook."""
+        return self._query
+
+    @public
+    @property
+    def labels(self) -> list[str]:
+        """Gmail label ids or Outlook folder ids that select the messages copied: a message in any of them is copied, and without any every message is."""
+        return self._labels
+
+    @public
+    @property
+    def loading_strategy(self) -> str | None:
+        """`FULL_LOAD` or `INCREMENTAL_TIMESTAMP`."""
+        return self._loading_strategy
+
+    @public
+    @property
+    def initial_value(self) -> int | None:
+        """Earliest receive time copied, in epoch milliseconds; `None` for the whole mailbox."""
+        return self._initial_value
+
+    @public
+    @property
+    def environment_name(self) -> str | None:
+        """Python environment the job runs in."""
+        return self._environment_name
+
+    @public
+    @property
+    def connector_name(self) -> str | None:
+        """Name of the data source the job copies."""
+        return self._connector_name
+
+    @public
+    @property
+    def mailbox(self) -> str | None:
+        """Email address of the mailbox the job copies."""
+        return self._mailbox
+
+    def __repr__(self) -> str:
+        return (
+            f"MailSyncJobConfig(job_name={self._job_name!r}, "
+            f"feature_group_name={self._feature_group_name!r}, path={self._path!r}, "
+            f"loading_strategy={self._loading_strategy!r})"
+        )
+
+
+class _MailSyncMixin:
+    """The sync jobs and access tokens shared by the Gmail and Outlook data sources; `_SERVICE` is the REST path segment."""
+
+    _SERVICE: str
+    _STRATEGIES = ("FULL_LOAD", "INCREMENTAL_TIMESTAMP")
+    # Quartz expressions; daily runs at 00:00 UTC.
+    _SCHEDULES = {"hourly": "0 0 * ? * * *", "daily": "0 0 0 * * ? *"}
+
+    def _access_token(self) -> MailAccessToken:
+        return MailAccessToken(
+            **humps.decamelize(
+                self._storage_connector_api._get_mail_access_token(
+                    self._featurestore_id, self._name, self._SERVICE
+                )
+            )
+        )
+
+    def _sync(
+        self,
+        feature_group_name: str | None,
+        attachments_path: str | None,
+        query: str | None,
+        labels: list[str] | None,
+        loading_strategy: str,
+        initial_value: str | int | datetime | date | None,
+        schedule: str | None,
+        job_name: str | None,
+        environment: str | None,
+        start: bool,
+    ) -> Job:
+        from hopsworks_common.core import job_api
+
+        strategy = getattr(loading_strategy, "value", loading_strategy).upper()
+        if strategy not in self._STRATEGIES:
+            raise ValueError(
+                f"loading_strategy must be one of {', '.join(self._STRATEGIES)}"
+            )
+        if schedule is not None and schedule.lower() not in self._SCHEDULES:
+            raise ValueError(f"schedule must be one of {', '.join(self._SCHEDULES)}")
+        name = job_name or re.sub(
+            r"[^A-Za-z0-9_-]", "_", f"{self._name}_{self._SERVICE}_sync"
+        )
+        body = {
+            "featureGroupName": feature_group_name,
+            "path": attachments_path,
+            "query": query or "",
+            "labels": list(labels or []),
+            "loadingStrategy": strategy,
+            "initialValue": util._convert_event_time_to_timestamp(initial_value),
+            "environmentName": environment,
+        }
+        self._storage_connector_api._put_mail_sync_job(
+            self._featurestore_id, self._name, self._SERVICE, name, body
+        )
+        job = job_api.JobApi().get(name)
+        if start:
+            job.run(await_termination=False)
+        if schedule is not None:
+            job.schedule(cron_expression=self._SCHEDULES[schedule.lower()])
+        return job
+
+    def _list_sync_jobs(self) -> list[MailSyncJobConfig]:
+        return [
+            MailSyncJobConfig.from_response_json(job)
+            for job in self._storage_connector_api._get_mail_sync_jobs(
+                self._featurestore_id, self._name, self._SERVICE
+            )
+            or []
+        ]
+
+    def _get_sync_job(self, job_name: str) -> MailSyncJobConfig:
+        return MailSyncJobConfig.from_response_json(
+            self._storage_connector_api._get_mail_sync_job(
+                self._featurestore_id, self._name, self._SERVICE, job_name
+            )
+        )
+
+    def _delete_sync_job(self, job_name: str) -> None:
+        self._storage_connector_api._delete_mail_sync_job(
+            self._featurestore_id, self._name, self._SERVICE, job_name
+        )
+
+
+@public
+class GmailConnector(_MailSyncMixin, StorageConnector):
+    """A Gmail mailbox, read with credentials that stay in Hopsworks.
+
+    The data source holds either an OAuth client with a refresh token granted by the mailbox owner, or a Google Workspace service account with domain-wide delegation that impersonates the mailbox.
+    Both need the `https://www.googleapis.com/auth/gmail.readonly` scope.
+    The credentials are write-only: reading the data source back returns `credentials_set` instead, and code that needs to call Gmail asks for a short-lived token with [`get_access_token`][hsfs.storage_connector.GmailConnector.get_access_token].
+
+    Copy the mailbox into a Delta feature group with [`sync`][hsfs.storage_connector.GmailConnector.sync], which creates a job that runs on demand, hourly or daily.
+
+    Example:
+        ```python
+        fs = project.get_feature_store()
+        gmail = GmailConnector(
+            id=None,
+            name="support_inbox",
+            featurestore_id=fs.id,
+            mailbox="support@example.com",
+            auth_type="OAUTH",
+            client_id="...apps.googleusercontent.com",
+            client_secret="...",
+            refresh_token="...",
+        )
+        gmail.save()
+        job = gmail.sync(schedule="hourly")
+        emails = fs.get_feature_group("support_examples", version=1)
+        ```
+    """
+
+    type = StorageConnector.GMAIL
+    _SERVICE = "gmail"
+    OAUTH = "OAUTH"
+    SERVICE_ACCOUNT = "SERVICE_ACCOUNT"
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int | None,
+        description: str | None = None,
+        mailbox: str | None = None,
+        auth_type: str | None = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+        refresh_token: str | None = None,
+        key_path: str | None = None,
+        credentials_set: bool | None = None,
+        service_account_email: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._mailbox = mailbox
+        self._auth_type = auth_type
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._refresh_token = refresh_token
+        self._key_path = key_path
+        self._credentials_set = credentials_set
+        self._service_account_email = service_account_email
+
+    @public
+    @property
+    def mailbox(self) -> str | None:
+        """Email address of the mailbox."""
+        return self._mailbox
+
+    @mailbox.setter
+    def mailbox(self, mailbox: str) -> None:
+        self._mailbox = mailbox
+
+    @public
+    @property
+    def auth_type(self) -> str | None:
+        """`OAUTH` or `SERVICE_ACCOUNT`."""
+        return self._auth_type
+
+    @public
+    @property
+    def client_id(self) -> str | None:
+        """OAuth client id; `None` for a service account."""
+        return self._client_id
+
+    @public
+    @property
+    def credentials_set(self) -> bool | None:
+        """Whether credentials are stored; the credentials themselves are never returned."""
+        return self._credentials_set
+
+    @public
+    @property
+    def service_account_email(self) -> str | None:
+        """The service account that impersonates the mailbox; `None` for OAuth."""
+        return self._service_account_email
+
+    @public
+    def set_credentials(
+        self,
+        auth_type: str,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+        refresh_token: str | None = None,
+        key_path: str | None = None,
+    ) -> None:
+        """Replace the credentials sent by the next [`save`][hsfs.storage_connector.StorageConnector.save] or [`update`][hsfs.storage_connector.StorageConnector.update].
+
+        Parameters:
+            auth_type: `OAUTH` or `SERVICE_ACCOUNT`.
+            client_id: OAuth client id.
+            client_secret: OAuth client secret.
+            refresh_token: OAuth refresh token granted with the `gmail.readonly` scope.
+            key_path: HopsFS path of a service account's JSON key; Hopsworks stores the key's contents, so the file can be deleted afterwards.
+        """
+        self._auth_type = auth_type
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._refresh_token = refresh_token
+        self._key_path = key_path
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update({"mailbox": self._mailbox, "authType": self._auth_type})
+        for key, value in (
+            ("clientId", self._client_id),
+            ("clientSecret", self._client_secret),
+            ("refreshToken", self._refresh_token),
+            ("keyPath", self._key_path),
+        ):
+            if value:
+                payload[key] = value
+        return payload
+
+    def spark_options(self) -> dict[str, Any]:
+        return {}
+
+    def __repr__(self) -> str:
+        return (
+            f"GmailConnector(name={self._name!r}, mailbox={self._mailbox!r}, "
+            f"auth_type={self._auth_type!r}, credentials_set={self._credentials_set!r})"
+        )
+
+    @public
+    def get_access_token(self) -> MailAccessToken:
+        """Get a short-lived, read-only Gmail access token for the mailbox.
+
+        Use it to call the [Gmail API](https://developers.google.com/gmail/api/reference/rest) from your own code without holding the data source's credentials.
+        Ask for a new token when the previous one is about to expire.
+
+        Example:
+            ```python
+            import requests
+
+            gmail = fs.get_data_source("support_inbox").storage_connector
+            token = gmail.get_access_token()
+            labels = requests.get(
+                f"https://gmail.googleapis.com/gmail/v1/users/{token.mailbox}/labels",
+                headers={"Authorization": f"Bearer {token.token}"},
+            ).json()
+            ```
+
+        Returns:
+            The token, its expiry and the mailbox it reads.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If Google refuses the stored credentials, for example because the refresh token was revoked.
+        """
+        return self._access_token()
+
+    @public
+    def get_labels(self) -> dict[str, str]:
+        """Get the labels of the mailbox that a sync can select, by id.
+
+        System labels, such as `INBOX`, `SENT`, `STARRED` and `CATEGORY_PERSONAL`, come first, then the labels the mailbox's owner created.
+        Spam, trash and drafts are left out, since a sync never copies them.
+
+        Example:
+            ```python
+            gmail = fs.get_data_source("support_inbox").storage_connector
+            print(gmail.get_labels())  # {'INBOX': 'INBOX', 'SENT': 'SENT', ..., 'Label_12': 'receipts'}
+            gmail.sync(labels=["INBOX"], schedule="hourly")
+            ```
+
+        Returns:
+            The label names, keyed by the ids that [`sync`][hsfs.storage_connector.GmailConnector.sync] takes.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If Google refuses the stored credentials or Gmail cannot be reached.
+        """
+        return {
+            label["id"]: label["name"]
+            for label in self._storage_connector_api._get_gmail_labels(
+                self._featurestore_id, self._name
+            )
+            or []
+        }
+
+    @public
+    def sync(
+        self,
+        feature_group_name: str | None = None,
+        attachments_path: str | None = None,
+        query: str | None = None,
+        labels: list[str] | None = None,
+        loading_strategy: Literal[
+            "INCREMENTAL_TIMESTAMP", "FULL_LOAD"
+        ] = "INCREMENTAL_TIMESTAMP",
+        initial_value: str | int | datetime | date | None = None,
+        schedule: Literal["hourly", "daily"] | None = None,
+        job_name: str | None = None,
+        environment: str | None = None,
+        start: bool = True,
+    ) -> Job:
+        """Copy the mailbox into a Delta feature group with a job that runs now, hourly or daily.
+
+        The job upserts one row per email into the feature group, version 1, keyed by `message_id`, with `internal_date`, Gmail's `internalDate`, as its event time.
+        The table is partitioned by `day` (`YYYY-MM-DD`) of `internal_date` in UTC.
+        An hourly job adds about one Parquet file to the current day per run, and the first run after a day ends compacts that day's files into files of up to 192 MiB.
+        Its columns are `message_id`, `thread_id`, `history_id`, `internal_date`, `day`, `hour`, `date_header`, `from_address`, `to_addresses`, `cc_addresses`, `bcc_addresses`, `subject`, `labels`, `snippet`, `size_estimate`, `body_text` and `attachments`.
+        Attachments are written as files under `<attachments_path>/day=YYYY-MM-DD/<message_id>/<filename>`, and `attachments` lists their full `/Projects/...` paths.
+        Spam, trash and drafts are not copied.
+
+        `INCREMENTAL_TIMESTAMP` upserts the messages Gmail received since the previous run; its first run copies everything from `initial_value` on, upserting every 5000 messages as it goes.
+        A scheduled run that starts while the previous one is still copying does nothing, and fails if that one has made no progress for two hours.
+        A run fails after waiting an hour in total on rate limits.
+        `FULL_LOAD` copies every selected message on every run, then removes the rows and attachments of the messages it did not copy.
+        The copy is an archive: an incremental run does not remove messages deleted from Gmail, nor follow label changes.
+
+        Calling `sync` again with the same `job_name` updates the job.
+
+        Example:
+            ```python
+            gmail = fs.get_data_source("support_inbox").storage_connector
+            job = gmail.sync(query="-category:promotions", initial_value="2026-01-01", schedule="hourly")
+            emails = fs.get_feature_group("support_examples", version=1).read()
+            ```
+
+        Parameters:
+            feature_group_name: Name of the feature group; defaults to the mailbox's local part and first domain label, as in `jane_doe_gmails` for `jane.doe@gmail.com`.
+            attachments_path: Directory inside a dataset, relative to the project root, that attachments are written to; defaults to `Resources/gmail/<feature group name>`.
+            query: Gmail search query selecting the messages, written as in the Gmail search box.
+            labels: Gmail label ids selecting the messages to copy, such as `["INBOX", "SENT"]`; a message carrying any of them is copied, and without labels every message is. [`get_labels`][hsfs.storage_connector.GmailConnector.get_labels] lists the mailbox's labels.
+            loading_strategy: `INCREMENTAL_TIMESTAMP` or `FULL_LOAD`.
+            initial_value: Earliest receive time to copy, as a date or datetime, a date string, or epoch milliseconds.
+            schedule: `hourly`, at the top of every hour, or `daily`, at 00:00 UTC; `None` leaves the job's schedule as it is.
+            job_name: Name of the job; defaults to `<data source name>_gmail_sync`.
+            environment: Python environment for a new job; defaults to `python-feature-pipeline`, and an update without it keeps the job's environment.
+            start: Whether to start a run now, without waiting for it.
+
+        Returns:
+            The job, which can be run, scheduled and monitored like any other.
+
+        Raises:
+            ValueError: If `loading_strategy` or `schedule` is not one of the values above.
+            hopsworks.client.exceptions.RestAPIError: If the backend refuses the job, for example because another sync job already writes to the feature group or the attachments path.
+        """
+        return self._sync(
+            feature_group_name,
+            attachments_path,
+            query,
+            labels,
+            loading_strategy,
+            initial_value,
+            schedule,
+            job_name,
+            environment,
+            start,
+        )
+
+    @public
+    def list_sync_jobs(self) -> list[MailSyncJobConfig]:
+        """List the sync jobs of this data source.
+
+        Returns:
+            One configuration per sync job.
+        """
+        return self._list_sync_jobs()
+
+    @public
+    def get_sync_job(self, job_name: str) -> MailSyncJobConfig:
+        """Get the configuration of one sync job of this data source.
+
+        Parameters:
+            job_name: Name of the sync job.
+
+        Returns:
+            The job's configuration.
+        """
+        return self._get_sync_job(job_name)
+
+    @public
+    def delete_sync_job(self, job_name: str) -> None:
+        """Delete a sync job of this data source, with its schedule; the copied emails stay.
+
+        Parameters:
+            job_name: Name of the sync job.
+        """
+        self._delete_sync_job(job_name)
+
+
+@public
+class OutlookConnector(_MailSyncMixin, StorageConnector):
+    """An Outlook mailbox, on Outlook.com or Microsoft 365, read through Microsoft Graph with credentials that stay in Hopsworks.
+
+    The data source holds an app registration in Microsoft Entra ID with either:
+
+    - `OAUTH`: a refresh token granted by the mailbox's owner with the delegated `Mail.Read` and `offline_access` permissions, for the owner's own mailbox, personal or work;
+    - `CLIENT_CREDENTIALS`: a client secret with the application permission `Mail.Read`, granted by a tenant admin, for any mailbox of the tenant the admin allows.
+
+    The credentials are write-only: reading the data source back returns `credentials_set` instead, and code that needs to call Graph asks for a short-lived token with [`get_access_token`][hsfs.storage_connector.OutlookConnector.get_access_token].
+    Microsoft replaces a refresh token each time it is used, and Hopsworks stores the new one, so a data source that syncs at least every 90 days keeps working.
+
+    Copy the mailbox into a Delta feature group with [`sync`][hsfs.storage_connector.OutlookConnector.sync], which creates a job that runs on demand, hourly or daily.
+
+    Example:
+        ```python
+        fs = project.get_feature_store()
+        outlook = OutlookConnector(
+            id=None,
+            name="support_outlook",
+            featurestore_id=fs.id,
+            mailbox="support@contoso.com",
+            auth_type="CLIENT_CREDENTIALS",
+            tenant_id="contoso.onmicrosoft.com",
+            client_id="00000000-0000-0000-0000-000000000000",
+            client_secret="...",
+        )
+        outlook.save()
+        job = outlook.sync(schedule="hourly")
+        emails = fs.get_feature_group("support_contosos", version=1)
+        ```
+    """
+
+    type = StorageConnector.OUTLOOK
+    _SERVICE = "outlook"
+    OAUTH = "OAUTH"
+    CLIENT_CREDENTIALS = "CLIENT_CREDENTIALS"
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int | None,
+        description: str | None = None,
+        mailbox: str | None = None,
+        auth_type: str | None = None,
+        tenant_id: str | None = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+        refresh_token: str | None = None,
+        credentials_set: bool | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._mailbox = mailbox
+        self._auth_type = auth_type
+        self._tenant_id = tenant_id
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._refresh_token = refresh_token
+        self._credentials_set = credentials_set
+
+    @public
+    @property
+    def mailbox(self) -> str | None:
+        """Email address of the mailbox."""
+        return self._mailbox
+
+    @mailbox.setter
+    def mailbox(self, mailbox: str) -> None:
+        self._mailbox = mailbox
+
+    @public
+    @property
+    def auth_type(self) -> str | None:
+        """`OAUTH` or `CLIENT_CREDENTIALS`."""
+        return self._auth_type
+
+    @public
+    @property
+    def tenant_id(self) -> str | None:
+        """Microsoft Entra tenant: its id or domain, or `common`, `consumers` or `organizations` for a delegated token."""
+        return self._tenant_id
+
+    @public
+    @property
+    def client_id(self) -> str | None:
+        """Application (client) id of the app registration."""
+        return self._client_id
+
+    @public
+    @property
+    def credentials_set(self) -> bool | None:
+        """Whether credentials are stored; the credentials themselves are never returned."""
+        return self._credentials_set
+
+    @public
+    def set_credentials(
+        self,
+        auth_type: str,
+        client_id: str,
+        tenant_id: str | None = None,
+        client_secret: str | None = None,
+        refresh_token: str | None = None,
+    ) -> None:
+        """Replace the credentials sent by the next [`save`][hsfs.storage_connector.StorageConnector.save] or [`update`][hsfs.storage_connector.StorageConnector.update].
+
+        Parameters:
+            auth_type: `OAUTH` or `CLIENT_CREDENTIALS`.
+            client_id: Application (client) id.
+            tenant_id: Tenant id or domain; defaults to `common` for `OAUTH`, and `CLIENT_CREDENTIALS` needs the mailbox's tenant.
+            client_secret: Client secret; required for `CLIENT_CREDENTIALS`, and for `OAUTH` unless the app is a public client.
+            refresh_token: For `OAUTH`, a refresh token granted with `Mail.Read offline_access`.
+        """
+        self._auth_type = auth_type
+        self._client_id = client_id
+        self._tenant_id = tenant_id
+        self._client_secret = client_secret
+        self._refresh_token = refresh_token
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update({"mailbox": self._mailbox, "authType": self._auth_type})
+        for key, value in (
+            ("tenantId", self._tenant_id),
+            ("clientId", self._client_id),
+            ("clientSecret", self._client_secret),
+            ("refreshToken", self._refresh_token),
+        ):
+            if value:
+                payload[key] = value
+        return payload
+
+    def spark_options(self) -> dict[str, Any]:
+        return {}
+
+    def __repr__(self) -> str:
+        return (
+            f"OutlookConnector(name={self._name!r}, mailbox={self._mailbox!r}, "
+            f"auth_type={self._auth_type!r}, credentials_set={self._credentials_set!r})"
+        )
+
+    @public
+    def get_access_token(self) -> MailAccessToken:
+        """Get a short-lived, read-only Microsoft Graph access token for the mailbox.
+
+        Use it to call [Microsoft Graph](https://learn.microsoft.com/graph/api/resources/mail-api-overview) from your own code without holding the data source's credentials.
+        Ask for a new token when the previous one is about to expire.
+
+        Example:
+            ```python
+            import requests
+
+            outlook = fs.get_data_source("support_outlook").storage_connector
+            token = outlook.get_access_token()
+            inbox = requests.get(
+                f"https://graph.microsoft.com/v1.0/{token.user_path}/mailFolders/inbox",
+                headers={"Authorization": f"Bearer {token.token}"},
+            ).json()
+            ```
+
+        Returns:
+            The token, its expiry, the mailbox it reads and the Graph path of that mailbox.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If Microsoft refuses the stored credentials, for example because the refresh token expired or was revoked.
+        """
+        return self._access_token()
+
+    @public
+    def get_folders(self) -> dict[str, str]:
+        """Get the mail folders of the mailbox that a sync can select, by id.
+
+        Example:
+            ```python
+            outlook = fs.get_data_source("support_outlook").storage_connector
+            folders = outlook.get_folders()  # {'AAMk...': 'Inbox', 'AAMl...': 'Inbox/Projects', ...}
+            inbox = [i for i, path in folders.items() if path == "Inbox"]
+            outlook.sync(folders=inbox, schedule="hourly")
+            ```
+
+        Returns:
+            The folder paths, such as `Inbox/Projects`, keyed by the ids that [`sync`][hsfs.storage_connector.OutlookConnector.sync] takes.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If Microsoft refuses the stored credentials or Graph cannot be reached.
+        """
+        return {
+            folder["id"]: folder.get("path") or folder["name"]
+            for folder in self._storage_connector_api._get_outlook_folders(
+                self._featurestore_id, self._name
+            )
+            or []
+        }
+
+    @public
+    def sync(
+        self,
+        feature_group_name: str | None = None,
+        attachments_path: str | None = None,
+        folders: list[str] | None = None,
+        loading_strategy: Literal[
+            "INCREMENTAL_TIMESTAMP", "FULL_LOAD"
+        ] = "INCREMENTAL_TIMESTAMP",
+        initial_value: str | int | datetime | date | None = None,
+        schedule: Literal["hourly", "daily"] | None = None,
+        job_name: str | None = None,
+        environment: str | None = None,
+        start: bool = True,
+    ) -> Job:
+        """Copy the mailbox into a Delta feature group with a job that runs now, hourly or daily.
+
+        The job upserts one row per email into the feature group, version 1, keyed by `message_id`, the message's immutable Graph id, with `internal_date`, its `receivedDateTime`, as the event time.
+        The feature group has the columns of a Gmail data source's, so the same queries search both.
+        `labels` holds the path of the message's folder, such as `Inbox/Projects`, then its categories; `thread_id` is the conversation id and `snippet` the body preview.
+        The table is partitioned by `day` (`YYYY-MM-DD`) of `internal_date` in UTC.
+        An hourly job adds about one Parquet file to the current day per run, and the first run after a day ends compacts that day's files into files of up to 192 MiB.
+        Attachments are written as files under `<attachments_path>/day=YYYY-MM-DD/<message_id>/<filename>`, and `attachments` lists their full `/Projects/...` paths.
+        Drafts are never copied, and without `folders` neither are Deleted Items, Junk Email and Outbox, nor the folders below them, such as a folder deleted in Outlook.
+
+        `INCREMENTAL_TIMESTAMP` upserts the messages received since the previous run; its first run copies everything from `initial_value` on, upserting every 5000 messages as it goes.
+        A scheduled run that starts while the previous one is still copying does nothing, and fails if that one has made no progress for two hours.
+        A run fails after waiting an hour in total on rate limits.
+        `FULL_LOAD` copies every selected message on every run, then removes the rows and attachments of the messages it did not copy.
+        The copy is an archive: an incremental run does not remove messages deleted from Outlook, nor follow moves between folders.
+
+        Calling `sync` again with the same `job_name` updates the job.
+
+        Example:
+            ```python
+            outlook = fs.get_data_source("support_outlook").storage_connector
+            job = outlook.sync(initial_value="2026-01-01", schedule="hourly")
+            emails = fs.get_feature_group("support_contosos", version=1).read()
+            ```
+
+        Parameters:
+            feature_group_name: Name of the feature group; defaults to the mailbox's local part and first domain label, as in `jane_doe_outlooks` for `jane.doe@outlook.com`.
+            attachments_path: Directory inside a dataset, relative to the project root, that attachments are written to; defaults to `Resources/outlook/<feature group name>`.
+            folders: Folder ids selecting the messages to copy; a message in any of them is copied. [`get_folders`][hsfs.storage_connector.OutlookConnector.get_folders] lists the mailbox's folders. A chosen folder's subfolders are not included unless chosen too.
+            loading_strategy: `INCREMENTAL_TIMESTAMP` or `FULL_LOAD`.
+            initial_value: Earliest receive time to copy, as a date or datetime, a date string, or epoch milliseconds.
+            schedule: `hourly`, at the top of every hour, or `daily`, at 00:00 UTC; `None` leaves the job's schedule as it is.
+            job_name: Name of the job; defaults to `<data source name>_outlook_sync`.
+            environment: Python environment for a new job; defaults to `python-feature-pipeline`, and an update without it keeps the job's environment.
+            start: Whether to start a run now, without waiting for it.
+
+        Returns:
+            The job, which can be run, scheduled and monitored like any other.
+
+        Raises:
+            ValueError: If `loading_strategy` or `schedule` is not one of the values above.
+            hopsworks.client.exceptions.RestAPIError: If the backend refuses the job, for example because another sync job already writes to the feature group or the attachments path.
+        """
+        return self._sync(
+            feature_group_name,
+            attachments_path,
+            None,
+            folders,
+            loading_strategy,
+            initial_value,
+            schedule,
+            job_name,
+            environment,
+            start,
+        )
+
+    @public
+    def list_sync_jobs(self) -> list[MailSyncJobConfig]:
+        """List the sync jobs of this data source.
+
+        Returns:
+            One configuration per sync job.
+        """
+        return self._list_sync_jobs()
+
+    @public
+    def get_sync_job(self, job_name: str) -> MailSyncJobConfig:
+        """Get the configuration of one sync job of this data source.
+
+        Parameters:
+            job_name: Name of the sync job.
+
+        Returns:
+            The job's configuration.
+        """
+        return self._get_sync_job(job_name)
+
+    @public
+    def delete_sync_job(self, job_name: str) -> None:
+        """Delete a sync job of this data source, with its schedule; the copied emails stay.
+
+        Parameters:
+            job_name: Name of the sync job.
+        """
+        self._delete_sync_job(job_name)
+
+
+@public
+class SftpConnector(StorageConnector):
+    """An SFTP server, reached with a password or a private key that stay in Hopsworks.
+
+    The data source backs files ingestion only: [`ingest_files`][hsfs.storage_connector.StorageConnector.ingest_files] copies the files under a prefix of `path` into a dataset.
+    It holds no tables, so it cannot be read through Spark, mounted as a feature group or used as a DLT table source.
+    The credentials are write-only: reading the data source back returns `credentials_set` instead of the password, private key or passphrase, and an update without them keeps the stored ones.
+
+    Example:
+        ```python
+        fs = project.get_feature_store()
+        sftp = SftpConnector(
+            id=None,
+            name="partner_drop",
+            featurestore_id=fs.id,
+            host="sftp.example.com",
+            username="hopsworks",
+            path="/outgoing",
+            private_key=open("id_ed25519").read(),
+        )
+        sftp.save()
+        job = sftp.ingest_files(dataset="partner_drop", prefix="2026/")
+        ```
+    """
+
+    type = StorageConnector.SFTP
+    PASSWORD = "PASSWORD"
+    PRIVATE_KEY = "PRIVATE_KEY"
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int | None,
+        description: str | None = None,
+        host: str | None = None,
+        port: int = 22,
+        username: str | None = None,
+        path: str = "/",
+        auth_type: str | None = None,
+        password: str | None = None,
+        private_key: str | None = None,
+        passphrase: str | None = None,
+        credentials_set: bool | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._host = host
+        self._port = port
+        self._username = username
+        self._path = path
+        if password or private_key or passphrase:
+            self._check_credentials(password, private_key, passphrase)
+        self._password = password
+        self._private_key = private_key
+        self._passphrase = passphrase
+        self._credentials_set = credentials_set
+        self._auth_type = auth_type or self._inferred_auth_type()
+
+    @staticmethod
+    def _check_credentials(
+        password: str | None, private_key: str | None, passphrase: str | None
+    ) -> None:
+        if bool(password) == bool(private_key):
+            raise ValueError("Give exactly one of password and private_key.")
+        if passphrase and not private_key:
+            raise ValueError("A passphrase needs a private_key.")
+
+    def _inferred_auth_type(self) -> str | None:
+        if self._private_key:
+            return self.PRIVATE_KEY
+        if self._password:
+            return self.PASSWORD
+        return None
+
+    @public
+    @property
+    def host(self) -> str | None:
+        """Host name or IP address of the server, without a scheme or a path."""
+        return self._host
+
+    @host.setter
+    def host(self, host: str) -> None:
+        self._host = host
+
+    @public
+    @property
+    def port(self) -> int:
+        """TCP port of the server."""
+        return self._port
+
+    @port.setter
+    def port(self, port: int) -> None:
+        self._port = port
+
+    @public
+    @property
+    def username(self) -> str | None:
+        """User the job logs in as."""
+        return self._username
+
+    @username.setter
+    def username(self, username: str) -> None:
+        self._username = username
+
+    @public
+    @property
+    def path(self) -> str:
+        """Absolute root path on the server; the `prefix` of a files ingestion job is relative to it."""
+        return self._path
+
+    @path.setter
+    def path(self, path: str) -> None:
+        self._path = path
+
+    @public
+    @property
+    def auth_type(self) -> str | None:
+        """`PASSWORD` or `PRIVATE_KEY`; derived from the credential given when not set."""
+        return self._auth_type
+
+    @public
+    @property
+    def credentials_set(self) -> bool | None:
+        """Whether a password or a private key is stored; the credentials themselves are never returned."""
+        return self._credentials_set
+
+    @public
+    def set_credentials(
+        self,
+        password: str | None = None,
+        private_key: str | None = None,
+        passphrase: str | None = None,
+    ) -> None:
+        """Replace the credentials sent by the next [`save`][hsfs.storage_connector.StorageConnector.save] or [`update`][hsfs.storage_connector.StorageConnector.update].
+
+        Exactly one of `password` and `private_key` is given; it also sets `auth_type`.
+
+        Parameters:
+            password: Password of the user, for `PASSWORD` authentication.
+            private_key: PEM-encoded private key of the user, for `PRIVATE_KEY` authentication.
+            passphrase: Passphrase of an encrypted private key.
+
+        Raises:
+            ValueError: If both or neither of `password` and `private_key` are given, or a passphrase comes without a private key.
+        """
+        self._check_credentials(password, private_key, passphrase)
+        self._password = password
+        self._private_key = private_key
+        self._passphrase = passphrase
+        self._auth_type = self._inferred_auth_type()
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "host": self._host,
+                "port": self._port,
+                "username": self._username,
+                "path": self._path,
+                "authType": self._auth_type,
+            }
+        )
+        if self._credentials_set is not None:
+            payload["credentialsSet"] = self._credentials_set
+        for key, value in (
+            ("password", self._password),
+            ("privateKey", self._private_key),
+            ("passphrase", self._passphrase),
+        ):
+            if value:
+                payload[key] = value
+        return payload
+
+    def spark_options(self) -> dict[str, Any]:
+        """Not supported: an SFTP data source is not read through Spark.
+
+        Raises:
+            NotImplementedError: Always.
+        """
+        raise NotImplementedError(
+            "SFTP data sources copy files into a dataset with ingest_files(); they are not read through Spark."
+        )
+
+    @public
+    def prepare_spark(self, path: str | None = None) -> str | None:
+        """Not supported: an SFTP data source is not read through Spark.
+
+        Parameters:
+            path: Not used.
+
+        Raises:
+            NotImplementedError: Always.
+        """
+        raise NotImplementedError(
+            "SFTP data sources copy files into a dataset with ingest_files(); they are not read through Spark."
+        )
+
+    @public
+    def read(
+        self,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str | None = None,
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
+        """Not supported: copy the files into a dataset with `ingest_files()` and read them there.
+
+        Parameters:
+            query: Not used.
+            data_format: Not used.
+            options: Not used.
+            path: Not used.
+            dataframe_type: Not used.
+
+        Raises:
+            NotImplementedError: Always.
+        """
+        raise NotImplementedError(
+            "SFTP data sources copy files into a dataset; use ingest_files() and read the files from the dataset."
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f"SftpConnector(name={self._name!r}, host={self._host!r}, port={self._port!r}, "
+            f"username={self._username!r}, path={self._path!r}, auth_type={self._auth_type!r}, "
+            f"credentials_set={self._credentials_set!r})"
+        )
+
+
+@public
+class GoogleDriveConnector(StorageConnector):
+    """A Google Drive folder, read with a service account whose key is stored in the project.
+
+    The data source backs files ingestion only: [`ingest_files`][hsfs.storage_connector.StorageConnector.ingest_files] copies the files under a prefix of the folder into a dataset.
+    It holds no tables, so it cannot be read through Spark, mounted as a feature group or used as a DLT table source.
+    `key_path` is the HopsFS path of the service account's JSON key, uploaded to the project beforehand as for a GCS data source, e.g. `/Projects/<project>/Resources/key.json`; Hopsworks deletes the key with the data source.
+    The folder, or the shared drive it lives in, must be shared with the service account, whose address is returned as `service_account_email`.
+
+    Example:
+        ```python
+        fs = project.get_feature_store()
+        drive = GoogleDriveConnector(
+            id=None,
+            name="shared_docs",
+            featurestore_id=fs.id,
+            key_path="/Projects/my_project/Resources/drive-sa.json",
+            folder_id="1AbCdEfGhIjKlMnOpQrStUvWxYz",
+            folder_name="Handbook",
+        )
+        drive.save()
+        job = drive.ingest_files(dataset="shared_docs", include=["**/*.pdf"])
+        ```
+    """
+
+    type = StorageConnector.GOOGLE_DRIVE
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int | None,
+        description: str | None = None,
+        key_path: str | None = None,
+        folder_id: str | None = None,
+        folder_name: str | None = None,
+        service_account_email: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._key_path = key_path
+        self._folder_id = folder_id
+        self._folder_name = folder_name
+        self._service_account_email = service_account_email
+
+    @public
+    @property
+    def key_path(self) -> str | None:
+        """HopsFS path of the service account's JSON key, inside the project."""
+        return self._key_path
+
+    @key_path.setter
+    def key_path(self, key_path: str) -> None:
+        self._key_path = key_path
+
+    @public
+    @property
+    def folder_id(self) -> str | None:
+        """ID of the Drive folder the files are read from, the last part of its URL in Drive."""
+        return self._folder_id
+
+    @folder_id.setter
+    def folder_id(self, folder_id: str) -> None:
+        self._folder_id = folder_id
+
+    @public
+    @property
+    def folder_name(self) -> str | None:
+        """Display name of the folder, for people; the folder is found by `folder_id`."""
+        return self._folder_name
+
+    @folder_name.setter
+    def folder_name(self, folder_name: str | None) -> None:
+        self._folder_name = folder_name
+
+    @public
+    @property
+    def service_account_email(self) -> str | None:
+        """Address of the service account the key belongs to, to share the folder with; read from the key by the backend."""
+        return self._service_account_email
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "keyPath": self._key_path,
+                "folderId": self._folder_id,
+                "folderName": self._folder_name,
+            }
+        )
+        if self._service_account_email is not None:
+            payload["serviceAccountEmail"] = self._service_account_email
+        return payload
+
+    def spark_options(self) -> dict[str, Any]:
+        """Not supported: a Google Drive data source is not read through Spark.
+
+        Raises:
+            NotImplementedError: Always.
+        """
+        raise NotImplementedError(
+            "Google Drive data sources copy files into a dataset with ingest_files(); they are not read through Spark."
+        )
+
+    @public
+    def prepare_spark(self, path: str | None = None) -> str | None:
+        """Not supported: a Google Drive data source is not read through Spark.
+
+        Parameters:
+            path: Not used.
+
+        Raises:
+            NotImplementedError: Always.
+        """
+        raise NotImplementedError(
+            "Google Drive data sources copy files into a dataset with ingest_files(); they are not read through Spark."
+        )
+
+    @public
+    def read(
+        self,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str | None = None,
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
+        """Not supported: copy the files into a dataset with `ingest_files()` and read them there.
+
+        Parameters:
+            query: Not used.
+            data_format: Not used.
+            options: Not used.
+            path: Not used.
+            dataframe_type: Not used.
+
+        Raises:
+            NotImplementedError: Always.
+        """
+        raise NotImplementedError(
+            "Google Drive data sources copy files into a dataset; use ingest_files() and read the files from the dataset."
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f"GoogleDriveConnector(name={self._name!r}, folder_id={self._folder_id!r}, "
+            f"folder_name={self._folder_name!r}, key_path={self._key_path!r}, "
+            f"service_account_email={self._service_account_email!r})"
+        )

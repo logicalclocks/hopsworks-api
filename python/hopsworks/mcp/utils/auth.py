@@ -63,6 +63,7 @@ def login(
         project = hopsworks.login(
             host=host,
             port=port,
+            project=project,
             api_key_value=api_key_value,
             api_key_file=api_key_file,
             hostname_verification=hostname_verification,
