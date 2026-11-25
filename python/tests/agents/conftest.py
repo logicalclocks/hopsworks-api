@@ -1,7 +1,7 @@
 """Which of these tests need the `agents` extra installed.
 
 Serving an agent needs FastAPI, and the matrix jobs that pin old optional
-dependencies (`dev-pandas1`) install the package without that extra. The four
+dependencies (`dev-pandas1`) install the package without that extra. The
 modules below import `AgentApp` at module level, so without it they fail to
 collect -- and a collection error aborts the whole run, taking every other test
 in `python/tests` with it.
@@ -13,6 +13,9 @@ the test modules as ruff wants them.
 
 NEEDS_FASTAPI = [
     "test_a2a.py",
+    "test_a2a_card_and_artifacts.py",
+    "test_a2a_durable.py",
+    "test_a2a_push.py",
     "test_app.py",
     "test_evaluation.py",
     "test_identity.py",
