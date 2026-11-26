@@ -148,12 +148,26 @@ class _DatasetSpill:
         folder = f"{self._root}/{task_id}"
         if api.exists(f"{folder}/{digest}"):
             return
-        if not api.exists(folder):
-            api.mkdir(folder)
+        self._mkdirs(api, folder)
         with tempfile.TemporaryDirectory() as scratch:
             local = Path(scratch) / digest
             local.write_bytes(data)
             api.upload(str(local), folder, overwrite=True)
+
+    @staticmethod
+    def _mkdirs(api: Any, folder: str) -> None:
+        """Create a folder and whatever is missing above it under ``Resources``: the dataset API makes one level at a time."""
+        parts = folder.split("/")
+        for depth in range(2, len(parts) + 1):
+            path = "/".join(parts[:depth])
+            if api.exists(path):
+                continue
+            try:
+                api.mkdir(path)
+            except Exception:
+                # another replica, or another part of the same task, made it first
+                if not api.exists(path):
+                    raise
 
     def _read(self, task_id: str, digest: str) -> bytes | None:
         api = self._dataset_api()

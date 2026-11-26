@@ -606,3 +606,43 @@ class TestSignedCard:
         app = self._app(platform)
         run(app._a2a._sign())
         assert platform.requests == []
+
+
+class TestDatasetSpillFolders:
+    def test_every_missing_folder_above_the_task_is_made_top_down(self):
+        from hopsworks_agents.protocol.a2a_artifacts import _DatasetSpill
+
+        made: list[str] = []
+
+        class _Api:
+            def exists(self, path):
+                return path == "Resources" or path in made
+
+            def mkdir(self, path):
+                parent = path.rsplit("/", 1)[0]
+                assert parent == "Resources" or parent in made, path
+                made.append(path)
+
+        _DatasetSpill._mkdirs(_Api(), "Resources/agents/a2a/5/task-1")
+        assert made == [
+            "Resources/agents",
+            "Resources/agents/a2a",
+            "Resources/agents/a2a/5",
+            "Resources/agents/a2a/5/task-1",
+        ]
+
+    def test_a_folder_another_writer_made_first_is_not_an_error(self):
+        from hopsworks_agents.protocol.a2a_artifacts import _DatasetSpill
+
+        made = {"Resources", "Resources/agents"}
+
+        class _Api:
+            def exists(self, path):
+                return path in made
+
+            def mkdir(self, path):
+                made.add(path)  # the other writer won the race
+                raise RuntimeError("already exists")
+
+        _DatasetSpill._mkdirs(_Api(), "Resources/agents/a2a")
+        assert "Resources/agents/a2a" in made
