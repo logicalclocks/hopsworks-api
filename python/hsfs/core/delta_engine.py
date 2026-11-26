@@ -375,22 +375,26 @@ class DeltaEngine:
     _DELTA_COMMIT_INFO_MAX_LINES = 10000
     # commit files read from the newest before the full scan takes over
     _DELTA_LOG_TAIL_MAX_VERSIONS = 256
+    # The most two writers' clocks are taken to disagree by.
+    # Below the newest commit at or before the bound, the search for the commit recorded at the bound goes on this far.
+    _DELTA_CLOCK_SKEW_MS = 5 * 60 * 1000
 
     def _delta_version_at(self, location: str, end_ts: int) -> int | None:
-        """Highest Delta version committed at or before `end_ts`, read from the log tail.
+        """The Delta version recorded at `end_ts`, or else the newest one committed before it, read from the log tail.
 
         The backend records a commit's time from its writer.
         delta-rs records the commitInfo timestamp, and Spark the commit file's modification time that `DeltaTable.history()` reports.
         The modification time is tens to hundreds of milliseconds later than the commitInfo timestamp.
         Delta resolves timestampAsOf against the modification times, so a commitInfo time resolves to the previous version, or is rejected before the first commit.
-        This resolves against the commitInfo timestamps, so either recorded time of a version resolves to that version.
+        A version whose commitInfo timestamp or commit file time equals `end_ts` is returned, so either recorded time of a version resolves to that version.
         Statistics runs resolve the latest commit, so the answer is almost always in the newest commit file.
         The log directory is listed once and the commit files are read one at a time from the newest, at most `_DELTA_LOG_TAIL_MAX_VERSIONS` of them.
         Reading every commit file with a Spark job, as `_get_delta_commits` does, grows with the age of the table.
+        On a log whose commitInfo timestamps are not monotonic (writers with skewed clocks), a newer version can be stamped before an older one.
+        The walk therefore goes on past the newest version stamped before `end_ts`, down to versions stamped `_DELTA_CLOCK_SKEW_MS` before it, looking for the one recorded at `end_ts`.
+        Without one, that newest version is returned.
+        For a bound that is not a recorded commit time, that version can include an older commit stamped after the bound, where the full scan stops at the first version past it; this needs commits from different clocks closer together than the clocks disagree, and is accepted.
         When `end_ts` predates every commit the earliest version is returned, as the full scan does.
-        The full scan instead stops at the first version past the bound.
-        On a log whose commitInfo timestamps are not monotonic (writers with skewed clocks) it can pin an older version than the one that recorded the bound; the two agree on a monotonic log.
-        On such a log, an `as_of` read at a time that is not a recorded commit time can include a commit stamped after that time, where the full scan leaves out commits made before it; this needs commits from different clocks closer together than the clocks disagree, and is accepted.
         Returns None when the log cannot be read this way, and the caller falls back to the full scan.
         That includes Spark Connect sessions, a bound further back than the versions read, and a commit file without a commitInfo timestamp.
         """
@@ -403,26 +407,28 @@ class DeltaEngine:
                 location.rstrip("/") + "/_delta_log"
             )
             fs = log_path.getFileSystem(jsc.hadoopConfiguration())
-            versions = sorted(
-                (
-                    int(match.group(1))
-                    for status in fs.listStatus(log_path)
-                    if (
-                        match := self._DELTA_COMMIT_FILE.match(
-                            status.getPath().getName()
-                        )
-                    )
-                ),
-                reverse=True,
-            )
+            # the listing carries each commit file's modification time
+            file_times = {
+                int(match.group(1)): int(status.getModificationTime())
+                for status in fs.listStatus(log_path)
+                if (match := self._DELTA_COMMIT_FILE.match(status.getPath().getName()))
+            }
+            versions = sorted(file_times, reverse=True)
             if not versions:
                 return None
+            before = None
             for version in versions[: self._DELTA_LOG_TAIL_MAX_VERSIONS]:
                 commit_ts = self._delta_commit_timestamp(jvm, fs, log_path, version)
                 if commit_ts is None:
                     return None
-                if commit_ts <= end_ts:
+                if end_ts in (commit_ts, file_times[version]):
                     return version
+                if before is None and commit_ts < end_ts:
+                    before = version
+                if commit_ts < end_ts - self._DELTA_CLOCK_SKEW_MS:
+                    return before
+            if before is not None:
+                return before
             if len(versions) > self._DELTA_LOG_TAIL_MAX_VERSIONS:
                 return None
             return versions[-1]

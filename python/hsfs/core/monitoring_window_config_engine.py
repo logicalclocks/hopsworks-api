@@ -420,23 +420,33 @@ class MonitoringWindowConfigEngine:
                 else "descriptive"
             )
             if event_time_feature is not None:
-                registered_stats = self._statistics_engine._get_by_time_window(
-                    metadata_instance=entity,
-                    start_event_time=start_time,
-                    end_event_time=end_time,
-                    event_time=event_time_feature.name,
-                    feature_names=feature_names,
-                    row_percentage=monitoring_window_config.row_percentage,
-                    with_content=with_content,
-                )
+                window = {
+                    "start_event_time": start_time,
+                    "end_event_time": end_time,
+                    "event_time": event_time_feature.name,
+                }
             else:
+                window = {"start_commit_time": start_time, "end_commit_time": end_time}
+            registered_stats = self._statistics_engine._get_by_time_window(
+                metadata_instance=entity,
+                feature_names=feature_names,
+                row_percentage=monitoring_window_config.row_percentage,
+                with_content=with_content,
+                **window,
+            )
+            if (
+                with_content == "descriptive"
+                and registered_stats is not None
+                and not registered_stats.feature_descriptive_statistics
+            ):
+                # A backend older than the descriptive read returns feature statistics only with their content.
+                # Without them every feature would count as missing and the window would be profiled again.
                 registered_stats = self._statistics_engine._get_by_time_window(
                     metadata_instance=entity,
-                    start_commit_time=start_time,
-                    end_commit_time=end_time,
                     feature_names=feature_names,
                     row_percentage=monitoring_window_config.row_percentage,
-                    with_content=with_content,
+                    with_content="content",
+                    **window,
                 )
 
         # The lookup matches a row that holds any of the requested features, and a row

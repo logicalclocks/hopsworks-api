@@ -791,6 +791,44 @@ class TestMonitoringWindowConfigEngine:
         fetch_mock.assert_not_called()
         stats_engine_mock._compute_and_save_monitoring_statistics.assert_not_called()
 
+    def test_a_descriptive_lookup_without_feature_statistics_reads_them_with_their_content(
+        self, mocker
+    ):
+        """A backend older than the descriptive read returns a row's feature statistics only with their content."""
+        fg = _make_hudi_fg("DELTA")
+        engine = mwce.MonitoringWindowConfigEngine()
+        mocker.patch.object(engine, "_init_statistics_engine")
+        fetch_mock = mocker.patch.object(
+            engine, "_fetch_entity_data_in_monitoring_window"
+        )
+        stats_engine_mock = MagicMock()
+        row_without_features = MagicMock()
+        row_without_features.feature_descriptive_statistics = None
+        row_with_features = MagicMock()
+        row_with_features.feature_descriptive_statistics = [
+            FeatureDescriptiveStatistics(feature_name="amount", count=10),
+        ]
+        stats_engine_mock._get_by_time_window.side_effect = [
+            row_without_features,
+            row_with_features,
+        ]
+        engine._statistics_engine = stats_engine_mock
+
+        result = engine._run_single_window_monitoring(
+            entity=fg,
+            monitoring_window_config=_make_rolling_window_config(),
+            feature_names=["amount"],
+        )
+
+        assert [fds.feature_name for fds in result] == ["amount"]
+        lookups = [
+            call.kwargs["with_content"]
+            for call in stats_engine_mock._get_by_time_window.call_args_list
+        ]
+        assert lookups == ["descriptive", "content"]
+        fetch_mock.assert_not_called()
+        stats_engine_mock._compute_and_save_monitoring_statistics.assert_not_called()
+
     def test_run_single_window_monitoring_skips_features_the_profiler_cannot_profile(
         self, mocker
     ):

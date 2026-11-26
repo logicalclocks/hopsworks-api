@@ -3029,14 +3029,26 @@ class TestDeltaVersionAt:
         mocker.patch.object(DeltaEngine, "_setup_delta_rs")
 
     @staticmethod
-    def _engine_with_log(mocker, commit_timestamps_by_version, extra_files=()):
+    def _engine_with_log(
+        mocker, commit_timestamps_by_version, extra_files=(), file_times_by_version=None
+    ):
         # The JVM gateway is emulated with mocks: a log listing plus one reader per file.
+        # A commit file is written after its commitInfo timestamp, so its time defaults to a little later.
+        file_times = {
+            version: (timestamp or 0) + 7
+            for version, timestamp in commit_timestamps_by_version.items()
+        }
+        file_times.update(file_times_by_version or {})
         files = [f"{version:020d}.json" for version in commit_timestamps_by_version]
         files.extend(extra_files)
         statuses = []
         for name in files:
             status = mocker.Mock()
             status.getPath.return_value.getName.return_value = name
+            version = name.split(".")[0]
+            status.getModificationTime.return_value = (
+                file_times[int(version)] if name == f"{version}.json" else 0
+            )
             statuses.append(status)
         fs = mocker.Mock()
         fs.listStatus.return_value = statuses
@@ -3092,6 +3104,37 @@ class TestDeltaVersionAt:
         engine, opened = self._engine_with_log(mocker, {0: 1000, 1: 2000, 2: 3000})
 
         assert engine._delta_version_at("hdfs:///fg", 2500) == 1
+        # within the clock skew of the bound an older version may still be the one recorded at it
+        assert opened == [
+            "00000000000000000002.json",
+            "00000000000000000001.json",
+            "00000000000000000000.json",
+        ]
+
+    def test_the_walk_stops_a_clock_skew_below_the_bound(self, mocker):
+        hour = 3600 * 1000
+        engine, opened = self._engine_with_log(
+            mocker, {0: 1 * hour, 1: 2 * hour, 2: 3 * hour}
+        )
+
+        assert engine._delta_version_at("hdfs:///fg", 3 * hour - 1) == 1
+        assert opened == ["00000000000000000002.json", "00000000000000000001.json"]
+
+    def test_a_recorded_commit_time_below_a_newer_backdated_version_resolves_to_its_version(
+        self, mocker
+    ):
+        # version 3 was written by a writer with a clock behind version 2's, so it is stamped before it
+        engine, _ = self._engine_with_log(mocker, {0: 900, 1: 1000, 2: 1200, 3: 950})
+
+        assert engine._delta_version_at("hdfs:///fg", 1000) == 1
+
+    def test_a_commit_file_time_resolves_to_its_version(self, mocker):
+        # a Spark writer records the commit file's time, after the commitInfo timestamp
+        engine, opened = self._engine_with_log(
+            mocker, {0: 1000, 1: 2000, 2: 3000}, file_times_by_version={1: 2100}
+        )
+
+        assert engine._delta_version_at("hdfs:///fg", 2100) == 1
         assert opened == ["00000000000000000002.json", "00000000000000000001.json"]
 
     def test_a_skewed_older_commit_does_not_hide_the_version_that_recorded_the_bound(
@@ -3120,7 +3163,7 @@ class TestDeltaVersionAt:
         )
 
         assert engine._delta_version_at("hdfs:///fg", 5000) == 1
-        assert opened == ["00000000000000000001.json"]
+        assert opened == ["00000000000000000001.json", "00000000000000000000.json"]
 
     def test_a_commit_file_without_commit_info_leaves_the_version_to_the_full_scan(
         self, mocker
