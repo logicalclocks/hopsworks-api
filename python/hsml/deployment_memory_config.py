@@ -188,6 +188,9 @@ class DeploymentMemoryConfig:
         )
         if not config:
             return {}
+        # the fields are popped as they are read: from a copy, so a policy the
+        # caller passes to several deployments reaches every one of them
+        config = dict(config)
         return {
             "enabled": util._extract_field_from_json(config, "enabled"),
             "summarize": util._extract_field_from_json(config, "summarize"),
