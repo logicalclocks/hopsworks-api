@@ -140,9 +140,10 @@ class OnlineIngestionFailure:
         """Get the category of the failure.
 
         One of `"ROW_CREATION"`, `"METADATA"`, `"FEATURE_GROUP_DELETED"`, `"DESERIALIZATION"`,
-        `"USER_DATA"` or `"COMMIT"`.
+        `"USER_DATA"`, `"COMMIT"` or `"QUOTA_EXCEEDED"`.
         `"USER_DATA"` means the database refused the row's values, most often because a string or
         binary value is longer than the online column allows.
+        `"QUOTA_EXCEEDED"` means the project's online storage quota is used up; the record goes in once space is freed or the quota raised, and it is inserted again.
         """
         return self._failure_type
 

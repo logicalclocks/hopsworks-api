@@ -178,7 +178,9 @@ class OnlineIngestion:
                 - "period" (int): Polling period in seconds (default: 1).
 
         Raises:
-            Warning: If the timeout is exceeded before completion.
+            Warning: If the timeout is exceeded before completion, or if the ingestion completed with failed rows.
+                [`get_failures`][hsfs.core.online_ingestion.OnlineIngestion.get_failures] lists which records failed and why.
+                Rows refused because the project's online storage memory quota is used up are not counted in the results, so such an ingestion does not complete and its wait ends at the timeout.
         """
         if options is None:
             options = {}
@@ -215,12 +217,25 @@ class OnlineIngestion:
 
                 # Check if the online ingestion is complete
                 if self.num_entries is not None and rows_processed >= self.num_entries:
+                    failed_rows = sum(
+                        result.rows
+                        for result in self.results
+                        if result.status == "FAILED"
+                    )
+                    if failed_rows:
+                        warnings.warn(
+                            f"Online ingestion {self.id} completed with {failed_rows} failed rows; "
+                            "get_failures() lists which records failed and why.",
+                            stacklevel=1,
+                        )
                     break
 
                 # Check if the timeout has been reached (if timeout is 0 we will wait indefinitely)
                 if timeout_delta != timedelta(0) and datetime.now() >= timeout_time:
                     warnings.warn(
-                        f"Timeout of {timeout_delta} was exceeded while waiting for online ingestion completion.",
+                        f"Timeout of {timeout_delta} was exceeded while waiting for online ingestion completion. "
+                        "Records the online feature store refused, for example over the project's storage quota, "
+                        "are listed by get_failures().",
                         stacklevel=1,
                     )
                     break
@@ -287,11 +302,9 @@ class OnlineIngestion:
     ) -> list[online_ingestion_failure.OnlineIngestionFailure]:
         """Get the records of this ingestion that never reached the online feature store.
 
-        [`results`][hsfs.core.online_ingestion.OnlineIngestion.results] reports how many rows
-        failed; this reports which ones and why.
-        Each failure identifies a Kafka record by topic, partition and offset, and carries the
-        reason it was rejected - a value too long for its online column, a payload that does not
-        match the schema, or a row the database refused.
+        [`results`][hsfs.core.online_ingestion.OnlineIngestion.results] reports how many rows failed; this reports which ones and why.
+        Each failure identifies a Kafka record by topic, partition and offset, and carries the reason it was rejected: a value too long for its online column, a payload that does not match the schema, a row the database refused, or a write refused because the project's online storage quota is used up.
+        Rows refused over the project's online storage memory quota are listed here but not counted in `results`, since the quota also refuses the count.
 
         Use it after an insert to find the rows that need correcting:
 

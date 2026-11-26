@@ -285,3 +285,46 @@ class TestOnlineIngestion:
         assert messages == []
         assert ended
         assert sleep.call_count == 1
+
+    def test_wait_for_completion_with_failed_rows_warns(self, mocker):
+        # Arrange
+        self._patch_wait(
+            mocker,
+            results_after_refresh=[
+                OnlineIngestionResult(online_ingestion_id=5, status="UPSERTED", rows=7),
+                OnlineIngestionResult(online_ingestion_id=5, status="FAILED", rows=3),
+            ],
+        )
+        ingestion = online_ingestion.OnlineIngestion(id=5, num_entries=10)
+
+        # Act
+        messages, ended = self._wait(ingestion, {"timeout": 0})
+
+        # Assert
+        assert messages == [
+            "Online ingestion 5 completed with 3 failed rows; "
+            "get_failures() lists which records failed and why."
+        ]
+        assert ended
+
+    def test_wait_for_completion_timeout_with_uncounted_rows_points_at_get_failures(
+        self, mocker
+    ):
+        # Arrange - the 6 rows refused over the memory quota were never counted
+        self._patch_wait(mocker)
+        ingestion = online_ingestion.OnlineIngestion(
+            id=5,
+            num_entries=10,
+            results=[
+                OnlineIngestionResult(online_ingestion_id=5, status="UPSERTED", rows=4)
+            ],
+        )
+
+        # Act
+        messages, ended = self._wait(ingestion, {"timeout": 30})
+
+        # Assert
+        assert len(messages) == 1
+        assert messages[0].startswith("Timeout of 0:00:30 was exceeded")
+        assert "get_failures()" in messages[0]
+        assert ended
