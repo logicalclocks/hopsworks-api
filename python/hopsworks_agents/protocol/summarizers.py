@@ -29,7 +29,7 @@ from .. import _claude_code
 
 log = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "claude-haiku-4-5"
+DEFAULT_MODEL = "claude-haiku-5-5"
 #: The model :func:`claude_agents_summarizer` runs on: an alias the bundled Claude Code
 #: resolves to its current Haiku, rather than an id a build may predate.
 CLAUDE_CODE_DEFAULT_MODEL = "haiku"
@@ -124,7 +124,7 @@ def anthropic_summarizer(
     the same secret the agent already uses for its own model, instead of
     provisioning a second one for summarization.
 
-    Defaults to Haiku 4.5: this is a bounded rewrite of text the agent already
+    Defaults to Haiku 5.5: this is a bounded rewrite of text the agent already
     produced, and the cost lands on every Nth turn of every conversation. Pass
     ``model=`` for anything else. Not on Claude? See :func:`openai_summarizer`.
 
@@ -228,7 +228,7 @@ def claude_agents_summarizer(
     return summarize
 
 
-OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
+OPENAI_DEFAULT_MODEL = "gpt-6-luna"
 
 
 @public
@@ -261,7 +261,7 @@ def openai_summarizer(
     reuse the secret its agent already holds. ``OPENAI_BASE_URL`` is honoured
     by the SDK itself when ``base_url`` is not given.
 
-    Defaults to gpt-4o-mini for the same reason the Claude one defaults to
+    Defaults to gpt-6-luna for the same reason the Claude one defaults to
     Haiku: a bounded rewrite that lands on every Nth turn of every conversation.
     """
     try:
@@ -288,16 +288,41 @@ def openai_summarizer(
             client = openai.AsyncOpenAI(**kwargs)
 
         return await _chat_completion(
-            client, model, max_tokens, system_prompt, previous, turns
+            client,
+            model,
+            max_tokens,
+            system_prompt,
+            previous,
+            turns,
+            token_limit=_openai_token_limit(model),
         )
 
     return summarize
 
 
-async def _chat_completion(client, model, max_tokens, system_prompt, previous, turns):
+def _openai_token_limit(model: str) -> str:
+    """The token-limit parameter an OpenAI model accepts.
+
+    The reasoning models (the o-series and GPT-5 onwards) reject ``max_tokens`` with a 400 and take ``max_completion_tokens`` instead.
+    """
+    name = model.strip().lower().rsplit("/", 1)[-1]
+    if name.startswith(("o1", "o3", "o4", "gpt-5", "gpt-6")):
+        return "max_completion_tokens"
+    return "max_tokens"
+
+
+async def _chat_completion(
+    client,
+    model,
+    max_tokens,
+    system_prompt,
+    previous,
+    turns,
+    token_limit="max_tokens",
+):
     response = await client.chat.completions.create(
         model=model,
-        max_tokens=max_tokens,
+        **{token_limit: max_tokens},
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": _user_message(previous, turns)},

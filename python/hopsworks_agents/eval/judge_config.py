@@ -58,7 +58,7 @@ if TYPE_CHECKING:
 # contact with time — model names change faster than this file will. The UI asks
 # each provider what it currently offers rather than trusting these; they are
 # what the runner falls back to when a spec names no model at all.
-# Verified against provider documentation on 31 July 2026.
+# Verified against provider documentation on 27 November 2026.
 log = logging.getLogger(__name__)
 
 PROVIDERS: dict[str, dict[str, str]] = {
@@ -67,14 +67,14 @@ PROVIDERS: dict[str, dict[str, str]] = {
         "adapter": "openai",
         "env_var": "OPENAI_API_KEY",
         "base_url": "",
-        "default_model": "gpt-5.6-terra",
+        "default_model": "gpt-6.1-terra",
     },
     "anthropic": {
         "label": "Anthropic",
         "adapter": "anthropic",
         "env_var": "ANTHROPIC_API_KEY",
         "base_url": "",
-        "default_model": "claude-sonnet-5",
+        "default_model": "claude-sonnet-5-5",
     },
     "google": {
         "label": "Google Gemini",
@@ -82,7 +82,7 @@ PROVIDERS: dict[str, dict[str, str]] = {
         "env_var": "GEMINI_API_KEY",
         # Gemini's OpenAI-compatible surface, so it needs no separate client
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
-        "default_model": "gemini-3.6-flash",
+        "default_model": "gemini-3.8-flash",
     },
     "mistral": {
         "label": "Mistral AI",
@@ -658,7 +658,7 @@ def _completer_for(config: JudgeConfig, api_key: str) -> Callable[[str], str]:
 
             def call(**extra: Any) -> str:
                 response = client.chat.completions.create(
-                    model=model or "gpt-5.6-terra",
+                    model=model or "gpt-6.1-terra",
                     messages=[{"role": "user", "content": prompt}],
                     **extra,
                 )
@@ -685,7 +685,7 @@ def _completer_for(config: JudgeConfig, api_key: str) -> Callable[[str], str]:
                 "honour, so it cannot run on the Claude Code login; set "
                 f"{registry['env_var']} for it, or drop the route"
             )
-        chosen = model or "claude-sonnet-5"
+        chosen = model or "claude-sonnet-5-5"
         effort = config.reasoning_effort
 
         def complete_claude_code(prompt: str) -> str:
@@ -704,7 +704,7 @@ def _completer_for(config: JudgeConfig, api_key: str) -> Callable[[str], str]:
 
         def call(**extra: Any) -> str:
             response = client.messages.create(
-                model=model or "claude-sonnet-5",
+                model=model or "claude-sonnet-5-5",
                 messages=[{"role": "user", "content": prompt}],
                 **extra,
             )
@@ -1227,7 +1227,7 @@ def _omits_temperature(provider: str, model: str) -> bool:
 
 
 def _is_openai_reasoning_model(model: str) -> bool:
-    return _has_model_prefix(model, "o1", "o3", "o4", "gpt-5")
+    return _has_model_prefix(model, "o1", "o3", "o4", "gpt-5", "gpt-6")
 
 
 def _is_claude_fixed_sampling_model(model: str) -> bool:

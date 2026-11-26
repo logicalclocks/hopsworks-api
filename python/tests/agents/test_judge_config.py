@@ -477,6 +477,18 @@ class TestProviders:
                 entry["base_url"] = "https://x/v1"
             assert _parse_judge_config(entry).provider == key
 
+    def test_the_major_providers_default_to_their_current_models(self):
+        # the front offers the same defaults, so a judge saved there and one
+        # parsed here name the same model
+        assert PROVIDERS["anthropic"]["default_model"] == "claude-sonnet-5-5"
+        assert PROVIDERS["openai"]["default_model"] == "gpt-6.1-terra"
+        assert PROVIDERS["google"]["default_model"] == "gemini-3.8-flash"
+
+    def test_the_pairwise_judge_defaults_to_the_anthropic_default(self):
+        from hopsworks_agents.eval.judges import DEFAULT_MODEL
+
+        assert PROVIDERS["anthropic"]["default_model"] == DEFAULT_MODEL
+
 
 class TestWhereAJudgesKeyComesFrom:
     """Every provider's own SDK reads a conventional variable, so a key already.
@@ -598,12 +610,17 @@ class TestProviderRequestShape:
     @pytest.mark.parametrize(
         ("provider", "model"),
         [
+            ("anthropic", "claude-sonnet-5-5"),
+            ("anthropic", "claude-haiku-5-5"),
             ("anthropic", "claude-sonnet-5"),
             ("anthropic", "claude-opus-5"),
             ("anthropic", "claude-opus-4-8"),
             ("anthropic", "claude-mythos-preview"),
+            ("openai", "gpt-6.1-terra"),
+            ("openai", "gpt-6-luna"),
             ("openai", "gpt-5.6-terra"),
             ("custom", "openrouter/openai/o3-mini"),
+            ("google", "gemini-3.8-flash"),
             ("google", "gemini-3.6-flash"),
             ("google", "gemini-3.5-flash-lite"),
             ("deepseek", "deepseek-v4-pro"),
@@ -650,7 +667,7 @@ class TestProviderRequestShape:
 
     @pytest.mark.parametrize(
         "model",
-        ["gpt-5.6-terra", "openrouter/openai/o4-mini", "o3-mini"],
+        ["gpt-6.1-terra", "gpt-5.6-terra", "openrouter/openai/o4-mini", "o3-mini"],
     )
     def test_openai_reasoning_chat_uses_completion_token_limit(self, model):
         from hopsworks_agents.eval.judge_config import _ChatCompletionParameters
@@ -690,6 +707,37 @@ class TestProviderRequestShape:
         parameters = _AnthropicMessagesParameters("claude-sonnet-5", 0.0, 1500, "high")
         assert parameters._send(call) == "graded"
         assert seen == [{"max_tokens": 1500, "output_config": {"effort": "high"}}]
+
+    @pytest.mark.parametrize("effort", ["low", "medium", "high", "xhigh", "max"])
+    def test_the_default_anthropic_judge_takes_every_effort_level(self, effort):
+        from hopsworks_agents.eval.judge_config import _AnthropicMessagesParameters
+
+        seen = []
+
+        def call(**extra):
+            seen.append(extra)
+            return "graded"
+
+        parameters = _AnthropicMessagesParameters(
+            "claude-sonnet-5-5", 0.0, 1500, effort
+        )
+        assert parameters._send(call) == "graded"
+        assert seen == [{"max_tokens": 1500, "output_config": {"effort": effort}}]
+
+    def test_the_default_openai_judge_sends_reasoning_effort(self):
+        from hopsworks_agents.eval.judge_config import _ChatCompletionParameters
+
+        seen = []
+
+        def call(**extra):
+            seen.append(extra)
+            return "graded"
+
+        parameters = _ChatCompletionParameters(
+            "openai", "gpt-6.1-terra", 0.0, 1500, "xhigh"
+        )
+        assert parameters._send(call) == "graded"
+        assert seen == [{"max_completion_tokens": 1500, "reasoning_effort": "xhigh"}]
 
     def test_anthropic_omits_effort_for_models_that_do_not_support_it(self):
         from hopsworks_agents.eval.judge_config import _AnthropicMessagesParameters

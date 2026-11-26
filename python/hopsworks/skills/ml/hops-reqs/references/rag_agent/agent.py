@@ -171,8 +171,7 @@ class Agent:
         return ChatOpenAI(
             base_url=url,
             api_key=key,
-            model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
-            temperature=0,
+            model=os.environ.get("LLM_MODEL", "gpt-6-luna"),
         )
 
     def _graph(self):

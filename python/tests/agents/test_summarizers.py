@@ -52,7 +52,10 @@ class TestOpenAISummarizer:
         assert asyncio.run(summarize("older summary", TURNS)) == "folded"
         assert calls["client"] == {"api_key": "sk-env"}
         create = calls["create"]
-        assert create["model"] == "gpt-4o-mini"
+        assert create["model"] == "gpt-6-luna"
+        # a reasoning model rejects max_tokens with a 400
+        assert create["max_completion_tokens"] == 1024
+        assert "max_tokens" not in create
         assert create["messages"][0] == {"role": "system", "content": SYSTEM_PROMPT}
         user = create["messages"][1]["content"]
         assert "older summary" in user and "user: I live in Oslo" in user
@@ -82,6 +85,8 @@ class TestOpenAISummarizer:
             "default_headers": {"X-Team": "ml"},
         }
         assert calls["create"]["model"] == "llama-3.1-8b"
+        assert calls["create"]["max_tokens"] == 1024
+        assert "max_completion_tokens" not in calls["create"]
 
     def test_without_a_key_the_sdk_resolves_it(self, monkeypatch):
         from hopsworks_agents.protocol.summarizers import openai_summarizer
@@ -447,6 +452,39 @@ class TestAnthropicSummarizerOnAClaudeCodeLogin:
         assert asyncio.run(anthropic_summarizer()(None, TURNS)) == "api"
         assert built["api_key"] == "sk-env"
         assert "prompt" not in calls
+
+
+def test_the_anthropic_request_suits_the_default_haiku(monkeypatch):
+    # Haiku 5.5 answers sampling parameters, extended thinking and a prefilled
+    # assistant turn with a 400, so the request carries none of them
+    from hopsworks_agents.protocol.summarizers import (
+        SYSTEM_PROMPT,
+        anthropic_summarizer,
+    )
+
+    sent = {}
+
+    class AsyncAnthropic:
+        def __init__(self, **kwargs):
+            self.messages = types.SimpleNamespace(create=self._create)
+
+        async def _create(self, **kwargs):
+            sent.update(kwargs)
+            return types.SimpleNamespace(
+                content=[types.SimpleNamespace(type="text", text=" folded ")]
+            )
+
+    module = types.ModuleType("anthropic")
+    module.AsyncAnthropic = AsyncAnthropic
+    monkeypatch.setitem(sys.modules, "anthropic", module)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-env")
+
+    assert asyncio.run(anthropic_summarizer()(None, TURNS)) == "folded"
+    assert sent["model"] == "claude-haiku-5-5"
+    assert sent["max_tokens"] == 1024
+    assert sent["system"] == SYSTEM_PROMPT
+    assert [m["role"] for m in sent["messages"]] == ["user"]
+    assert not {"temperature", "top_p", "top_k", "thinking"} & set(sent)
 
 
 def test_the_claude_code_summarizer_is_exported():
