@@ -295,6 +295,7 @@ def openai_summarizer(
             previous,
             turns,
             token_limit=_openai_token_limit(model),
+            reasoning_effort=_openai_reasoning_effort(model),
         )
 
     return summarize
@@ -311,6 +312,17 @@ def _openai_token_limit(model: str) -> str:
     return "max_tokens"
 
 
+def _openai_reasoning_effort(model: str) -> str | None:
+    """The reasoning effort to ask of an OpenAI model, or None to leave its default.
+
+    GPT-6 models reason at ``medium`` by default, and their reasoning counts against the
+    completion budget, so a summary could run out of tokens before it is written. A
+    rewrite needs no reasoning, and GPT-6 accepts ``none``. Earlier models keep their default.
+    """
+    name = model.strip().lower().rsplit("/", 1)[-1]
+    return "none" if name.startswith("gpt-6") else None
+
+
 async def _chat_completion(
     client,
     model,
@@ -319,10 +331,13 @@ async def _chat_completion(
     previous,
     turns,
     token_limit="max_tokens",
+    reasoning_effort=None,
 ):
+    extra = {} if reasoning_effort is None else {"reasoning_effort": reasoning_effort}
     response = await client.chat.completions.create(
         model=model,
         **{token_limit: max_tokens},
+        **extra,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": _user_message(previous, turns)},

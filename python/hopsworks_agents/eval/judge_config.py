@@ -58,7 +58,8 @@ if TYPE_CHECKING:
 # contact with time — model names change faster than this file will. The UI asks
 # each provider what it currently offers rather than trusting these; they are
 # what the runner falls back to when a spec names no model at all.
-# Verified against provider documentation on 27 November 2026.
+# Verified against provider documentation on 31 July 2026; the OpenAI, Anthropic and Google defaults on
+# 27 November 2026.
 log = logging.getLogger(__name__)
 
 PROVIDERS: dict[str, dict[str, str]] = {

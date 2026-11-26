@@ -56,6 +56,8 @@ class TestOpenAISummarizer:
         # a reasoning model rejects max_tokens with a 400
         assert create["max_completion_tokens"] == 1024
         assert "max_tokens" not in create
+        # its reasoning would spend the budget a summary needs
+        assert create["reasoning_effort"] == "none"
         assert create["messages"][0] == {"role": "system", "content": SYSTEM_PROMPT}
         user = create["messages"][1]["content"]
         assert "older summary" in user and "user: I live in Oslo" in user
@@ -87,6 +89,7 @@ class TestOpenAISummarizer:
         assert calls["create"]["model"] == "llama-3.1-8b"
         assert calls["create"]["max_tokens"] == 1024
         assert "max_completion_tokens" not in calls["create"]
+        assert "reasoning_effort" not in calls["create"]
 
     def test_without_a_key_the_sdk_resolves_it(self, monkeypatch):
         from hopsworks_agents.protocol.summarizers import openai_summarizer
