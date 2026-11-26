@@ -1,0 +1,9 @@
+# The day spine that cumulative metrics and the year-over-year offsets join to: the feature group
+# time_spine_day, written once with `hops semantic time-spine create --start 2020-01-01 --end 2030-12-31`.
+models:
+  - name: time_spine_day
+    time_spine:
+      standard_granularity_column: date_day
+    columns:
+      - name: date_day
+        granularity: day

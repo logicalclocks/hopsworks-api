@@ -393,6 +393,7 @@ class Model:
         knative_mode: bool | None = None,
         tracing: DeploymentTracingConfig | dict | None = None,
         triton_image_tag: str | None = None,
+        loading_strategy: str | None = None,
     ) -> deployment.Deployment:
         """Deploy the model.
 
@@ -492,6 +493,8 @@ class Model:
                 On an update, `None` means "unchanged": the deployment keeps its current tag, so moving it to the cluster default takes naming that tag explicitly.
                 A deployment also keeps its tag after an admin stops advertising it.
                 Ignored for non-Triton model servers.
+            loading_strategy: How the model server reads the model files.
+                See [`Predictor.loading_strategy`][hsml.predictor.Predictor.loading_strategy] for supported values, requirements, and defaults.
 
         Returns:
             The deployment metadata object of a new or existing deployment.
@@ -530,6 +533,7 @@ class Model:
             knative_mode=knative_mode,
             tracing=tracing,
             triton_image_tag=triton_image_tag,
+            loading_strategy=loading_strategy,
         )
 
         return predictor.deploy()

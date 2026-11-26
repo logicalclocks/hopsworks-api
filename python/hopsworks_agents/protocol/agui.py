@@ -59,6 +59,8 @@ from .models import (
 
 HOPSWORKS = "hopsworks"
 MEDIA_EVENT = "hopsworks.media"
+# an artifact chunk the handler emitted, which AG-UI has no event for
+ARTIFACT_EVENT = "hopsworks.artifact"
 
 # Roles an earlier turn keeps when it is handed to a framework as history.
 _HISTORY_ROLES = {"user": "user", "assistant": "assistant", "system": "system"}
@@ -278,6 +280,11 @@ class RunStream:
             return out + self._tool_call(payload)
         return out + self._step(payload)
 
+    def _artifact(self, payload: dict[str, Any]) -> str:
+        """An artifact chunk, as a custom event: AG-UI messages carry text only."""
+        value = {k: v for k, v in payload.items() if k != "kind"}
+        return self._encode(CustomEvent(name=ARTIFACT_EVENT, value=value))
+
     def _tool_call(self, payload: dict[str, Any]) -> str:
         call_id = str(payload.get("id") or new_message_id())
         name = str(payload.get("name") or "tool")
@@ -392,6 +399,19 @@ class RunStream:
                 out += self._encode(
                     CustomEvent(name=MEDIA_EVENT, value=part.model_dump())
                 )
+        for artifact in response.artifacts:
+            out += self._encode(
+                CustomEvent(
+                    name=ARTIFACT_EVENT,
+                    value={
+                        "name": artifact.name,
+                        "id": artifact.artifact_id,
+                        "parts": [p.model_dump() for p in artifact.parts],
+                        "description": artifact.description,
+                        "last": True,
+                    },
+                )
+            )
         metadata = dict(response.metadata or {})
         trace_id = metadata.pop("trace_id", None)
         metadata.pop("tool_events", None)

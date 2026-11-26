@@ -45,6 +45,39 @@ EXPIRED_GRACE = timedelta(days=1)
 #: answers forgets the oldest rather than growing without limit.
 PROCESS_LIMIT = 10_000
 
+#: What separates a context id from a task id in the key of an A2A task's
+#: record. A control character: a conversation id may not carry one (the
+#: request models refuse it), so no conversation's key can name a task's record
+#: and a task's key can name no conversation's.
+TASK_KEY_SEPARATOR = "\x1f"
+
+
+def _task_key(context_id: str, task_id: str) -> str:
+    """Where an A2A task's questions are recorded: under its context, apart from the conversation's own record."""
+    return f"{context_id}{TASK_KEY_SEPARATOR}{task_id}"
+
+
+def _owned_by(conversation_id: str, key: str) -> bool:
+    """Whether a record's key is the conversation's own, or one of its tasks'."""
+    return key == conversation_id or key.startswith(
+        conversation_id + TASK_KEY_SEPARATOR
+    )
+
+
+def _context_filter(column: Any, conversation_id: str) -> Any:
+    """A SQL filter for the conversation's own record and every record of its tasks.
+
+    The task keys are matched by an anchored, escaped prefix: the conversation
+    id is a caller's string and may carry ``%`` or ``_``.
+    """
+    from sqlalchemy import or_  # noqa: PLC0415
+
+    escaped = (
+        conversation_id.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    )
+    prefix = escaped + TASK_KEY_SEPARATOR + "%"
+    return or_(column == conversation_id, column.like(prefix, escape="\\"))
+
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -85,6 +118,10 @@ class _PendingQuestions(ABC):
     @abstractmethod
     def _clear(self, conversation_id: str) -> None:
         """Forget the record: its questions are answered, or the conversation moved on."""
+
+    @abstractmethod
+    def _clear_context(self, conversation_id: str) -> None:
+        """Forget the conversation's record and the records of every A2A task on it: the conversation was erased."""
 
 
 class _ProcessPending(_PendingQuestions):
@@ -143,6 +180,11 @@ class _ProcessPending(_PendingQuestions):
     def _clear(self, conversation_id: str) -> None:
         with self._lock:
             self._rows.pop(conversation_id, None)
+
+    def _clear_context(self, conversation_id: str) -> None:
+        with self._lock:
+            for key in [k for k in self._rows if _owned_by(conversation_id, k)]:
+                del self._rows[key]
 
 
 class _ManagedPendingBase(_PendingQuestions):
@@ -246,5 +288,13 @@ class _ManagedPendingBase(_PendingQuestions):
             conn.execute(
                 self._mine(self._table.delete(), self._table).where(
                     self._table.c.conversation_id == conversation_id
+                )
+            )
+
+    def _clear_context(self, conversation_id: str) -> None:
+        with self._engine.begin() as conn:
+            conn.execute(
+                self._mine(self._table.delete(), self._table).where(
+                    _context_filter(self._table.c.conversation_id, conversation_id)
                 )
             )

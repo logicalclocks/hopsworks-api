@@ -4,9 +4,9 @@
 
 Runs in the dbt-pipeline environment, which ships dbt-core, dbt-trino and
 dbt_run_graph. dbt compile gives each model's SQL and dbt build runs the data
-tests; then each model's rows are streamed from Trino into its feature group:
-card_daily_features offline, card_spending_baselines online too, where the
-deployment reads a card's baseline. The run's artifacts go to their own
+tests; then each model's rows are read from Trino and written to its feature
+group in one insert: card_daily_features offline, card_spending_baselines online
+too, where the deployment reads a card's baseline. The run's artifacts go to their own
 directory, Resources/dbt_runs/<job>/<execution> in a job, where the Jobs UI
 reads the execution graph from.
 """
@@ -18,9 +18,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import dbt_run_graph
-import pandas as pd
-
 import hopsworks
+import pandas as pd
 from hsfs.feature import Feature
 
 DBT_PROJECT = "card_fraud"
@@ -183,12 +182,12 @@ def compile_models(project_dir: Path, target_dir: Path) -> dict[str, str]:
     return compiled
 
 
-def feature_group(fs, name: str, parents):
+def feature_group(fs, system: str, name: str, parents):
     model = MODELS[name]
     return fs.get_or_create_feature_group(
         name=name,
         version=1,
-        description=model["description"],
+        description=f"{system}: {model['description']}",
         primary_key=model["primary_key"],
         event_time=model["event_time"],
         features=model["features"],
@@ -198,13 +197,13 @@ def feature_group(fs, name: str, parents):
     )
 
 
-def ingest(project, name: str, query: str, fetch_size: int) -> int:
-    """Stream the model's rows from Trino into its feature group; returns the row count."""
+def ingest(project, system: str, name: str, query: str, fetch_size: int) -> int:
+    """Read the model's rows from Trino and write them to its feature group; returns the row count."""
     fs = project.get_feature_store()
     parents = [fs.get_feature_group(source, version=1) for source in SOURCES]
     if any(parent is None for parent in parents):
         raise RuntimeError("The source feature groups are missing: run generate_data.py first.")
-    fg = feature_group(fs, name, parents)
+    fg = feature_group(fs, system, name, parents)
     model = MODELS[name]
     connection = project.get_trino_api().connect(
         catalog="delta", schema=f"{project.name}_featurestore"
@@ -217,25 +216,24 @@ def ingest(project, name: str, query: str, fetch_size: int) -> int:
         raise RuntimeError(
             f"{name}: the model returns {columns}, the feature group expects {expected}"
         )
-    storage = None if model["online"] else "offline"
-    rows = 0
-    with fg.multi_part_insert() as writer:
-        while batch := cursor.fetchmany(fetch_size):
-            frame = pd.DataFrame.from_records(batch, columns=columns)
-            frame[model["nullable_ints"]] = frame[model["nullable_ints"]].astype("Int32")
-            writer.insert(
-                frame,
-                operation="upsert",
-                storage=storage,
-                validation_options={"run_validation": False},
-            )
-            rows += len(frame)
-            print(f"  {name}: {rows:,} rows queued")
+    frames = []
+    while batch := cursor.fetchmany(fetch_size):
+        frames.append(pd.DataFrame.from_records(batch, columns=columns))
     cursor.close()
     connection.close()
-    if rows == 0:
+    if not frames:
         raise RuntimeError(f"{name} returned no rows")
-    return rows
+    frame = pd.concat(frames, ignore_index=True)
+    frame[model["nullable_ints"]] = frame[model["nullable_ints"]].astype("Int32")
+    # One write: each insert into an offline group is a Delta commit, and 32 upserts of
+    # 25,000 rows took four minutes where one insert of the 800,000 takes 12 seconds.
+    fg.insert(
+        frame,
+        storage=None if model["online"] else "offline",
+        validation_options={"run_validation": False},
+    )
+    print(f"  {name}: {len(frame):,} rows written")
+    return len(frame)
 
 
 def graph_node(name: str, elapsed: float, rows=None, error=None) -> dict:
@@ -266,6 +264,9 @@ def main():
         "--target-dir", type=Path, help="this run's dbt artifacts and execution graph"
     )
     parser.add_argument("--fetch-size", type=int, default=DEFAULT_FETCH_SIZE)
+    # Every asset's description starts with the system's slug, which is how deleting the
+    # system with its assets tells its own from another's.
+    parser.add_argument("--system", default="debitcard-example", help="the system's slug")
     # A scheduled run appends -start_time <fire time>; the models read all of the history.
     args, _ = parser.parse_known_args()
 
@@ -282,7 +283,7 @@ def main():
         for name, query in queries.items():
             started = time.perf_counter()
             try:
-                rows = ingest(project, name, query, args.fetch_size)
+                rows = ingest(project, args.system, name, query, args.fetch_size)
                 nodes.append(graph_node(name, time.perf_counter() - started, rows=rows))
             except Exception as error:  # the graph is written before the run fails
                 nodes.append(graph_node(name, time.perf_counter() - started, error=error))

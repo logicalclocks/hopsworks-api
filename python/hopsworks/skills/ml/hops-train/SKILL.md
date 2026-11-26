@@ -224,8 +224,12 @@ Three parts: train, validation (selection) and test (acceptance), the last two
 - Transformation statistics are fitted on the train part only, which is how
   Hopsworks computes them for a training dataset with splits.
 - The template's `evaluate.split_boundaries` computes the time boundaries for
-  `fv.create_train_validation_test_split(train_start=..., ..., test_end=...)`;
-  `evaluate.grouped_part` assigns an entity to a part by a stable hash.
+  the in-memory `fv.train_validation_test_split(train_start=..., ..., test_end=...)`,
+  whose version (`fv.get_last_accessed_training_dataset()`) every later read
+  recomputes from those bounds in seconds; the `create_*` variants are a Spark
+  job of minutes, kept for a random split only (an in-memory one is redrawn on
+  every read). `evaluate.grouped_part` assigns an entity to a part by a stable
+  hash, over the in-memory `fv.training_data()`.
 - Selection reads validation only; the test part is scored once per candidate
   presented for acceptance.
 

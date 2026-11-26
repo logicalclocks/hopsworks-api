@@ -307,6 +307,7 @@ class ModelServing:
         default_predictor: bool | None = None,
         knative_mode: bool | None = None,
         triton_image_tag: str | None = None,
+        loading_strategy: str | None = None,
     ) -> Predictor:
         """Create a Predictor metadata object.
 
@@ -387,6 +388,8 @@ class ModelServing:
                 On an update, `None` means "unchanged": the deployment keeps its current tag, so moving it to the cluster default takes naming that tag explicitly.
                 A deployment also keeps its tag after an admin stops advertising it.
                 Ignored for non-Triton model servers.
+            loading_strategy: How the model server reads the model files.
+                See [`Predictor.loading_strategy`][hsml.predictor.Predictor.loading_strategy] for supported values, requirements, and defaults.
 
         Returns:
             The predictor metadata object.
@@ -421,6 +424,7 @@ class ModelServing:
             default_predictor=default_predictor,
             knative_mode=knative_mode,
             triton_image_tag=triton_image_tag,
+            loading_strategy=loading_strategy,
         )
 
     @public

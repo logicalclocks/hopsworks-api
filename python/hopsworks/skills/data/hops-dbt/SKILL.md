@@ -270,6 +270,7 @@ On older images whose `dbt-pipeline` predates the bundled module, stage the `dbt
 
 ## Related skills
 
+- [hops-semantic](../hops-semantic/SKILL.md): metrics, dimensions and entities defined in YAML inside this dbt project, compiled over the feature groups its models land in.
 - [hops-trino-sql](../hops-trino-sql/SKILL.md): table naming, partition pruning, interactive queries.
 - [hops-fg](../../ml/hops-fg/SKILL.md): the feature group the results land in.
 - [hops-job](../../platform/hops-job/SKILL.md): job creation, scheduling, Airflow chaining.

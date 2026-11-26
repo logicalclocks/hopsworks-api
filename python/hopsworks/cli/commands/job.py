@@ -8,9 +8,11 @@ follows the same memoized-session pattern as the rest of the CLI.
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import shutil
 import tempfile
+from datetime import timezone
 from typing import TYPE_CHECKING, Any
 
 import click
@@ -53,9 +55,10 @@ def _ts_label(value: Any) -> str:
     if isinstance(value, (int, float)):
         seconds = value / 1000 if value > 10**12 else value
         from datetime import datetime as _dt  # noqa: PLC0415
-        from datetime import timezone as _tz
 
-        return _dt.fromtimestamp(seconds, tz=_tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return _dt.fromtimestamp(seconds, tz=timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
     return str(value)
 
 
@@ -347,21 +350,41 @@ def job_deploy(
 _DT_FORMATS = ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"]
 
 
+class _UtcDateTime(click.DateTime):
+    """A timestamp without an offset is UTC, so it compares with one that has one."""
+
+    def convert(self, value, param, ctx):
+        parsed = super().convert(value, param, ctx)
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+_UTC_DATETIME = _UtcDateTime(formats=_DT_FORMATS)
+
+
 @job_group.command("run")
 @click.argument("name")
 @click.option("--args", "app_args", help="Argument string passed to this execution.")
 @click.option("--wait", is_flag=True, help="Block until the execution terminates.")
 @click.option(
     "--start-time",
-    type=click.DateTime(formats=_DT_FORMATS),
+    type=_UTC_DATETIME,
     default=None,
     help="ISO timestamp for HOPS_START_TIME (data interval start).",
 )
 @click.option(
     "--end-time",
-    type=click.DateTime(formats=_DT_FORMATS),
+    type=_UTC_DATETIME,
     default=None,
     help="ISO timestamp for HOPS_END_TIME (data interval end). Requires --start-time.",
+)
+@click.option(
+    "--resources",
+    default=None,
+    help=(
+        "Resources for this execution alone, as JSON with the compute fields to change, e.g. "
+        '\'{"resourceConfig": {"memory": 16384, "gpus": 1}}\' or '
+        "'{\"spark.executor.memory\": 16384}'. Other fields keep the job's value."
+    ),
 )
 @click.pass_context
 def job_run(
@@ -371,6 +394,7 @@ def job_run(
     wait: bool,
     start_time: datetime | None,
     end_time: datetime | None,
+    resources: str | None,
 ) -> None:
     """Start a new one-off execution of ``name``.
 
@@ -386,9 +410,18 @@ def job_run(
         wait: Block until the execution terminates.
         start_time: ISO timestamp for ``HOPS_START_TIME``.
         end_time: ISO timestamp for ``HOPS_END_TIME``.
+        resources: JSON with the compute fields to change for this execution alone.
     """
     if end_time is not None and start_time is None:
         raise click.UsageError("--end-time requires --start-time.")
+    run_resources = None
+    if resources:
+        try:
+            run_resources = json.loads(resources)
+        except ValueError as exc:
+            raise click.UsageError(f"--resources is not valid JSON: {exc}") from exc
+        if not isinstance(run_resources, dict):
+            raise click.UsageError("--resources must be a JSON object.")
     job = _get_job(ctx, name)
     try:
         execution = job.run(
@@ -396,6 +429,7 @@ def job_run(
             await_termination=wait,
             start_time=start_time,
             end_time=end_time,
+            resources=run_resources,
         )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Run failed: {exc}") from exc
@@ -414,13 +448,13 @@ def job_run(
 @click.argument("name")
 @click.option(
     "--start-time",
-    type=click.DateTime(formats=_DT_FORMATS),
+    type=_UTC_DATETIME,
     required=True,
     help="ISO timestamp for the start of the backfill window (HOPS_START_TIME).",
 )
 @click.option(
     "--end-time",
-    type=click.DateTime(formats=_DT_FORMATS),
+    type=_UTC_DATETIME,
     required=True,
     help="ISO timestamp for the end of the backfill window (HOPS_END_TIME).",
 )
@@ -659,12 +693,12 @@ def _expand_cron_alias(cron: str) -> str:
 @click.argument("cron")
 @click.option(
     "--start-time",
-    type=click.DateTime(formats=_DT_FORMATS),
+    type=_UTC_DATETIME,
     help="ISO timestamp for the first trigger (e.g. 2026-04-26T09:00:00).",
 )
 @click.option(
     "--end-time",
-    type=click.DateTime(formats=_DT_FORMATS),
+    type=_UTC_DATETIME,
     help="ISO timestamp for the last trigger.",
 )
 @click.option(
@@ -953,6 +987,7 @@ def _execution_to_dict(execution: Any) -> dict[str, Any]:
         "final_status": getattr(execution, "final_status", None),
         "submission_time": getattr(execution, "submission_time", None),
         "duration_s": _duration_s(execution),
+        "resources": getattr(execution, "resources", None),
     }
 
 

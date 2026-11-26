@@ -47,10 +47,18 @@ class Execution:
         href=None,
         job=None,
         rerun_count=None,
+        resources=None,
+        resources_id=None,
+        attempts=None,
+        files_progress=None,
         **kwargs,
     ):
         self._id = id
+        self._files_progress = files_progress
         self._rerun_count = rerun_count
+        self._resources = resources
+        self._resources_id = resources_id
+        self._attempts = attempts
         self._final_status = final_status
         self._state = state
         self._submission_time = submission_time
@@ -68,17 +76,34 @@ class Execution:
         self._execution_engine = execution_engine.ExecutionEngine()
         self._execution_api = execution_api.ExecutionApi()
 
+    @staticmethod
+    def _decamelize(json_dict):
+        # `filesProgress` and `resources` are handed to the user as the backend
+        # sends them, so their camelCase keys must survive the decamelization of
+        # the rest. The keys of `resources` are names of the job configuration
+        # (`resourceConfig`, `spark.executor.memory`), which `Job.run` takes back.
+        files_progress = json_dict.get("filesProgress")
+        resources = json_dict.get("resources")
+        json_decamelized = humps.decamelize(json_dict)
+        if files_progress is not None:
+            json_decamelized["files_progress"] = files_progress
+        if resources is not None:
+            json_decamelized["resources"] = resources
+        return json_decamelized
+
     @classmethod
     def from_response_json(cls, json_dict, job):
-        json_decamelized = humps.decamelize(json_dict)
-        if "count" not in json_decamelized:
-            return cls(**json_decamelized, job=job)
-        if json_decamelized["count"] == 0:
+        if "count" not in json_dict:
+            return cls(**cls._decamelize(json_dict), job=job)
+        if json_dict["count"] == 0:
             return []
-        return [cls(**execution, job=job) for execution in json_decamelized["items"]]
+        return [
+            cls(**cls._decamelize(execution), job=job)
+            for execution in json_dict["items"]
+        ]
 
     def update_from_response_json(self, json_dict):
-        json_decamelized = humps.decamelize(json_dict)
+        json_decamelized = self._decamelize(json_dict)
         # The response carries no job; re-initialising without it would detach the
         # execution from the job it belongs to.
         self.__init__(**{**json_decamelized, "job": self._job})
@@ -182,6 +207,46 @@ class Execution:
 
     @public
     @property
+    def resources(self) -> dict | None:
+        """The resources given for this execution alone, as a partial job configuration.
+
+        Only the fields that were set when the execution was started; every other field was the job's.
+        `None` for an execution that ran with the job's resources.
+        """
+        return self._resources
+
+    @public
+    @property
+    def attempts(self) -> list[dict]:
+        """The attempts before the current one, oldest first: how each ended and where its logs are.
+
+        Each re-run sets the previous attempt's log files aside and records its outcome.
+        An entry has the keys:
+
+        - `attempt`: the attempt's number, counted from 1.
+        - `state` and `final_status`: how the attempt ended, with the same values as [`state`][hopsworks_common.execution.Execution.state] and [`final_status`][hopsworks_common.execution.Execution.final_status].
+        - `start_time` and `stop_time`: when it ran, in milliseconds since the epoch.
+        - `logs_path` (the attempt's directory), `stdout_path` and `stderr_path`.
+
+        Only `attempt` is always there.
+        A path is missing when the attempt did not leave the file, and a time when it did not get that far.
+        An attempt that was set aside by a Hopsworks version that did not record outcomes has no `state`, `final_status` or `start_time`.
+        The current attempt is not in the list: its outcome is the execution's own `state` and `final_status`.
+
+        The list is as of when this object was fetched.
+        Empty for an execution that was never re-run.
+
+        Example: Print how every attempt of an execution ended
+            ```python
+            for attempt in execution.attempts:
+                print(attempt["attempt"], attempt.get("final_status", "not recorded"))
+            print(execution.rerun_count + 1, execution.final_status)
+            ```
+        """
+        return self._attempts or []
+
+    @public
+    @property
     def success(self) -> bool | None:
         """Boolean to indicate if execution ran successfully or failed."""
         is_spark_job = (
@@ -198,6 +263,21 @@ class Execution:
         if self.final_status in constants.JOBS.SUCCESS_STATES:
             return True
         return None
+
+    @public
+    @property
+    def files_progress(self) -> dict | None:
+        """Result of a files ingestion run, or `None` for other jobs and for a run that has not written its result yet.
+
+        The backend attaches `datasetName`, `prefix` and `connectorName` to every execution of a files job; that stub alone, without `status` or `executionId`, is reported as `None`.
+        Keys as the backend reports them: `executionId`, `status` (`ok`, `partial` or `failed`), `listed`, `copied`, `updated`, `skipped`, `deleted`, `failed`, `oversized`, `unsupported` (files that cannot be copied, such as Google-native documents or SFTP symlinks), `bytesCopied`, `listingComplete`, `deletionsSkipped`, `indexed`, `error`, `failedFiles` (`relativePath` and `error` of up to 100 files), `auditFile` (the run's audit CSV, relative to the job's state directory, or `None`), `auditPath` (the same file as an absolute HopsFS path, or `None`), `datasetName`, `connectorName`, `prefix`, `startedAt` and `finishedAt`.
+        """
+        progress = self._files_progress
+        if not isinstance(progress, dict) or not (
+            "status" in progress or "executionId" in progress
+        ):
+            return None
+        return progress
 
     @public
     @property
@@ -224,8 +304,14 @@ class Execution:
         return None
 
     @public
-    def download_logs(self, path: str | None = None) -> tuple[str | None, str | None]:
+    def download_logs(
+        self, path: str | None = None, attempt: int | None = None
+    ) -> tuple[str | None, str | None]:
         """Download stdout and stderr logs for the execution.
+
+        By default the logs of the latest attempt are downloaded.
+        For an execution that was re-run, pass `attempt` to get the logs of an earlier attempt.
+        The attempt is resolved against the execution's current state in Hopsworks, not this object's, so it is safe to use on an object fetched before a re-run.
 
         Example: Downloading and printing the logs
             ```python
@@ -239,14 +325,25 @@ class Execution:
             print(err_fd.read())
             ```
 
+        Example: Downloading the logs of the first attempt of a re-run execution
+            ```python
+            out_log_path, err_log_path = execution.download_logs(attempt=1)
+            ```
+
         Parameters:
             path: Path to download the logs.
+            attempt:
+                Which attempt to download the logs of, counted from 1.
+                The latest attempt is `rerun_count + 1`, and is the default.
 
         Returns:
             stdout: Path to downloaded log for stdout.
             stderr: Path to downloaded log for stderr.
+
+        Raises:
+            hopsworks.client.exceptions.JobExecutionException: If `path` does not exist, the execution has no such attempt, or an earlier attempt left no log files.
         """
-        return self._execution_engine._download_logs(self, path)
+        return self._execution_engine._download_logs(self, path, attempt)
 
     @public
     @usage._method_logger
@@ -269,8 +366,8 @@ class Execution:
         The execution keeps its id, submission time, arguments and the time window it was
         fired for (`HOPS_START_TIME` / `HOPS_END_TIME`), so it stays where it was in the
         executions timeline; `rerun_count` goes up by one and the previous attempt's log
-        files are kept under an `attempt-N` directory next to the new ones. Only failed or
-        killed executions can be re-run.
+        files are kept under an `attempt-N` directory next to the new ones; download them
+        with `download_logs(attempt=N)`. Only failed or killed executions can be re-run.
 
         ```python
 

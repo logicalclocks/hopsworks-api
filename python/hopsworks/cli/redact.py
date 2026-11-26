@@ -33,7 +33,14 @@ _SECRET_FRAGMENTS = (
 )
 _SECRET_NAMES = frozenset({"key", "pwd", "pw", "sig", "sas"})
 # Names that carry a fragment but hold a setting or the name of an account entry.
-_KEPT_SUFFIXES = ("url", "minutes", "secretname", "envvar", "credentialsmode")
+_KEPT_SUFFIXES = (
+    "url",
+    "minutes",
+    "secretname",
+    "envvar",
+    "credentialsmode",
+    "credentialsset",
+)
 _DROP = object()
 
 

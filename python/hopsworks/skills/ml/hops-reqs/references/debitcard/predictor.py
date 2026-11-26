@@ -9,10 +9,9 @@ a card with no window or no baseline is scored on the training medians.
 import os
 import sys
 
+import hopsworks
 import joblib
 import pandas as pd
-
-import hopsworks
 
 sys.path.insert(0, os.environ["MODEL_FILES_PATH"])
 import model as fraud_model  # noqa: E402  (shipped with the model's files)

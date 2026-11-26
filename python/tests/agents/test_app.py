@@ -83,6 +83,9 @@ class TestManifestAndHealth:
             "run": "/v1/run",
             "chat": "/v1/chat",
             "feedback": "/v1/feedback",
+            "agent_card": "/.well-known/agent-card.json",
+            "a2a": "/a2a",
+            "a2a_rest": "/a2a/rest",
         }
         capabilities = manifest["capabilities"]
         # AG-UI's AgentCapabilities, so an AG-UI client can read it as it is

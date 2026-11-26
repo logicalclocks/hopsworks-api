@@ -143,13 +143,17 @@ class ComponentResources(ABC):
         num_instances: Deprecated. Use scaling configuration instead.
         requests: Minimum resources to allocate for a deployment
         limits: Maximum resources to allocate for a deployment
+        hopsfs_mount: Sizing of the HopsFS mount the component's pods carry, a dictionary with the optional keys `cores`, `memory` and `namenode_connections`; see [`ComponentResources.hopsfs_mount`][hsml.resources.ComponentResources.hopsfs_mount].
     """
+
+    _HOPSFS_MOUNT_KEYS = ("cores", "memory", "namenode_connections")
 
     def __init__(
         self,
         num_instances: int | None = None,
         requests: Resources | dict | Default | None = None,
         limits: Resources | dict | Default | None = None,
+        hopsfs_mount: dict | None = None,
     ):
         self._num_instances = num_instances
         self._requests = util._get_obj_from_json(requests, Resources) or Resources(
@@ -174,6 +178,7 @@ class ComponentResources(ABC):
             max(self._requests.memory, RESOURCES.MAX_MEMORY),
             self._requests.gpus,
         )
+        self._hopsfs_mount = self._validate_hopsfs_mount(hopsfs_mount)
 
     @public
     def describe(self):
@@ -188,6 +193,21 @@ class ComponentResources(ABC):
             resources.memory = memory
         if resources.gpus is None:
             resources.gpus = gpus
+
+    @classmethod
+    def _validate_hopsfs_mount(cls, hopsfs_mount):
+        if hopsfs_mount is None:
+            return None
+        if not isinstance(hopsfs_mount, dict):
+            raise ValueError(
+                f"HopsFS mount must be a dictionary with the keys {', '.join(cls._HOPSFS_MOUNT_KEYS)}, got {type(hopsfs_mount).__name__}."
+            )
+        unknown_keys = sorted(set(hopsfs_mount) - set(cls._HOPSFS_MOUNT_KEYS))
+        if unknown_keys:
+            raise ValueError(
+                f"Unknown HopsFS mount keys {', '.join(unknown_keys)}, the allowed keys are {', '.join(cls._HOPSFS_MOUNT_KEYS)}."
+            )
+        return dict(hopsfs_mount)
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -218,6 +238,20 @@ class ComponentResources(ABC):
         kwargs["limits"] = util._extract_field_from_json(
             resources, "limits", as_instance_of=Resources
         )
+        # The backend sends hopsfsMountConfig, while a dict passed by the user names it after the constructor argument.
+        from_backend = "hopsfs_mount_config" in resources
+        hopsfs_mount = util._extract_field_from_json(
+            resources, ["hopsfs_mount_config", "hopsfs_mount"]
+        )
+        if from_backend and hopsfs_mount is not None:
+            # A newer backend may send settings this client does not know.
+            # None, rather than an empty dict, keeps them when the resources are saved back.
+            hopsfs_mount = {
+                key: value
+                for key, value in hopsfs_mount.items()
+                if key in cls._HOPSFS_MOUNT_KEYS
+            } or None
+        kwargs["hopsfs_mount"] = hopsfs_mount
 
         # extract num instances
         if cls.NUM_INSTANCES_KEY in json_decamelized:
@@ -237,6 +271,22 @@ class ComponentResources(ABC):
     @abstractmethod
     def to_dict(self):
         pass
+
+    def _resources_to_dict(self):
+        resources = {
+            "requests": (
+                self._requests.to_dict() if self._requests is not None else None
+            ),
+            "limits": self._limits.to_dict() if self._limits is not None else None,
+        }
+        # None leaves the deployment's mount settings as they are, and an empty dict resets them.
+        if self._hopsfs_mount is not None:
+            resources["hopsfsMountConfig"] = {
+                humps.camelize(key): value
+                for key, value in self._hopsfs_mount.items()
+                if value is not None
+            }
+        return resources
 
     @public
     @property
@@ -278,8 +328,27 @@ class ComponentResources(ABC):
     def limits(self, limits: Resources):
         self._limits = limits
 
+    @public
+    @property
+    def hopsfs_mount(self):
+        """Sizing of the HopsFS mount the component's pods carry, a dictionary with the optional keys `cores`, `memory` and `namenode_connections`.
+
+        `cores` is the CPU request of the mount.
+        `memory` is the memory limit (MB) of the mount.
+        `namenode_connections` is the number of connections the mount keeps to the HopsFS NameNode.
+        A key left out uses the cluster default.
+        Saving a deployment whose resources have no mount settings keeps the settings it has, and an empty dictionary resets them to the cluster defaults.
+        The mount a model deployment reads its model files from requests less CPU by default than other HopsFS mounts.
+        Only has an effect when the deployment's pods mount HopsFS, as with the loading strategies `'MOUNT'` and `'RUNAI_STREAMER'`; see [`Predictor.loading_strategy`][hsml.predictor.Predictor.loading_strategy].
+        """
+        return self._hopsfs_mount
+
+    @hopsfs_mount.setter
+    def hopsfs_mount(self, hopsfs_mount: dict | None):
+        self._hopsfs_mount = self._validate_hopsfs_mount(hopsfs_mount)
+
     def __repr__(self):
-        return f"ComponentResources(num_instances: {self._num_instances!r}, requests: {self._requests is not None!r}, limits: {self._limits is not None!r})"
+        return f"ComponentResources(num_instances: {self._num_instances!r}, requests: {self._requests is not None!r}, limits: {self._limits is not None!r}, hopsfs_mount: {self._hopsfs_mount!r})"
 
 
 @public
@@ -292,8 +361,9 @@ class PredictorResources(ComponentResources):
         num_instances: int | None = None,
         requests: Resources | dict | None = None,
         limits: Resources | dict | None = None,
+        hopsfs_mount: dict | None = None,
     ):
-        super().__init__(num_instances, requests, limits)
+        super().__init__(num_instances, requests, limits, hopsfs_mount)
 
     @classmethod
     def from_json(cls, json_decamelized):
@@ -302,12 +372,7 @@ class PredictorResources(ComponentResources):
     def to_dict(self):
         return {
             humps.camelize(self.NUM_INSTANCES_KEY): self._num_instances,
-            humps.camelize(self.RESOURCES_CONFIG_KEY): {
-                "requests": (
-                    self._requests.to_dict() if self._requests is not None else None
-                ),
-                "limits": self._limits.to_dict() if self._limits is not None else None,
-            },
+            humps.camelize(self.RESOURCES_CONFIG_KEY): self._resources_to_dict(),
         }
 
 
@@ -321,8 +386,9 @@ class TransformerResources(ComponentResources):
         num_instances: int | None = None,
         requests: Resources | dict | None = None,
         limits: Resources | dict | None = None,
+        hopsfs_mount: dict | None = None,
     ):
-        super().__init__(num_instances, requests, limits)
+        super().__init__(num_instances, requests, limits, hopsfs_mount)
 
     @classmethod
     def from_json(cls, json_decamelized):
@@ -331,10 +397,5 @@ class TransformerResources(ComponentResources):
     def to_dict(self):
         return {
             humps.camelize(self.NUM_INSTANCES_KEY): self._num_instances,
-            humps.camelize(self.RESOURCES_CONFIG_KEY): {
-                "requests": (
-                    self._requests.to_dict() if self._requests is not None else None
-                ),
-                "limits": self._limits.to_dict() if self._limits is not None else None,
-            },
+            humps.camelize(self.RESOURCES_CONFIG_KEY): self._resources_to_dict(),
         }

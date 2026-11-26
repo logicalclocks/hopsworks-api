@@ -33,12 +33,13 @@ class ExecutionApi:
         end_time: datetime = None,
         logical_date: datetime = None,
         env_vars: dict = None,
+        resources: dict = None,
     ):
         """Start an execution.
 
-        If any of start_time/end_time/logical_date/env_vars is provided, POSTs a JSON body
-        (endpoint accepts `application/json`); otherwise falls back to the original plain-text
-        args body for backwards compatibility.
+        If any of start_time/end_time/logical_date/env_vars/resources is provided, POSTs a JSON
+        body (endpoint accepts `application/json`); otherwise falls back to the original
+        plain-text args body for backwards compatibility.
         """
         _client = client._get_instance()
         path_params = ["project", _client._project_id, "jobs", job.name, "executions"]
@@ -48,6 +49,7 @@ class ExecutionApi:
             or end_time is not None
             or logical_date is not None
             or env_vars is not None
+            or bool(resources)
         )
         if not use_json:
             # The backend has two @POST handlers on this path (text/plain for legacy
@@ -77,6 +79,9 @@ class ExecutionApi:
         if end_time is not None:
             # data interval end mirrors HOPS_END_TIME for a one-shot backfill run.
             body["dataIntervalEnd"] = _to_iso(end_time)
+        if resources:
+            # A partial job configuration: only the compute fields to change for this run.
+            body["resources"] = resources
 
         headers = {"content-type": "application/json"}
         return execution.Execution.from_response_json(
@@ -215,10 +220,10 @@ class ExecutionApi:
 
 
 def _to_iso(dt: datetime) -> str:
-    """ISO-8601 UTC string, matching what the backend parses into Instant."""
+    """ISO-8601 UTC string ending in `Z`, which the backend parses into an Instant and `fg.read()` in the job parses as the scheduler's own values."""
+    from datetime import timezone as _tz
+
     if dt.tzinfo is None:
         # Treat naive as UTC rather than silently shift by the local offset.
-        from datetime import timezone as _tz
-
         dt = dt.replace(tzinfo=_tz.utc)
-    return dt.isoformat()
+    return dt.astimezone(_tz.utc).isoformat().replace("+00:00", "Z")

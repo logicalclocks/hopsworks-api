@@ -20,7 +20,7 @@ from hopsworks_common import client, git_op_execution
 
 @also_available_as("hopsworks.core.git_op_execution_api.GitOpExecutionApi")
 class GitOpExecutionApi:
-    def _get_execution(self, repo_id, execution_id):
+    def _get_execution(self, repo_id, execution_id, timeout=None):
         _client = client._get_instance()
         path_params = [
             "project",
@@ -34,5 +34,7 @@ class GitOpExecutionApi:
         query_params = {"expand": "repository"}
 
         return git_op_execution.GitOpExecution.from_response_json(
-            _client._send_request("GET", path_params, query_params=query_params)
+            _client._send_request(
+                "GET", path_params, query_params=query_params, timeout=timeout
+            )
         )
