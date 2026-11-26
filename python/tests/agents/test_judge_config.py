@@ -708,8 +708,10 @@ class TestProviderRequestShape:
         assert parameters._send(call) == "graded"
         assert seen == [{"max_tokens": 1500, "output_config": {"effort": "high"}}]
 
+    @pytest.mark.parametrize("model", ["claude-sonnet-5-5", "claude-haiku-5-5"])
     @pytest.mark.parametrize("effort", ["low", "medium", "high", "xhigh", "max"])
-    def test_the_default_anthropic_judge_takes_every_effort_level(self, effort):
+    def test_the_current_anthropic_judges_take_every_effort_level(self, model, effort):
+        # The UI offers these levels for the models it lists (judgeProviders.ts).
         from hopsworks_agents.eval.judge_config import _AnthropicMessagesParameters
 
         seen = []
@@ -718,9 +720,7 @@ class TestProviderRequestShape:
             seen.append(extra)
             return "graded"
 
-        parameters = _AnthropicMessagesParameters(
-            "claude-sonnet-5-5", 0.0, 1500, effort
-        )
+        parameters = _AnthropicMessagesParameters(model, 0.0, 1500, effort)
         assert parameters._send(call) == "graded"
         assert seen == [{"max_tokens": 1500, "output_config": {"effort": effort}}]
 

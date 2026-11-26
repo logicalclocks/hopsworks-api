@@ -1189,6 +1189,7 @@ def _supports_anthropic_reasoning_effort(model: str, effort: str) -> bool:
         return _has_model_prefix(
             model,
             "claude-fable-5",
+            "claude-haiku-5",
             "claude-mythos-5",
             "claude-opus-5",
             "claude-opus-4-8",
@@ -1198,6 +1199,7 @@ def _supports_anthropic_reasoning_effort(model: str, effort: str) -> bool:
     return _has_model_prefix(
         model,
         "claude-fable-5",
+        "claude-haiku-5",
         "claude-mythos-5",
         "claude-mythos-preview",
         "claude-opus-5",
