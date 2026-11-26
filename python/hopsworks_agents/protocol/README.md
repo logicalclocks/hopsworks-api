@@ -420,6 +420,7 @@ A `raw` part larger than `HOPSWORKS_AGENT_ARTIFACT_INLINE_BYTES` (256 KiB) is wr
 Without storage, or when it fails, the task gives up its oldest history, then the content of its largest parts, then metadata beyond the `hopsworks` key, and says so in `metadata.hopsworks.truncated`; a task that still does not fit is stored without its artifacts and history, with a short note as its status message.
 A deleted task's files are removed with it; a removal that fails is retried by the sweep (20 times), and, for files in the project, by the platform when no replica is left.
 `HOPSWORKS_AGENT_ARTIFACT_DIR` puts the files in a directory of the author's instead (one every replica mounts), which the platform does not know of: only a replica with that directory retries a failed removal there, so if no replica of the deployment ever runs again, those files stay and are the author's to remove.
+The same holds for tasks Hopsworks deletes itself, at the end of their retention or with the deployment: it removes the files it keeps in the project, not those in the author's directory.
 A streaming caller receives the bytes inline in the events; a caller that reads the task afterwards receives the URL, and fetches it with the credential it reads the task with.
 
 ### Who may see a task
