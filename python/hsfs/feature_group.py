@@ -3891,6 +3891,7 @@ class FeatureGroup(FeatureGroupBase):
                 sc.StorageConnector.BIGQUERY,
                 sc.StorageConnector.MONGODB,
                 sc.StorageConnector.HOPSWORKS,
+                sc.StorageConnector.SAP_HANA,
             ]
         ) or supported_sql_connector
 
@@ -3914,8 +3915,8 @@ class FeatureGroup(FeatureGroupBase):
             raise FeatureStoreException(
                 f"Sink cannot be enabled for storage connector type '{connector_type}'. "
                 "Supported connector types: CRM, GOOGLE_SHEETS, REST, SNOWFLAKE, REDSHIFT, "
-                "BIGQUERY, MONGODB, HOPSWORKS, and SQL connectors with database_type MYSQL, POSTGRESQL, "
-                "ORACLE, CLICKHOUSE, TERADATA, or SQLSERVER."
+                "BIGQUERY, MONGODB, HOPSWORKS, SAP_HANA, and SQL connectors with database_type "
+                "MYSQL, POSTGRESQL, ORACLE, CLICKHOUSE, TERADATA, or SQLSERVER."
             )
 
         # CRM/Google Sheets/REST connectors always have sink enabled.

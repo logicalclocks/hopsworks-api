@@ -185,9 +185,12 @@ DLTHub copies a source into a managed feature group for the cases mounting canno
 
 The per-feature-group `sink_job` shown here is for ingesting a **single** table. When ingesting more than one table from the same connector, default to one multi-table job for all of them — see [Ingest many tables with one job](#ingest-many-tables-with-one-job) — instead of looping this pattern.
 
-A SQL source is ingested from a table: give the feature group a `DataSource` with its `database` and `table`, such as one from `get_tables()`.
-The ingestion job cannot run a SQL query, so a `DataSource` with a `query` and no `table` is rejected with HTTP 400 and error code 270136; a cluster without that check fails with HTTP 422 "A database must be specified".
-To use a query's result, mount it as an external feature group by passing `DataSource(storage_connector=..., query="SELECT ...")` to `create_external_feature_group`, or ingest the table and derive the subset in a feature pipeline.
+A SQL source (the SQL databases, Snowflake, Redshift, BigQuery and SAP HANA) is ingested from a table or from a SQL query, never both.
+For a table, give the feature group a `DataSource` with its `database` and `table`, such as one from `get_tables()`.
+For a query, give it `DataSource(storage_connector=..., query="SELECT ...")` with no `table`: the job runs the query against the connector's database, so a filter or a join can be ingested without a view.
+A `DataSource` with both a `table` and a `query` is rejected with HTTP 400 and error code 270136; a cluster older than Hopsworks 5.3 rejects a query with no `table` with the same code.
+The query must be a single `SELECT` or `WITH` statement; anything else is rejected with the same code.
+An incremental load of a query filters its cursor column over the query's result, so the query must return that column; full loads run the query as written, while incremental loads wrap it in a derived table, where SQL Server and Teradata reject an `ORDER BY` and SQL Server rejects a `WITH` clause.
 
 ```python
 import hopsworks
