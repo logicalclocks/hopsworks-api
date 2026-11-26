@@ -1,5 +1,6 @@
 import asyncio
 import json
+from pathlib import Path
 
 import hopsworks_agents.protocol.app as app_module
 import pytest
@@ -526,6 +527,52 @@ class TestFrameworkAndTracing:
         monkeypatch.delenv("AGENT_FRAMEWORK", raising=False)
         app = AgentApp(framework=framework)
         assert app.framework == expected
+
+    def test_claude_discovers_only_selected_packaged_skills(
+        self, monkeypatch, tmp_path, skill_catalogue
+    ):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("AGENT_FRAMEWORK", "claude_agents")
+        monkeypatch.setenv("HOPSWORKS_AGENT_SKILLS", "jobs, orders")
+        app = AgentApp()
+        skills = app.platform_skills
+        directory = Path(skills.claude_dirs[0]) / ".claude" / "skills"
+        assert sorted(p.name for p in directory.iterdir()) == skills.names
+        assert (directory / "orders/references/guide.md").is_file()
+        assert not (tmp_path / ".claude").exists()
+        assert "jobs" in skills.catalogue()
+        assert "[Orders]" in skills.read_skill("jobs")
+
+        disabled = AgentApp(platform_skills="none").platform_skills
+        assert disabled.names == disabled.claude_dirs == []
+        assert disabled.catalogue() == ""
+
+    @pytest.mark.parametrize(
+        "framework", ["langgraph", "llamaindex", "openai_agents", "custom"]
+    )
+    def test_framework_skill_tool_obeys_selection(self, framework, skill_catalogue):
+        skills = AgentApp(
+            framework=framework, platform_skills=["orders"]
+        ).platform_skills
+        assert skills.claude_dirs == []
+        assert skills.names == ["orders"]
+        assert "jobs" not in skills.catalogue()
+        for unselected in ("jobs", "../orders"):
+            with pytest.raises(ValueError, match="not enabled"):
+                skills.read_skill(unselected)
+
+    def test_platform_skill_defaults_and_invalid_selection(
+        self, monkeypatch, skill_catalogue
+    ):
+        monkeypatch.delenv("HOPSWORKS_AGENT_SKILLS", raising=False)
+        for framework in ("langgraph", "llamaindex", "openai_agents", "custom"):
+            skills = AgentApp(framework=framework).platform_skills
+            assert sorted(skills.names) == ["jobs", "orders", "unused"]
+            assert skills.claude_dirs == []
+        claude_app = AgentApp(framework="claude-agent-sdk")
+        assert "jobs" in claude_app.platform_skills.names
+        with pytest.raises(ValueError, match="Unknown Hopsworks skill"):
+            AgentApp(platform_skills=["typo"])
 
     def test_unknown_framework_falls_back(self, monkeypatch):
         monkeypatch.delenv("AGENT_FRAMEWORK", raising=False)

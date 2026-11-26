@@ -6,9 +6,8 @@ legacy ``REST_ENDPOINT``/``HOPSWORKS_API_KEY``/``PROJECT_NAME`` env vars kept
 for back-compat with existing Hopsworks terminal pods, the TOML file, and the
 SDK's SaaS key cache at ``~/.{username}_hopsworks_app/.hw_api_key``.
 
-Internal mode is detected when ``REST_ENDPOINT`` is set and
-``$SECRETS_DIR/token.jwt`` is readable — in that case the SDK authenticates
-from the JWT directly and the CLI never writes ``~/.hops.toml``.
+Internal mode is detected when both ``REST_ENDPOINT`` and ``SECRETS_DIR`` are
+set. The SDK uses the mounted ``token.jwt`` or, in a serving pod, ``api.key``.
 """
 
 from __future__ import annotations
@@ -43,7 +42,7 @@ class HopsConfig:
     Fields are populated by ``load()`` from the precedence chain documented at
     module level.
     The ``internal`` flag is set when the process is running inside a Hopsworks
-    pod and auth uses the mounted JWT instead of an API key.
+    pod and the SDK reads its mounted credentials.
     The ``hostname_verification`` flag mirrors the SDK's
     ``hopsworks.login(hostname_verification=...)`` argument: ``True`` verifies
     the Hopsworks TLS certificate, ``False`` (the default) skips verification so
@@ -78,8 +77,8 @@ class HopsConfig:
         """Check whether enough credentials are available to call ``hopsworks.login()``.
 
         Internal mode counts as authenticated regardless of cached fields:
-        the SDK will read ``REST_ENDPOINT`` and ``$SECRETS_DIR/token.jwt``
-        from the pod environment when invoked with no args. External mode
+        the SDK will use ``REST_ENDPOINT`` and the mounted JWT or API key
+        when invoked without external credentials. External mode
         needs both ``host`` and a non-empty API key.
 
         Returns:
