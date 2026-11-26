@@ -565,7 +565,10 @@ class TestFrameworkAndTracing:
         self, monkeypatch, skill_catalogue
     ):
         monkeypatch.delenv("HOPSWORKS_AGENT_SKILLS", raising=False)
-        assert AgentApp(framework="custom").platform_skills.names == []
+        for framework in ("langgraph", "llamaindex", "openai_agents", "custom"):
+            skills = AgentApp(framework=framework).platform_skills
+            assert sorted(skills.names) == ["jobs", "orders", "unused"]
+            assert skills.claude_dirs == []
         claude_app = AgentApp(framework="claude-agent-sdk")
         assert "jobs" in claude_app.platform_skills.names
         with pytest.raises(ValueError, match="Unknown Hopsworks skill"):

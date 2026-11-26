@@ -137,7 +137,8 @@ class DeploymentSkills:
             selected = _parse_selection(os.environ.get("HOPSWORKS_AGENT_SKILLS"))
         implicit = selected is None
         if selected is None:
-            selected = "all" if framework == "claude_agents" else "none"
+            # Every agent built on AgentApp gets the platform playbooks unless it opts out.
+            selected = "all"
         if selected == "none" or not selected:
             return
 
