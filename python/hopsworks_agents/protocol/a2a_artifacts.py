@@ -81,11 +81,12 @@ class _DirectorySpill:
     """Spilled parts as files under a directory every replica sees.
 
     The directory is the author's or a local run's, which the platform does
-    not know of: a deleted task's files are removed here, at once, and no
-    cleanup row is filed for the platform to retry.
+    not know of: a deleted task's files are filed for removal as
+    ``'directory'`` rows, which only a replica of the deployment retries.
     """
 
-    durable_cleanup = False
+    #: Who can clean the files: a replica with this directory, never the platform.
+    location = "directory"
 
     def __init__(self, root: str):
         self._root = Path(root)
@@ -119,11 +120,12 @@ class _DatasetSpill:
     """Spilled parts as files in the project's file system, through the deployment's own client.
 
     A deleted task's files are filed for removal in the database
-    (``agent_a2a_spill_cleanup``), so the platform removes them when no
-    replica gets to it.
+    (``agent_a2a_spill_cleanup``) as ``'project'`` rows, so the platform
+    removes them when no replica gets to it.
     """
 
-    durable_cleanup = True
+    #: Who can clean the files: a replica, or the platform.
+    location = "project"
 
     def __init__(self, deployment_id: str):
         self._root = f"{DATASET_ROOT}/{deployment_id}"
@@ -299,7 +301,7 @@ class _SpillingStore(VersionedTaskStore):
         await self._clean(task_id)
 
     async def _clean(self, task_id: str) -> None:
-        """Remove a deleted task's files; a removal that fails is left to the sweep, when a row was filed for it."""
+        """Remove a deleted task's files; a removal that fails is left to the sweep, which retries the row filed for it."""
         try:
             await asyncio.to_thread(self._backend._remove, task_id)
         except Exception:  # noqa: BLE001 -- the sweep tries again

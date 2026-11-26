@@ -560,14 +560,20 @@ class _Cleanups:
 
     Whoever deletes a task's rows files a cleanup row in the same
     transaction, then removes the task's directory and deletes the row; a
-    row left by a removal that failed is retried by the replica's sweep, and
-    by the platform's when no replica is left.
+    row left by a removal that failed is retried by the replica's sweep.
+    A row says where the files are (``location``): ``'project'`` rows are
+    retried by the platform too when no replica is left; ``'directory'`` rows
+    (an author's ``HOPSWORKS_AGENT_ARTIFACT_DIR``) only by a replica with
+    that directory. A replica reads and writes only the rows of its own
+    location.
     A row whose ``task_id`` is empty stands for a whole deployment's files,
     the platform's when it forgets a deployment; a replica leaves those alone.
     """
 
     #: How many times a removal is tried before the row is given up on.
     ATTEMPTS = 20
+    #: Where this replica's files are: ``project`` or ``directory``.
+    location = "project"
 
     def __init__(self, engine: Any, create_table: bool):
         from sqlalchemy import (  # noqa: PLC0415
@@ -590,6 +596,7 @@ class _Cleanups:
             Column("task_id", String(64), primary_key=True),
             Column("requested_at", DateTime, nullable=False),
             Column("attempts", Integer, nullable=False, default=0),
+            Column("location", String(16), nullable=False, server_default="project"),
         )
 
     async def _ensure(self) -> None:
@@ -609,29 +616,34 @@ class _Cleanups:
             task_id=task_id,
             requested_at=func.now(),
             attempts=0,
+            location=self.location,
         )
         if self._engine.dialect.name == "sqlite":
             return statement.prefix_with("OR IGNORE")
         return statement.prefix_with("IGNORE")
 
+    def _mine(self, task_id: str) -> tuple[Any, ...]:
+        """The row of a task of this deployment, filed where this replica keeps its files."""
+        table = self.table
+        return (
+            table.c.deployment_id == _serving_id(),
+            table.c.task_id == task_id,
+            table.c.location == self.location,
+        )
+
     async def _done(self, task_id: str) -> None:
         """The task's files are gone: so is its row."""
         from sqlalchemy import delete  # noqa: PLC0415
 
-        table = self.table
         async with self._engine.begin() as conn:
-            await conn.execute(
-                delete(table).where(
-                    table.c.deployment_id == _serving_id(), table.c.task_id == task_id
-                )
-            )
+            await conn.execute(delete(self.table).where(*self._mine(task_id)))
 
     async def _failed(self, task_id: str) -> int:
         """A removal failed: counted on the row; how many have failed now."""
         from sqlalchemy import select, update  # noqa: PLC0415
 
         table = self.table
-        mine = (table.c.deployment_id == _serving_id(), table.c.task_id == task_id)
+        mine = self._mine(task_id)
         async with self._engine.begin() as conn:
             await conn.execute(
                 update(table).where(*mine).values(attempts=table.c.attempts + 1)
@@ -642,7 +654,7 @@ class _Cleanups:
         return int(attempts or 0)
 
     async def _due(self, limit: int = 50) -> list[str]:
-        """The tasks of this deployment whose files are still to be removed, oldest first."""
+        """The tasks of this deployment whose files, where this replica keeps them, are still to be removed, oldest first."""
         from sqlalchemy import select  # noqa: PLC0415
 
         await self._ensure()
@@ -652,7 +664,9 @@ class _Cleanups:
                 await conn.execute(
                     select(table.c.task_id)
                     .where(
-                        table.c.deployment_id == _serving_id(), table.c.task_id != ""
+                        table.c.deployment_id == _serving_id(),
+                        table.c.task_id != "",
+                        table.c.location == self.location,
                     )
                     .order_by(table.c.requested_at)
                     .limit(limit)
@@ -914,9 +928,9 @@ def _fenced_store() -> type:
         async def delete(self, task_id: str, context: Any) -> bool:
             """Delete the caller's task with its version row; whether there was one.
 
-            When the task's files were spilled to the project, a cleanup row is
-            filed in the same transaction, so the files are removed even if
-            this replica is not the one that gets to it.
+            When the task's files may have been spilled, a cleanup row is filed
+            in the same transaction, under where the files are, so they are
+            removed even if this replica is not the one that gets to it.
             """
             await self._db._ensure_initialized()  # noqa: SLF001
             await self._ensure_cluster_tables()

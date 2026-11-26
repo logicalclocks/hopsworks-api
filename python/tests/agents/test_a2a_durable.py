@@ -101,6 +101,7 @@ MYSQL_TABLES = {
         `task_id` VARCHAR(64) NOT NULL,
         `requested_at` DATETIME NOT NULL,
         `attempts` INT NOT NULL DEFAULT 0,
+        `location` VARCHAR(16) NOT NULL DEFAULT 'project',
         PRIMARY KEY (`deployment_id`, `task_id`)""",
 }
 
@@ -578,7 +579,8 @@ class TestTheLease:
 
             async def running_again():
                 rows = await lease_rows(survivor)
-                return rows and rows[0].attempt == 2 and rows[0].fence >= 3
+                # the retry runs under the fence the take holds
+                return rows and rows[0].attempt == 2 and rows[0].fence == 2
 
             await wait_for(running_again)
             # the second run is lost too, and there is no retry left
@@ -1424,6 +1426,76 @@ class TestReviewRoundTwo:
 
         run(scenario())
 
+    # R4: a retry keeps the policy the task started with
+
+    @staticmethod
+    async def _lose_twice(started_with, recovering_with):
+        """A task started on a replica with one policy, lost, run again on a replica with another, and lost again; the task as the second loss leaves it."""
+        import datetime
+
+        starts = {"lost": 0, "survivor": 0}
+
+        def stuck(name):
+            async def handler(request, ctx):
+                starts[name] += 1
+                await asyncio.Event().wait()
+
+            return handler
+
+        lost = replica(stuck("lost"), a2a=started_with)
+        survivor = replica(stuck("survivor"), a2a=recovering_with)
+        a, b = await connect(lost), await connect(survivor)
+        task = await send(a, user_message("report"), return_immediately=True)
+        await wait_for(lambda: lease_rows(lost))
+        await stored_as_working(b, task.id)
+        old = datetime.datetime(2000, 1, 1)
+        await change_leases(lost, heartbeat_at=old)
+        assert await survivor._a2a._reap() == 1
+
+        async def running_again():
+            return starts["survivor"] == 1
+
+        await wait_for(running_again)
+        rows = await lease_rows(survivor)
+        # run under the take's fence and attempt, the policy as written
+        assert [(r.fence, r.attempt, r.retry_limit) for r in rows] == [
+            (2, 2, started_with.retry_lost_tasks)
+        ]
+        # the retry is lost too; the replica configured otherwise finds it
+        await change_leases(survivor, heartbeat_at=old, executor="gone-pod")
+        assert await survivor._a2a._reap() == 1
+        return survivor, b, task, starts
+
+    def test_a_retry_does_not_lower_the_tasks_retries(self, database):
+        async def scenario():
+            survivor, b, task, starts = await self._lose_twice(
+                A2AConfig(idempotent=True, retry_lost_tasks=2), A2AConfig()
+            )
+
+            async def running_a_third_time():
+                return starts["survivor"] == 2
+
+            await wait_for(running_a_third_time)
+            current = await b.get_task(GetTaskRequest(id=task.id))
+            assert state_name(current) == "TASK_STATE_WORKING"
+            rows = await lease_rows(survivor)
+            assert [(r.attempt, r.retry_limit) for r in rows] == [(3, 2)]
+
+        run(scenario())
+
+    def test_a_retry_does_not_raise_the_tasks_retries(self, database):
+        async def scenario():
+            _, b, task, starts = await self._lose_twice(
+                A2AConfig(idempotent=True, retry_lost_tasks=1),
+                A2AConfig(idempotent=True, retry_lost_tasks=3),
+            )
+            failed = await b.get_task(GetTaskRequest(id=task.id))
+            assert state_name(failed) == "TASK_STATE_FAILED"
+            assert hopsworks_of(failed.status.message)["attempt"] == 2
+            assert starts["survivor"] == 1
+
+        run(scenario())
+
     def test_a_handed_back_task_is_taken_by_one_replica(self, database):
         app, other = replica(), replica()
 
@@ -1458,8 +1530,6 @@ class TestDeletedTasksTakeTheirFiles:
 
         monkeypatch.setenv(a2a_artifacts.ARTIFACT_DIR_ENV, str(tmp_path / "files"))
         monkeypatch.setenv(a2a_artifacts.INLINE_BYTES_ENV, "1000")
-        # files the platform knows of, as the project's are
-        monkeypatch.setattr(a2a_artifacts._DirectorySpill, "durable_cleanup", True)
         return tmp_path / "files"
 
     @staticmethod
@@ -1524,7 +1594,10 @@ class TestDeletedTasksTakeTheirFiles:
             monkeypatch.setattr(spill, "_remove", broken)
             await app._a2a.handler_store.delete(task.id, owner_context())
             rows = await self._cleanup_rows(app)
-            assert [(r.task_id, r.attempts) for r in rows] == [(task.id, 1)]
+            # R3: an author's directory, which only a replica can clean
+            assert [(r.task_id, r.attempts, r.location) for r in rows] == [
+                (task.id, 1, "directory")
+            ]
             assert (spilling / task.id).is_dir()
             # the sweep fails too, and counts it
             assert await app._a2a._clean_spills() == 0
@@ -1553,6 +1626,39 @@ class TestDeletedTasksTakeTheirFiles:
             await app._a2a.handler_store.delete(task.id, owner_context())
             await app._a2a._clean_spills()
             assert await self._cleanup_rows(app) == []
+
+        run(scenario())
+
+    def test_a_replica_cleans_only_the_rows_of_where_its_files_are(
+        self, spilling, monkeypatch
+    ):
+        app = self._reporter()
+
+        async def scenario():
+            await connect(app)
+            cleanups = app._a2a.stores.cleanups
+            assert cleanups.location == "directory"
+            await cleanups._ensure()
+            # a row a replica with the project's files filed
+            cleanups.location = "project"
+            async with app._a2a.stores.engine.begin() as conn:
+                await conn.execute(cleanups._file("t-project"))
+            cleanups.location = "directory"
+            removed = []
+            monkeypatch.setattr(app._a2a.spill, "_remove", removed.append)
+            assert await app._a2a._clean_spills() == 0
+            assert removed == []
+            await cleanups._failed("t-project")
+            await cleanups._done("t-project")
+            rows = await self._cleanup_rows(app)
+            assert [(r.task_id, r.attempts, r.location) for r in rows] == [
+                ("t-project", 0, "project")
+            ]
+            # and the other way round
+            async with app._a2a.stores.engine.begin() as conn:
+                await conn.execute(cleanups._file("t-directory"))
+            cleanups.location = "project"
+            assert await cleanups._due() == ["t-project"]
 
         run(scenario())
 

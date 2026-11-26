@@ -252,7 +252,7 @@ CARD_SIGN_URL_ENV = "HOPSWORKS_AGENT_CARD_SIGN_URL"
 LOST_WRITE_ATTEMPTS = 5
 #: How many lost tasks a replica remembers it must not write to, before it starts over.
 FENCED_OUT_LIMIT = 10_000
-#: Where a call context made by the sweep says the execution is a retry of a lost task.
+#: Where a call context made by the sweep says the execution is a retry of a lost task, and the fence and attempt it took.
 RETRY_STATE_KEY = "hopsworks_retry"
 #: How long shutdown waits for queued push notifications to go out.
 PUSH_DRAIN_SECONDS = 5.0
@@ -422,9 +422,12 @@ class A2AServer:
             # the artifact storage when there is one); the store refuses the
             # writes of a replica that lost the task's lease.
             self.spill = _spill_backend()
-            if getattr(self.spill, "durable_cleanup", False):
-                # files in the project are removed with their task, by
-                # whoever gets to it: this replica, another, or the platform
+            if self.spill is not None:
+                # A deleted task's files are filed for removal with the task,
+                # under where they are: files in the project are removed by
+                # whoever gets to it (this replica, another, or the platform),
+                # files in an author's directory by a replica that has it.
+                self.stores.cleanups.location = self.spill.location
                 self.stores.task_store.cleanups = self.stores.cleanups
             handler_store = _SpillingStore(
                 self.stores.task_store,
@@ -749,7 +752,12 @@ class A2AServer:
         return len(taken)
 
     async def _clean_spills(self) -> int:
-        """Remove the files of deleted tasks that are still filed for removal; how many were removed."""
+        """Remove the files of deleted tasks that are still filed for removal; how many were removed.
+
+        Only the rows filed where this replica keeps its files: a replica
+        with the project's files leaves an author's directory alone, and the
+        other way round.
+        """
         stores = self.stores
         if stores is None or self.stores.task_store.cleanups is None:
             return 0
@@ -763,7 +771,7 @@ class A2AServer:
                 if attempts >= cleanups.ATTEMPTS:
                     _logger.error(
                         "could not remove the files of deleted task %s after %d "
-                        "attempts; they are left in the project",
+                        "attempts; they are left where they are",
                         task_id,
                         attempts,
                         exc_info=True,
@@ -789,8 +797,10 @@ class A2AServer:
 
         Only before any terminal state was published: the task stays
         ``WORKING`` throughout, and is failed only when no retry is left.
-        The turn runs again from the message that started it, under a new
-        lease and fence, with the attempt counted in its metadata.
+        The turn runs again from the message that started it, under the
+        fence and attempt the take holds (the execution neither takes the
+        lease again nor rewrites its policy), with the attempt counted in its
+        metadata.
         How many retries there are is read from the lease, where the replica
         that started the task wrote its author's word, so this replica, any
         other and the platform decide alike. A task the platform handed back
@@ -810,7 +820,10 @@ class A2AServer:
         message.task_id = task.id
         message.context_id = task.context_id
         owner = str(lease["owner"])
-        state: dict[str, Any] = {OWNER_STATE_KEY: owner, RETRY_STATE_KEY: True}
+        # The run is the recovery the take made: it runs under the fence and
+        # attempt taken, and the lease keeps the policy it was written with.
+        recovery = {"fence": int(lease["fence"]), "attempt": int(lease["attempt"])}
+        state: dict[str, Any] = {OWNER_STATE_KEY: owner, RETRY_STATE_KEY: recovery}
         if self.ownership.private and _store.OWNER_SEPARATOR in owner:
             # the caller the task belongs to, for the memory the turn reads
             principal = owner.split(_store.OWNER_SEPARATOR, 1)[1]
@@ -1509,23 +1522,33 @@ class HopsworksAgentExecutor(AgentExecutor):
         return server.stores if server is not None else None
 
     async def _hold(self, context: RequestContext) -> _Held:
-        """Record that this replica has the task, before anything else is done with it."""
+        """Record that this replica has the task, before anything else is done with it.
+
+        A fresh turn takes the lease and writes its author's retry policy on
+        it. A recovery (a lost task the sweep took, or one the platform
+        handed back) already holds the lease under the fence and attempt it
+        took: it runs under those, and the policy the task started with
+        stays, whatever this replica's own configuration says.
+        """
         stores = self._stores()
         task_id = context.task_id or ""
         if stores is None or context.call_context is None:
             return _Held(None)
-        owner = self._app._a2a.ownership._owner(context.call_context)
-        config = self._config
-        # the author's policy, on the row: whoever finds the turn lost reads it there
-        retry_limit = config.retry_lost_tasks if config.idempotent else 0
-        fence, attempt = await stores.leases._acquire(task_id, owner, retry_limit)
+        recovery = (context.call_context.state or {}).get(RETRY_STATE_KEY)
+        if isinstance(recovery, dict):
+            fence, attempt = int(recovery["fence"]), int(recovery["attempt"])
+        else:
+            owner = self._app._a2a.ownership._owner(context.call_context)
+            config = self._config
+            # the author's policy, on the row: whoever finds the turn lost reads it there
+            retry_limit = config.retry_lost_tasks if config.idempotent else 0
+            fence, _ = await stores.leases._acquire(task_id, owner, retry_limit)
+            attempt = 1
         if len(stores.fence.out) > FENCED_OUT_LIMIT:
             stores.fence.out.clear()
         stores.fence.out.discard(task_id)
         stores.fence.held[task_id] = fence
-        # a row the sweep took from a lost replica already counts this run
-        retried = bool((context.call_context.state or {}).get(RETRY_STATE_KEY))
-        return _Held(fence, attempt if retried else 1)
+        return _Held(fence, attempt)
 
     async def _protect(self, task_id: str, held: _Held) -> bool | None:
         """Before a resumed turn runs the action a person approved: make sure no cancel lands on it from now on.
