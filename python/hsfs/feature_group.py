@@ -562,7 +562,12 @@ class FeatureGroupBase:
             )
 
     @public
-    def delete(self, force: bool = False, delete_feature_views: bool = False) -> None:
+    def delete(
+        self,
+        force: bool = False,
+        delete_feature_views: bool = False,
+        delete_data: bool = True,
+    ) -> None:
         """Drop the entire feature group along with its feature data.
 
         Example:
@@ -578,18 +583,31 @@ class FeatureGroupBase:
 
             # delete the feature group
             fg.delete()
+
+            # or delete it and keep its offline data on its S3, GCS or Glue data source
+            fg.delete(delete_data=False)
             ```
 
         Danger: Potentially dangerous operation
             This operation drops all metadata associated with **this version** of the feature group **and** all the feature data in offline and online storage associated with it.
+            With `delete_data=False`, a feature group on an S3, GCS or Glue data source keeps its offline data: the objects under its path, and its Glue table.
+            Its online data, Kafka topic, commits, statistics and jobs are deleted either way.
+
+        Note: Recreating a feature group whose data was kept
+            A feature group created later with the same name, version and data source reads and writes the kept table.
+            To start with an empty table, give the data source another `path` on S3 or GCS, or another table name on Glue, where the location of an existing table wins over the path.
 
         Parameters:
             force: When True, delete the feature group even if feature views depend on it, leaving those feature views in place (degraded) rather than failing.
                 When False, deletion fails if the feature group is used by a feature view.
             delete_feature_views: When True, also delete the feature views that depend on this feature group, along with their training data.
+            delete_data: When False, keep the offline data the feature group stores on its S3, GCS or Glue data source.
+                A feature group whose offline data is in Hopsworks cannot keep it, so the deletion fails.
+                Requires Hopsworks 5.3 or later.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, including `delete_data=False` on a feature group whose offline data is in Hopsworks.
+            hopsworks.client.exceptions.FeatureStoreException: If `delete_data` is False and the backend predates Hopsworks 5.3, which would delete the data.
         """
         warnings.warn(
             f"All jobs associated to feature group `{self._name}`, version `{self._version}` will be removed.",
@@ -597,7 +615,10 @@ class FeatureGroupBase:
             stacklevel=1,
         )
         self._feature_group_engine._delete(
-            self, force=force, delete_feature_views=delete_feature_views
+            self,
+            force=force,
+            delete_feature_views=delete_feature_views,
+            delete_data=delete_data,
         )
 
     @public

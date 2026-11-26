@@ -30,10 +30,12 @@ class TestFeatureGroupBaseEngine:
         )
 
         # Act
-        fg_base_engine._delete(feature_group=None)
+        fg_base_engine._delete(feature_group=None, delete_data=False)
 
         # Assert
-        assert mock_fg_api.return_value._delete.call_count == 1
+        mock_fg_api.return_value._delete.assert_called_once_with(
+            None, force=False, delete_feature_views=False, delete_data=False
+        )
 
     def test_add_tag(self, mocker):
         # Arrange

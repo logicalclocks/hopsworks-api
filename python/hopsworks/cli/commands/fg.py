@@ -920,6 +920,12 @@ def fg_append_features(
     help="Also delete the feature views that depend on this feature group, along with "
     "their training data.",
 )
+@click.option(
+    "--keep-data",
+    is_flag=True,
+    help="Keep the offline data the feature group stores on its S3, GCS or Glue data "
+    "source. Needs Hopsworks 5.3 or later.",
+)
 @click.pass_context
 def fg_delete(
     ctx: click.Context,
@@ -928,6 +934,7 @@ def fg_delete(
     yes: bool,
     force: bool,
     delete_feature_views: bool,
+    keep_data: bool,
 ) -> None:
     """Delete a feature group and all its data.
 
@@ -938,6 +945,7 @@ def fg_delete(
         yes: Skip confirmation when True.
         force: Delete even if feature views depend on it, leaving them in place.
         delete_feature_views: Also delete the dependent feature views and their training data.
+        keep_data: Keep the offline data on the feature group's S3, GCS or Glue data source.
     """
     fg = _get_fg(ctx, name, version, exact=True)
     if not yes and not output.JSON_MODE:
@@ -955,6 +963,11 @@ def fg_delete(
                 "This removes its metadata and any online rows; the external "
                 "table is left untouched."
             )
+        elif keep_data:
+            wipes = (
+                "This removes its metadata and online data; its offline data on "
+                "the data source is kept."
+            )
         else:
             wipes = "This wipes all offline and online data."
         click.confirm(
@@ -963,7 +976,11 @@ def fg_delete(
             abort=True,
         )
     try:
-        fg.delete(force=force, delete_feature_views=delete_feature_views)
+        fg.delete(
+            force=force,
+            delete_feature_views=delete_feature_views,
+            delete_data=not keep_data,
+        )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Delete failed: {exc}") from exc
     output.success("✓ Deleted feature group %s", name)

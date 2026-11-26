@@ -542,6 +542,47 @@ def test_datasource_delete_calls_rest(mock_project):
     assert "mydb" in call.args[1]
 
 
+def test_datasource_delete_keeps_data(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fs.id = 67
+    fake_client = mock.MagicMock()
+    fake_client._project_id = 119
+    with (
+        mock.patch("hopsworks_common.client._get_instance", return_value=fake_client),
+        mock.patch(
+            "hopsworks_common.client._get_connection",
+            return_value=mock.MagicMock(backend_version="5.3.0"),
+        ),
+    ):
+        result = CliRunner().invoke(
+            cli, ["datasource", "delete", "mydb", "--yes", "--keep-data"]
+        )
+    assert result.exit_code == 0, result.output
+    assert fake_client._send_request.call_args.kwargs["query_params"] == {
+        "deleteData": False
+    }
+
+
+def test_datasource_delete_keeping_data_refuses_an_older_backend(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fs.id = 67
+    fake_client = mock.MagicMock()
+    fake_client._project_id = 119
+    with (
+        mock.patch("hopsworks_common.client._get_instance", return_value=fake_client),
+        mock.patch(
+            "hopsworks_common.client._get_connection",
+            return_value=mock.MagicMock(backend_version="5.2.4"),
+        ),
+    ):
+        result = CliRunner().invoke(
+            cli, ["datasource", "delete", "mydb", "--yes", "--keep-data"]
+        )
+    assert result.exit_code != 0
+    assert "5.2.4" in result.output
+    fake_client._send_request.assert_not_called()
+
+
 def test_datasource_databases_delegates_to_sdk(mock_project):
     fs = mock_project.get_feature_store.return_value
     ds = mock.MagicMock()

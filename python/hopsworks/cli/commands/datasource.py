@@ -2259,18 +2259,39 @@ def credentials_delete(ctx: click.Context, name: str, yes: bool) -> None:
 @datasource_group.command("delete")
 @click.argument("name")
 @click.option("--yes", is_flag=True, help="Skip confirmation.")
+@click.option(
+    "--keep-data",
+    is_flag=True,
+    help="Keep the offline data its feature groups store on it. Needs Hopsworks 5.3 "
+    "or later.",
+)
 @click.pass_context
-def connector_delete(ctx: click.Context, name: str, yes: bool) -> None:
-    """Delete a storage connector.
+def connector_delete(ctx: click.Context, name: str, yes: bool, keep_data: bool) -> None:
+    """Delete a storage connector and the feature groups that use it.
 
     Args:
         ctx: Click context.
         name: Connector name.
         yes: Skip confirmation when True.
+        keep_data: Keep the offline data of its feature groups on an S3, GCS or Glue data source.
     """
     fs = session.get_feature_store(ctx)
+    if keep_data:
+        from hopsworks_common import client
+
+        backend_version = client._backend_before_5_3()
+        if backend_version:
+            # An older backend ignores deleteData, so it would delete the data.
+            raise click.ClickException(
+                f"Hopsworks {backend_version} cannot keep the data of the feature "
+                "groups of a deleted data source; it needs Hopsworks 5.3 or later."
+            )
     if not yes and not output.JSON_MODE:
-        click.confirm(f"Delete connector '{name}'?", abort=True)
+        kept = " Their offline data on it is kept." if keep_data else ""
+        click.confirm(
+            f"Delete connector '{name}' and the feature groups that use it?{kept}",
+            abort=True,
+        )
 
     from hopsworks_common.core import rest
 
@@ -2280,6 +2301,7 @@ def connector_delete(ctx: click.Context, name: str, yes: bool) -> None:
             rest._project_path(
                 "featurestores", getattr(fs, "id", None), "storageconnectors", name
             ),
+            query_params={"deleteData": False} if keep_data else None,
         )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Delete failed: {exc}") from exc

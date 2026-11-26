@@ -143,7 +143,8 @@ Files a connector points at (`--key-path`, truststores, keystores, wallets) are 
 
 `--argument key=value` (and Kafka's or MongoDB's `--option`) carries plain connector settings only. Those values are stored and returned in clear text, so a key that looks like a credential (`sasl.jaas.config`, anything containing `password`, `secret`, `token`) is refused; there is no safe way to pass Kafka SASL credentials through the CLI until the backend keeps them in the secret store.
 
-**Confirm before deleting.** `hops datasource delete` removes the storage connector irreversibly; confirm the exact name with the user, and never delete one that feature groups still read from unless they asked.
+**Confirm before deleting.** `hops datasource delete` removes the storage connector and every feature group on it irreversibly; confirm the exact name with the user, and never delete one that feature groups still read from unless they asked.
+`--keep-data` (Hopsworks 5.3+) keeps the offline data of its feature groups on an S3, GCS or Glue data source.
 
 ## Tag a data source
 
