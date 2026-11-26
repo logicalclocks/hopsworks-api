@@ -19,6 +19,7 @@ import json
 import os
 import stat
 import threading
+import time
 
 import pytest
 import requests
@@ -27,6 +28,14 @@ from hsfs.client.base import Client
 from hsfs.client.exceptions import RestAPIError
 
 from tests.util import changes_environ
+
+
+@pytest.fixture(autouse=True)
+def _module_clock(mocker):
+    # The tests patch `hopsworks_common.client.base.time.monotonic` and `.sleep`, which resolve to the time module every thread shares.
+    # A thread left running by an earlier test then moved their fake clocks with its own sleeps, and a request deadline expired early.
+    # With its own stand-in, the client module alone sees the fake clock.
+    mocker.patch("hopsworks_common.client.base.time", mocker.MagicMock(wraps=time))
 
 
 class TestBaseClient:
@@ -538,7 +547,7 @@ class TestBaseClient:
             real_replace(src, dst)
 
         replace = mocker.patch("os.replace", side_effect=replace_once_released)
-        mocker.patch("time.sleep")
+        mocker.patch("hopsworks_common.client.base.time.sleep")
 
         Client._replace_file(str(path), "new")
 
