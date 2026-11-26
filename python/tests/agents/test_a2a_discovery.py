@@ -363,11 +363,11 @@ class TestHostnameAndPublicCard:
         monkeypatch.setenv(
             "HOPSWORKS_AGENT_PUBLIC_URL", "https://gateway.example/v1/proj/advisor"
         )
-        monkeypatch.setenv("HOPSWORKS_AGENT_HOSTNAME_OFF_REASON", "gateway_api_off")
+        monkeypatch.setenv("HOPSWORKS_AGENT_HOSTNAME_OFF_REASON", "knative_mode")
         view = a2a_view(echo_app())
         assert view["hostname"] is None
         assert view["url"] is None
-        assert view["hostname_off"] == "gateway_api_off"
+        assert view["hostname_off"] == "knative_mode"
         assert view["public_card"] is False
 
     def test_the_platforms_reason_wins_over_a_bare_url(self, monkeypatch):
