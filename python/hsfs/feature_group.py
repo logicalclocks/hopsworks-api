@@ -5354,6 +5354,45 @@ class FeatureGroup(FeatureGroupBase):
         return self._feature_group_engine._delta_cleanup_metadata(self)
 
     @public
+    def delta_delete(self, predicate: str) -> dict | None:
+        """Delete the rows of this feature group's Delta table that match a SQL predicate.
+
+        The delete is one Delta commit, registered with Hopsworks as a commit with its
+        deleted rows. A predicate on partition columns only, such as a date partition,
+        removes whole files and rewrites none, so it stays cheap on a large table.
+        Unlike [`delete_records`][hsfs.feature_group.FeatureGroup.delete_records], which
+        matches the primary keys of a dataframe, this names the rows by any condition.
+
+        This method can only be used on feature groups stored as DELTA; it returns None
+        for any other format.
+
+        Example:
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            # get the Feature Group instance
+            fg = fs.get_or_create_feature_group(...)
+
+            # drop the partitions older than a date
+            fg.delta_delete("day < DATE '2026-10-27'")
+            ```
+
+        Parameters:
+            predicate: A SQL condition on the feature group's columns. It must not be empty.
+
+        Returns:
+            The engine's delete metrics (rows deleted and copied, files added and removed) on
+            the Python engine, an empty dict on Spark, or None when the feature group is not
+            stored as DELTA. A partition-only delete reports 0 rows deleted: it drops whole
+            files without reading them.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If the predicate is empty.
+        """
+        return self._feature_group_engine._delta_delete(self, predicate)
+
+    @public
     def delta_vacuum(
         self,
         retention_hours: int = None,
