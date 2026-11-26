@@ -365,6 +365,7 @@ Every `AgentApp` serves the A2A 1.0 protocol next to AG-UI, built on the officia
 | `POST /a2a` | The JSON-RPC binding (`SendMessage`, `SendStreamingMessage`, `GetTask`, `ListTasks`, `CancelTask`, `SubscribeToTask`) |
 | `/a2a/rest/...` | The HTTP+JSON binding of the same operations (`/message:send`, `/tasks/{id}`, ...) |
 | `GET /a2a/artifacts/{task}/{digest}` | A large part of a task, kept beside the database, for whoever may read the task |
+| gRPC, port `HOPSWORKS_AGENT_GRPC_PORT` (9090) | The gRPC binding (`lf.a2a.v1.A2AService`, and `a2a.v1.A2AService` for 0.3), when the platform routes gRPC to the deployment; see [Hostnames, the public card and gRPC](#hostnames-the-public-card-and-grpc) |
 
 A message becomes a turn: `contextId` is the `conversation_id`, `text` parts the text, `raw` parts images, audio or files by media type, `data` parts the request `context`, and `url` parts reach the handler as `request.urls` untouched, unless `AgentApp(fetch_urls=["files.example.com"])` names hosts whose URLs are fetched into files first. The turn becomes a task: the reply text is always the artifact named `response`, streamed chunk by chunk from a stream handler, and the final status message carries the answer with `metadata.hopsworks` (`trace_id`, `citations`, `usage`, `subject`). `ctx.emit_event` goes out as a working status with the step under `metadata.hopsworks.step`; `ctx.interrupt` pauses the task in `INPUT_REQUIRED`, or `AUTH_REQUIRED` for `reason="auth_required"`, and the answer comes back as a message on the same task: a `data` part `{"<interrupt id>": <payload>}`, or plain text when one question is open. An answer that names a question the task did not ask, or leaves one open, is refused as the JSON-RPC `InvalidParamsError` and the task stays paused; a question that expired, or whose record is gone (the pod restarted, the task was dropped past the store budget, the conversation was erased), fails the task with `interrupt_expired` or `nothing_to_resume`. `CancelTask` stops a running turn, and clears the question of a paused one; a resumed turn is running the action a person approved, so the cancel waits for it and is refused as `TaskNotCancelableError`, with the task in the state the action earned. Credentials never travel in a message: an `auth_required` question describes what is needed in its `metadata`, and the answer is a reference such as `{"credential_ref": "<secret name>"}` the handler resolves itself.
 
@@ -452,6 +453,46 @@ Events before the last are best effort and may be dropped under backpressure; th
 
 `GetExtendedAgentCard` returns the card with what the Hopsworks manifest knows (memory tiers, the conversation and feedback endpoints, tool events, the graph) under the Hopsworks extension's `agent` parameter.
 On a deployment the card served at `HOPSWORKS_AGENT_PUBLIC_URL` carries a signature the platform made at start: the key never enters a pod, the platform signs only a card whose URLs it gave this deployment, and a client verifies it against the cluster's `/hopsworks-api/api/agents/jwks.json`. The manifest's `signed` says whether it is.
+
+### Hostnames, the public card and gRPC
+
+A cluster that serves agents on the Gateway API path can give every agent deployment a hostname of its own (`<deployment>-<serving id>.<domain>`, set up by the administrator).
+The platform then sets `HOPSWORKS_AGENT_PUBLIC_URL` to `https://<host>`, the card's interfaces are at the domain root (`https://<host>/a2a`, `https://<host>/a2a/rest`), and A2A discovery works as the protocol expects: a client needs only the hostname.
+Without one (a cluster on the Istio path, or no domain configured) the path form stays, and the manifest says why under `hostname_off` (`gateway_api_off`, `no_domain`; `not_set` for a local run or an older platform).
+
+The card is anonymous only when the deployment asks for it, `deploy_agent(..., public_card=True)` or the "Public Agent Card" switch, and the administrator allows public cards: the gateway then lets `GET /.well-known/agent-card.json` on the agent's hostname through without a credential, and the platform sets `HOPSWORKS_AGENT_PUBLIC_CARD=true`.
+What is served there is the public card, the same one an authenticated caller reads; the extended card and every other request still need the deployment's credential, and a private agent refuses them without a caller, a principal header that is present but empty included.
+
+gRPC is served when the platform routes it to the deployment (Standard mode, gRPC on in the cluster): it sets `HOPSWORKS_AGENT_GRPC_URL` to `<host>:443`, and the card lists a `GRPC` interface at that address after the HTTP ones.
+The server starts with the app, before it reports ready, on `HOPSWORKS_AGENT_GRPC_PORT` (9090) with the same handler, so a task sent over gRPC is read, followed and cancelled over HTTP and the other way round; on a stop signal it takes no new calls and the open ones get the drain budget.
+The gateway passes the caller as gRPC metadata (`x-hopsworks-principal`), which a private agent reads as it reads the HTTP header, and a call without it is refused as `UNAUTHENTICATED`.
+gRPC needs `grpcio`, which the agent image has (`a2a-sdk[grpc]`); without it, or when the port cannot be opened, the agent serves HTTP alone, the card names no gRPC interface and the manifest's `grpc` is false.
+
+```python
+import grpc
+from a2a.client import A2ACardResolver, ClientConfig, ClientFactory
+from a2a.utils.constants import TransportProtocol
+
+# the card at the hostname: anonymous when the card is public, with the API key otherwise
+card = await A2ACardResolver(http, "https://<host>").get_agent_card()
+
+
+def api_key(context, callback):
+    callback((("authorization", f"ApiKey {serving_key}"),), None)
+
+
+credentials = grpc.composite_channel_credentials(
+    grpc.ssl_channel_credentials(), grpc.metadata_call_credentials(api_key)
+)
+client = ClientFactory(
+    ClientConfig(
+        grpc_channel_factory=lambda url: grpc.aio.secure_channel(url, credentials),
+        supported_protocol_bindings=[TransportProtocol.GRPC],
+    )
+).create(card)
+```
+
+The manifest's `a2a` lists `grpc`, `hostname`, `public_card` and, without a hostname, `hostname_off`, and the extended card carries the same.
 
 ## Handler context (optional)
 

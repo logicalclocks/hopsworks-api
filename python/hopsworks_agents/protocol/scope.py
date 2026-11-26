@@ -376,6 +376,14 @@ class _PrincipalGate:
     Sets the caller for the stores below it.
     The routes anyone may read without being someone, the card, the manifest
     and the probes, pass through unscoped.
+    The Agent Card in particular is served to a request that names no caller:
+    when the deployment opted into a public card
+    (``HOPSWORKS_AGENT_PUBLIC_CARD=true``) the gateway sends anonymous requests
+    for it, and the platform's agent directory reads it in-cluster. It is the
+    public card; the extended one is asked for under ``/a2a`` and stays gated.
+    A principal header that is present but empty (how the gateway blanks a
+    client's copy on an unauthenticated route) names no caller either.
+    gRPC calls are gated the same way, from their metadata (``a2a_grpc``).
     """
 
     #: Path prefixes that open or read a caller's conversations and tasks.

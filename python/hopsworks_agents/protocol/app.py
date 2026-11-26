@@ -1803,6 +1803,10 @@ class AgentApp(FastAPI):
         self._draining = True
         self._drain_deadline = asyncio.get_running_loop().time() + self._drain_window()
         self._drain_watchdog = asyncio.create_task(self._abort_at_deadline())
+        # uvicorn closes the HTTP listener here; the gRPC server stops taking
+        # calls too, and the ones open get the same budget
+        if self._a2a is not None:
+            self._a2a._stop_accepting(self._drain_window())
 
     async def _abort_at_deadline(self) -> None:
         loop = asyncio.get_running_loop()
@@ -1844,6 +1848,10 @@ class AgentApp(FastAPI):
         if not self._draining:
             self._draining = True
             self._drain_deadline = loop.time() + self._drain_window()
+        if self._a2a is not None:
+            self._a2a._stop_accepting(
+                max(0.0, (self._drain_deadline or loop.time()) - loop.time())
+            )
         if self._drain_watchdog is not None and not self._drain_watchdog.done():
             self._drain_watchdog.cancel()
         keepers = {task for task in _DETACHED if not task.done()}

@@ -139,6 +139,10 @@ POLYMORPHISM_FALLBACK_QUALNAMES: set[str] = {
     "_SpillingStore.list",
     "_SpillingStore.delete",
     "_PushSender.send_notification",
+    # The gRPC binding: a context builder extending the SDK's
+    # ``DefaultGrpcServerCallContextBuilder``, and a ``grpc.aio.ServerInterceptor``.
+    "_MetadataContextBuilder.build",
+    "_PrincipalInterceptor.intercept_service",
 }
 
 # Third-party-API-mirroring re-exports: symbols that intentionally mirror an
