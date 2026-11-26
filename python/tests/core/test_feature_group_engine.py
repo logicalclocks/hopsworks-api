@@ -28,6 +28,7 @@ from hsfs.storage_connector import (
     HopsworksConnector,
     RedshiftConnector,
     RestConnector,
+    SapHanaConnector,
     SnowflakeConnector,
     SqlConnector,
 )
@@ -70,6 +71,16 @@ class TestFeatureGroupEngine:
                 HopsworksConnector(id=1, name="hopsworks", featurestore_id=1),
                 True,
                 True,
+            ),
+            (
+                SapHanaConnector(id=1, name="sap_hana", featurestore_id=1),
+                True,
+                True,
+            ),
+            (
+                SapHanaConnector(id=1, name="sap_hana", featurestore_id=1),
+                False,
+                False,
             ),
             (
                 SqlConnector(
@@ -195,6 +206,29 @@ class TestFeatureGroupEngine:
         )
 
         assert fg.sink_enabled is expected_sink_enabled
+
+    def test_requested_sink_is_accepted_for_sap_hana(self, mocker):
+        mocker.patch("hsfs.engine._get_type")
+
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=1,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            sink_enabled=True,
+            data_source=DataSource(
+                storage_connector=SapHanaConnector(
+                    id=1, name="sap_hana", featurestore_id=1
+                ),
+                query="SELECT * FROM sales.orders",
+            ),
+        )
+
+        fg._resolve_sink_enabled(validate_requested_sink=True)
+
+        assert fg.sink_enabled is True
 
     def test_save(self, mocker):
         # Arrange

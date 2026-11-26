@@ -73,7 +73,7 @@ def login(
     Internal-mode behaviour: when ``internal`` is true (the CLI is running
     inside a Hopsworks pod), call ``hopsworks.login()`` with no host/port/key
     arguments so the SDK's own env-var detection (``REST_ENDPOINT`` +
-    ``$SECRETS_DIR/token.jwt``) takes the auth path. Passing ``host``/``port``
+    the credential in ``SECRETS_DIR``) takes the auth path. Passing ``host``/``port``
     explicitly works in current SDK versions because it ignores them when
     ``REST_ENDPOINT`` is set, but relying on that is a footgun: a future SDK
     refactor that honours the explicit args would silently break in-pod auth.
@@ -100,8 +100,7 @@ def login(
 
     engine = engine or "python"
     if internal:
-        # Let the SDK do its own ``REST_ENDPOINT`` + ``$SECRETS_DIR/token.jwt``
-        # discovery. ``project``/``engine`` still apply at the SDK layer.
+        # Let the SDK use the pod endpoint and its mounted JWT or API key.
         kwargs: dict[str, Any] = {"hostname_verification": hostname_verification}
         if project:
             kwargs["project"] = project
