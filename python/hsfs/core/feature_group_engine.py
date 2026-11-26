@@ -772,6 +772,17 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         return engine_instance._cleanup_metadata()
 
     @staticmethod
+    def _delta_delete(feature_group, predicate):
+        if not predicate or not predicate.strip():
+            raise exceptions.FeatureStoreException(
+                "delta_delete needs a predicate: an empty one would delete every row"
+            )
+        engine_instance = FeatureGroupEngine._delta_engine_for(feature_group)
+        if engine_instance is None:
+            return None
+        return engine_instance._delete_where(predicate)
+
+    @staticmethod
     def _delta_vacuum(feature_group, retention_hours):
         if feature_group.time_travel_format == "DELTA":
             spark_session, spark_context = (

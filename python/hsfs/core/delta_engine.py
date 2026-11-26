@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime
+import json
 import logging
 import os
 import re
@@ -130,6 +131,10 @@ class DeltaEngine:
     DELTA_QUERY_TIME_TRAVEL_AS_OF_INSTANT = "timestampAsOf"
     DELTA_QUERY_TIME_TRAVEL_AS_OF_VERSION = "versionAsOf"
     DELTA_ENABLE_CHANGE_DATA_FEED = "delta.enableChangeDataFeed"
+    # Newest commits read to find the last data commit after a write: the write's own
+    # commit is the newest one unless other writers committed this many times since.
+    LAST_COMMIT_SEARCH = 20
+    _COMMIT_FILE = re.compile(r"(\d{20})\.json$")
     DELTA_DOT_PREFIX = "delta."
     DELTA_GLUE_CATALOG_IMPL = "org.apache.spark.sql.delta.catalog.DeltaCatalog"
     APPEND = "append"
@@ -189,7 +194,7 @@ class DeltaEngine:
         write_options: dict[str, Any] | None,
         validation_id: int | None = None,
         operation: str = "upsert",
-    ) -> feature_group_commit.FeatureGroupCommit:
+    ) -> feature_group_commit.FeatureGroupCommit | None:
         operation = operation.lower() if operation else "upsert"
         if self._spark_session is not None:
             _logger.debug(
@@ -203,6 +208,9 @@ class DeltaEngine:
             fg_commit = self._write_delta_rs_dataset(
                 dataset, write_options=write_options, operation=operation
             )
+        if fg_commit is None:
+            # The write committed nothing of its own, so there is no commit to register.
+            return None
         fg_commit.validation_id = validation_id
         return self._feature_group_api._commit(self._feature_group, fg_commit)
 
@@ -497,6 +505,7 @@ class DeltaEngine:
     def _delete_record(self, delete_df):
         partition_transforms._require_writable(self._feature_group)
         storage_options = None
+        before = None
         if self._spark_session is not None:
             location = self._feature_group.prepare_spark_location()
             is_delta_table = _is_delta_table_at(self._spark_session, location)
@@ -521,6 +530,7 @@ class DeltaEngine:
                 fg_source_table = DeltaRsTable(
                     location, storage_options=storage_options
                 )
+                before = fg_source_table.version()
                 is_delta_table = True
             except TableNotFoundError:
                 is_delta_table = False
@@ -549,10 +559,66 @@ class DeltaEngine:
                 source_alias=updates_alias,
                 target_alias=source_alias,
             ).when_matched_delete().execute()
-        fg_commit = self._get_last_commit_metadata(
-            self._spark_session, location, storage_options=storage_options
+        own_merge = (
+            {} if before is None else {"after": before, "operations": ("MERGE",)}
         )
+        fg_commit = self._get_last_commit_metadata(
+            self._spark_session, location, storage_options=storage_options, **own_merge
+        )
+        if fg_commit is None:
+            return None
         return self._feature_group_api._commit(self._feature_group, fg_commit)
+
+    def _delete_where(self, predicate: str) -> dict:
+        """Delete the rows matching a SQL predicate, as one DELETE commit.
+
+        A predicate on partition columns only removes whole files and rewrites none; delta-rs
+        then counts no deleted rows, so its commit is registered with 0. On delta-rs a delete
+        that matches nothing writes no commit, so none is registered.
+
+        Returns:
+            The engine's delete metrics on delta-rs, an empty dict on Spark.
+        """
+        partition_transforms._require_writable(self._feature_group)
+        storage_options = None
+        if self._spark_session is not None:
+            location = self._feature_group.prepare_spark_location()
+            if not _is_delta_table_at(self._spark_session, location):
+                raise FeatureStoreException(
+                    f"Feature group {self._feature_group.name} is not DELTA enabled "
+                )
+            table = _delta_table_for_path(self._spark_session, location)
+            before = table.history(1).collect()[0]["version"]
+            # delta-spark returns no metrics; they are in the commit read below.
+            table.delete(predicate)
+            metrics = {}
+            changed = True
+        else:
+            self._require_spark_for_clustered("delete from")
+            from deltalake import DeltaTable as DeltaRsTable
+
+            location = self._get_delta_rs_location()
+            storage_options = self._get_delta_rs_storage_options()
+            table = DeltaRsTable(location, storage_options=storage_options)
+            before = table.version()
+            metrics = table.delete(predicate)
+            # The handle that ran the delete moves only when the delete committed, and then
+            # names the delete's own commit: read exactly that version.
+            changed = table.version() != before
+            before = table.version() - 1
+        if changed:
+            # The newest DELETE after the version read before, not the newest commit:
+            # another writer may have committed since (the rule of FSTORE-2146).
+            fg_commit = self._get_last_commit_metadata(
+                self._spark_session,
+                location,
+                storage_options=storage_options,
+                after=before,
+                operations=("DELETE",),
+            )
+            if fg_commit is not None:
+                self._feature_group_api._commit(self._feature_group, fg_commit)
+        return metrics
 
     # Delta collects data-skipping statistics for the first N columns
     # (delta.dataSkippingNumIndexedCols, default 32). Liquid clustering only
@@ -1075,6 +1141,10 @@ class DeltaEngine:
                 f"Delta table not found at {location}. A new Delta table will be created."
             )
             is_delta_table = False
+        # The write's own commit is the newest WRITE or MERGE past this version: a delete
+        # or a compaction another process commits meanwhile is never taken for it.
+        before = fg_source_table.version() if is_delta_table else -1
+        own_write = {"after": before, "operations": ("WRITE", "MERGE")}
 
         if not is_delta_table:
             configuration = {
@@ -1113,7 +1183,10 @@ class DeltaEngine:
                     commit_properties=commit_properties,
                 )
                 return self._get_last_commit_metadata(
-                    self._spark_session, location, storage_options=storage_options
+                    self._spark_session,
+                    location,
+                    storage_options=storage_options,
+                    **own_write,
                 )
             if append_requested:
                 deltars_write(
@@ -1127,7 +1200,10 @@ class DeltaEngine:
                     f"Explicit append mode requested for {location}. Skipping merge operation."
                 )
                 return self._get_last_commit_metadata(
-                    self._spark_session, location, storage_options=storage_options
+                    self._spark_session,
+                    location,
+                    storage_options=storage_options,
+                    **own_write,
                 )
             # Optimisation: if the feature group is partitioned and none of the
             # incoming partition values already exist in the table, a plain append
@@ -1178,7 +1254,7 @@ class DeltaEngine:
             f"Executed delta-rs write. Retrieving commit metadata for Delta table at {location}"
         )
         return self._get_last_commit_metadata(
-            self._spark_session, location, storage_options=storage_options
+            self._spark_session, location, storage_options=storage_options, **own_write
         )
 
     @staticmethod
@@ -1825,13 +1901,22 @@ class DeltaEngine:
 
     @staticmethod
     def _get_last_commit_metadata(
-        spark_context, base_path, storage_options: dict | None = None
+        spark_context,
+        base_path,
+        storage_options: dict | None = None,
+        after: int | None = None,
+        operations: tuple[str, ...] | None = None,
     ):
-        """Retrieve oldest and last data-changing commits (MERGE/WRITE) from a Delta table.
+        """Retrieve oldest and last data-changing commits (MERGE/WRITE/DELETE) from a Delta table.
 
-        Uses shared filtering logic for both Spark and delta-rs.
+        Uses shared filtering logic for both Spark and delta-rs. On delta-rs only the newest
+        `LAST_COMMIT_SEARCH` commits are read, and the oldest commit comes from one listing of
+        the log. With `after`, the last commit is the newest one past that version whose
+        operation is in `operations` (a data operation by default), or None when there is none:
+        a commit another writer made since the caller's own is never taken for it.
         """
-        data_ops = ["MERGE", "WRITE"]
+        data_ops = ["MERGE", "WRITE", "DELETE"]
+        oldest_commit = None
         _logger.debug(f"Retrieving last commit metadata for Delta table at {base_path}")
 
         # --- Get commit history ---
@@ -1917,8 +2002,13 @@ class DeltaEngine:
             fg_source_table = DeltaRsTable(
                 base_path, storage_options=storage_options or {}
             )
-            history_records = fg_source_table.history()
+            # The full history reads one file per commit still in the log, on every write.
+            limit = DeltaEngine.LAST_COMMIT_SEARCH
+            if after is not None:
+                limit = max(limit, fg_source_table.version() - after)
+            history_records = fg_source_table.history(limit=limit)
             _logger.debug(f"history_records for {base_path}: {history_records}")
+            oldest_commit = DeltaEngine._oldest_log_commit(fg_source_table)
 
         if not history_records:
             return None
@@ -1929,7 +2019,17 @@ class DeltaEngine:
             return None
 
         # oldest = smallest version, latest = largest version
-        oldest_commit = min(filtered, key=lambda c: c["version"])
+        if oldest_commit is None:
+            oldest_commit = min(filtered, key=lambda c: c["version"])
+        if after is not None:
+            filtered = [
+                c
+                for c in filtered
+                if c["version"] > after
+                and c.get("operation") in (operations or data_ops)
+            ]
+            if not filtered:
+                return None
         last_commit = max(filtered, key=lambda c: c["version"])
 
         _logger.debug(
@@ -1940,6 +2040,37 @@ class DeltaEngine:
         )
 
         return DeltaEngine._get_delta_feature_group_commit(last_commit, oldest_commit)
+
+    @staticmethod
+    def _oldest_log_commit(table) -> dict | None:
+        """The oldest commit file still in the table's log: one listing of `_delta_log`, one read.
+
+        Its time is its commitInfo's timestamp, the writer's clock as every other commit's,
+        else the file's modification time. It can be older than the oldest data commit, never
+        newer by version, so a commit is never marked archived while the log can still read it.
+        Uses deltalake's DeltaStorageHandler on the table's raw handle (`table._table`), as
+        pinned by the hops-deltalake version this package requires.
+        """
+        from deltalake.fs import DeltaStorageHandler
+        from pyarrow.fs import FileSelector
+
+        handler = DeltaStorageHandler.from_table(table._table)
+        oldest = None
+        for info in handler.get_file_info_selector(
+            FileSelector("_delta_log", allow_not_found=True)
+        ):
+            match = DeltaEngine._COMMIT_FILE.search(info.path)
+            if match and (oldest is None or int(match.group(1)) < oldest[0]):
+                oldest = (int(match.group(1)), info.mtime_ns, info.path)
+        if oldest is None:
+            return None
+        version, mtime_ns, path = oldest
+        timestamp = mtime_ns // 1_000_000
+        for line in handler.open_input_stream(path).read().decode().splitlines():
+            if '"commitInfo"' in line:
+                timestamp = json.loads(line)["commitInfo"].get("timestamp", timestamp)
+                break
+        return {"version": version, "timestamp": timestamp}
 
     @staticmethod
     def _get_delta_feature_group_commit(last_commit, oldest_commit):
@@ -1966,6 +2097,12 @@ class DeltaEngine:
             rows_inserted = (
                 operation_metrics.get("numOutputRows")
                 or operation_metrics.get("num_added_rows")
+                or 0
+            )
+        elif operation == "DELETE":
+            rows_deleted = (
+                operation_metrics.get("numDeletedRows")
+                or operation_metrics.get("num_deleted_rows")
                 or 0
             )
         elif operation == "MERGE":

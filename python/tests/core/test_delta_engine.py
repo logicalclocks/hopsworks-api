@@ -1832,7 +1832,11 @@ class TestDeltaEngine:
         )
         delta_table.merge.assert_not_called()
         mock_commit.assert_called_once_with(
-            None, "hdfs://nn:8020/p", storage_options={}
+            None,
+            "hdfs://nn:8020/p",
+            storage_options={},
+            after=delta_table.version.return_value,
+            operations=("WRITE", "MERGE"),
         )
 
     def test_write_delta_rs_dataset_existing_table_uses_merge_by_default(
@@ -1875,7 +1879,11 @@ class TestDeltaEngine:
         insert_builder.return_value.execute.assert_called_once()
         fake_deltalake.write_deltalake.assert_not_called()
         mock_commit.assert_called_once_with(
-            None, "hdfs://nn:8020/p", storage_options={}
+            None,
+            "hdfs://nn:8020/p",
+            storage_options={},
+            after=delta_table.version.return_value,
+            operations=("WRITE", "MERGE"),
         )
 
     def test_prepare_df_for_delta_importerror(self, monkeypatch):
@@ -2156,124 +2164,6 @@ class TestDeltaEngine:
         mocker_get_delta_feature_group_commit.assert_called_once_with(
             mock_history_data[1], mock_history_data[0]
         )
-
-    def test_get_last_commit_metadata_deltars(self, mocker):
-        # Arrange
-        mock_history_data = [
-            {"version": 1, "operation": "WRITE", "timestamp": "2024-01-01T00:00:00Z"},
-            {"version": 2, "operation": "MERGE", "timestamp": "2024-01-02T00:00:00Z"},
-            {
-                "version": 3,
-                "operation": "OPTIMIZE",
-                "timestamp": "2024-01-03T00:00:00Z",
-            },
-        ]
-
-        # Fake the deltalake module
-        fake_deltalake = types.SimpleNamespace(DeltaTable=mocker.MagicMock())
-        sys.modules["deltalake"] = fake_deltalake
-
-        mock_delta_rs_table = mocker.MagicMock()
-        mock_delta_rs_table.history.return_value = mock_history_data
-        fake_deltalake.DeltaTable.return_value = mock_delta_rs_table
-
-        mocker_get_delta_feature_group_commit = mocker.patch(
-            "hsfs.core.delta_engine.DeltaEngine._get_delta_feature_group_commit",
-            return_value="result",
-        )
-
-        # Act
-        result = DeltaEngine._get_last_commit_metadata(None, "s3://some/path")
-
-        # Assert
-        assert result == "result"
-        mocker_get_delta_feature_group_commit.assert_called_once()
-        mocker_get_delta_feature_group_commit.assert_called_once_with(
-            mock_history_data[1], mock_history_data[0]
-        )
-
-    def test_get_last_commit_metadata_empty_history(self, mocker):
-        # Arrange
-        mock_history_data = []
-
-        # Fake the deltalake module
-        fake_deltalake = types.SimpleNamespace(DeltaTable=mocker.MagicMock())
-        sys.modules["deltalake"] = fake_deltalake
-
-        mock_delta_rs_table = mocker.MagicMock()
-        mock_delta_rs_table.history.return_value = mock_history_data
-        fake_deltalake.DeltaTable.return_value = mock_delta_rs_table
-
-        mocker_get_delta_feature_group_commit = mocker.patch(
-            "hsfs.core.delta_engine.DeltaEngine._get_delta_feature_group_commit",
-            return_value="result",
-        )
-
-        # Act
-        result = DeltaEngine._get_last_commit_metadata(None, "s3://some/path")
-
-        # Assert
-        assert result is None
-        mocker_get_delta_feature_group_commit.assert_not_called()
-
-    def test_get_last_commit_metadata_one_history_entry(self, mocker):
-        # Arrange
-        mock_history_data = [
-            {"version": 1, "operation": "WRITE", "timestamp": "2024-01-01T00:00:00Z"},
-        ]
-
-        # Fake the deltalake module
-        fake_deltalake = types.SimpleNamespace(DeltaTable=mocker.MagicMock())
-        sys.modules["deltalake"] = fake_deltalake
-
-        mock_delta_rs_table = mocker.MagicMock()
-        mock_delta_rs_table.history.return_value = mock_history_data
-        fake_deltalake.DeltaTable.return_value = mock_delta_rs_table
-
-        mocker_get_delta_feature_group_commit = mocker.patch(
-            "hsfs.core.delta_engine.DeltaEngine._get_delta_feature_group_commit",
-            return_value="result",
-        )
-
-        # Act
-        result = DeltaEngine._get_last_commit_metadata(None, "s3://some/path")
-
-        # Assert
-        assert result == "result"
-        mocker_get_delta_feature_group_commit.assert_called_once()
-        mocker_get_delta_feature_group_commit.assert_called_once_with(
-            mock_history_data[0], mock_history_data[0]
-        )
-
-    def test_get_last_commit_metadata_one_history_entry_optimize(self, mocker):
-        # Arrange
-        mock_history_data = [
-            {
-                "version": 1,
-                "operation": "OPTIMIZE",
-                "timestamp": "2024-01-01T00:00:00Z",
-            },
-        ]
-
-        # Fake the deltalake module
-        fake_deltalake = types.SimpleNamespace(DeltaTable=mocker.MagicMock())
-        sys.modules["deltalake"] = fake_deltalake
-
-        mock_delta_rs_table = mocker.MagicMock()
-        mock_delta_rs_table.history.return_value = mock_history_data
-        fake_deltalake.DeltaTable.return_value = mock_delta_rs_table
-
-        mocker_get_delta_feature_group_commit = mocker.patch(
-            "hsfs.core.delta_engine.DeltaEngine._get_delta_feature_group_commit",
-            return_value="result",
-        )
-
-        # Act
-        result = DeltaEngine._get_last_commit_metadata(None, "s3://some/path")
-
-        # Assert
-        assert result is None
-        mocker_get_delta_feature_group_commit.assert_not_called()
 
     def test_get_delta_feature_group_commit_merge(self, mocker):
         # Arrange

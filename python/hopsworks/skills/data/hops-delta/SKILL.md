@@ -1,6 +1,6 @@
 ---
 name: hops-delta
-description: Call the Delta maintenance methods on a feature group from the Python or PySpark client, and choose a write mode. Auto-invoke when the user mentions delta_optimize, delta_compact, delta_vacuum, delta_checkpoint, delta_cleanup_metadata, the _delta_log, Delta time travel, or append versus upsert on a feature group. For diagnosing small files and slow queries across table formats, hops-table-maintenance is the skill.
+description: Call the Delta maintenance methods on a feature group from the Python or PySpark client, and choose a write mode. Auto-invoke when the user mentions delta_optimize, delta_compact, delta_vacuum, delta_checkpoint, delta_cleanup_metadata, delta_delete, the _delta_log, Delta time travel, or append versus upsert on a feature group. For diagnosing small files and slow queries across table formats, hops-table-maintenance is the skill.
 ---
 
 # Delta feature group maintenance
@@ -67,6 +67,11 @@ possible.
   takes neither as syntax, and are restored afterwards.
 - `delta_compact()` is the same call under the other name: Delta's SQL says
   OPTIMIZE and delta-rs says `optimize.compact`, so both words work.
+- `delta_delete(predicate)` deletes the rows matching a SQL condition in one
+  DELETE commit, registered with Hopsworks. A condition on partition columns only
+  removes whole files and copies no rows (`num_copied_rows` 0), so dropping old
+  date partitions stays cheap. An empty predicate is refused. The freed files go
+  at the next vacuum past the retention.
 
 ## Commands / API
 
@@ -81,6 +86,9 @@ fg.delta_vacuum(retention_hours=24)         # delete; dry_run=False is set for y
 
 # Compact only what is new, on a table partitioned by a date column.
 fg.delta_optimize(after_ingest_date="2026-09-10")
+
+# Drop the date partitions past a retention; returns the delete metrics.
+fg.delta_delete("day < DATE '2026-08-11'")
 ```
 
 A reasonable schedule for an append-heavy table: compact when the active file
