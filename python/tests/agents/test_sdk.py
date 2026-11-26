@@ -2631,18 +2631,27 @@ class TestATraceReadStraightAfterTheReply:
         "totalInputTokens": 2784,
     }
 
-    def test_wait_holds_out_for_the_turn_to_close(self, monkeypatch):
+    @staticmethod
+    def _fake_clock(monkeypatch):
+        """Time moves only when the poll sleeps, so a slow runner cannot use up `wait`."""
         from hopsworks_agents.eval.sdk import agent as agent_module
 
-        monkeypatch.setattr(agent_module.time, "sleep", lambda _s: None)
+        now = [0.0]
+
+        def sleep(seconds):
+            now[0] += seconds
+
+        monkeypatch.setattr(agent_module.time, "sleep", sleep)
+        monkeypatch.setattr(agent_module.time, "monotonic", lambda: now[0])
+
+    def test_wait_holds_out_for_the_turn_to_close(self, monkeypatch):
+        self._fake_clock(monkeypatch)
         _, agent7, _ = agent(Reply(self.HALF), Reply(self.WHOLE))
         trace = agent7.trace("t", wait=10)
         assert trace.total_input_tokens == 2784
 
     def test_wait_rides_out_not_found_too(self, monkeypatch):
-        from hopsworks_agents.eval.sdk import agent as agent_module
-
-        monkeypatch.setattr(agent_module.time, "sleep", lambda _s: None)
+        self._fake_clock(monkeypatch)
         _, agent7, _ = agent(
             Reply({"usrMsg": "Trace not found"}, status=404), Reply(self.WHOLE)
         )

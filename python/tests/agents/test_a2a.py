@@ -1187,6 +1187,7 @@ class TestReviewRoundOne:
     def test_history_is_a_snapshot_and_turns_stay_contiguous(self, tmp_path):
         memory = self._memory(tmp_path)
         gate = asyncio.Event()
+        started = asyncio.Event()
         seen = {}
         app = AgentApp(memory=memory)
 
@@ -1194,6 +1195,7 @@ class TestReviewRoundOne:
         async def chat(request, ctx):
             if request.text == "slow":
                 first = ctx.history
+                started.set()
                 await gate.wait()
                 seen["reads"] = (first, ctx.history)
                 return "slow done"
@@ -1204,7 +1206,8 @@ class TestReviewRoundOne:
             slow = asyncio.create_task(
                 send(client, user_message("slow", context_id="c"))
             )
-            await asyncio.sleep(0.1)
+            # the slow turn has read its history before the fast one is sent
+            await asyncio.wait_for(started.wait(), 30)
             task_of(await send(client, user_message("fast", context_id="c")))
             gate.set()
             task_of(await slow)
