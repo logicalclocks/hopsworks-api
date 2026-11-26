@@ -602,8 +602,10 @@ class DeltaEngine:
             table = DeltaRsTable(location, storage_options=storage_options)
             before = table.version()
             metrics = table.delete(predicate)
-            # The handle that ran the delete moves only when the delete committed.
+            # The handle that ran the delete moves only when the delete committed, and then
+            # names the delete's own commit: read exactly that version.
             changed = table.version() != before
+            before = table.version() - 1
         if changed:
             # The newest DELETE after the version read before, not the newest commit:
             # another writer may have committed since (the rule of FSTORE-2146).
