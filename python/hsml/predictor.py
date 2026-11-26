@@ -119,6 +119,7 @@ class Predictor(DeployableComponent):
         # position keeps its bindings.
         agent_framework: str | None = None,
         chat_config: dict[str, Any] | None = None,
+        loading_strategy: str | None = None,
         **kwargs,
     ):
         self._missing_mandatory_tags = missing_mandatory_tags or []
@@ -201,6 +202,9 @@ class Predictor(DeployableComponent):
         self._triton_image_tag = triton_image_tag
         self._knative_mode = knative_mode
         self._llm_gateway = llm_gateway
+        self._loading_strategy = self._validate_loading_strategy(
+            loading_strategy, model_server
+        )
 
     @public
     def deploy(self) -> deployment.Deployment:
@@ -266,6 +270,33 @@ class Predictor(DeployableComponent):
                     )
                 )
         return serving_tool
+
+    @classmethod
+    def _validate_loading_strategy(cls, loading_strategy, model_server):
+        if loading_strategy is None:
+            return None
+        strategies = sorted(util._get_members(PREDICTOR, prefix="LOADING_STRATEGY"))
+        if loading_strategy not in strategies:
+            raise ValueError(
+                "Loading strategy '{}' is not valid. Possible values are '{}'".format(
+                    loading_strategy, ", ".join(strategies)
+                )
+            )
+        if model_server is None:
+            return loading_strategy
+        # Every model server reads mounted files in place; only vLLM streams them.
+        unsupported = PREDICTOR.LOADING_STRATEGY_RUNAI_STREAMER
+        if (
+            model_server != PREDICTOR.MODEL_SERVER_VLLM
+            and loading_strategy == unsupported
+        ):
+            allowed = [s for s in strategies if s != unsupported]
+            raise ValueError(
+                "Loading strategy '{}' is not supported by the '{}' model server. Possible values are '{}'".format(
+                    loading_strategy, model_server, ", ".join(allowed)
+                )
+            )
+        return loading_strategy
 
     @classmethod
     def _validate_script_file(
@@ -482,7 +513,10 @@ class Predictor(DeployableComponent):
 
     @classmethod
     def from_json(cls, json_decamelized):
-        predictor = Predictor(**cls.extract_fields_from_json(json_decamelized))
+        fields = cls.extract_fields_from_json(json_decamelized)
+        predictor = Predictor(**{**fields, "loading_strategy": None})
+        # The backend's strategy as it is: a newer backend can have one this client does not know.
+        predictor._loading_strategy = fields["loading_strategy"]
         predictor._set_state(PredictorState.from_response_json(json_decamelized))
         return predictor
 
@@ -599,11 +633,17 @@ class Predictor(DeployableComponent):
         kwargs["llm_gateway"] = util._extract_field_from_json(
             json_decamelized, "llm_gateway"
         )
+        kwargs["loading_strategy"] = util._extract_field_from_json(
+            json_decamelized, "loading_strategy"
+        )
         return kwargs
 
     def update_from_response_json(self, json_dict):
         json_decamelized = _decamelize_servings(json_dict)
-        self.__init__(**self.extract_fields_from_json(json_decamelized))
+        fields = self.extract_fields_from_json(json_decamelized)
+        self.__init__(**{**fields, "loading_strategy": None})
+        # The backend's strategy as it is, as in from_json
+        self._loading_strategy = fields["loading_strategy"]
         self._set_state(PredictorState.from_response_json(json_decamelized))
         return self
 
@@ -624,6 +664,8 @@ class Predictor(DeployableComponent):
             "configFile": self._config_file,
             "apiProtocol": self._api_protocol,
             "projectNamespace": self._project_namespace,
+            # None lets the backend choose on create and keeps the stored value on update.
+            "loadingStrategy": self._loading_strategy,
         }
         if self._model_server == PREDICTOR.MODEL_SERVER_VLLM:
             predictor_dict = {
@@ -1152,6 +1194,33 @@ class Predictor(DeployableComponent):
     @vllm_variant.setter
     def vllm_variant(self, vllm_variant: str):
         self._vllm_variant = vllm_variant
+
+    @public
+    @property
+    def loading_strategy(self) -> str | None:
+        """How the model server reads the model files.
+
+        - `'MOUNT'` lets any model server read the files in place from a read-only HopsFS mount.
+          For plain vLLM, Hopsworks adds `--safetensors-load-strategy eager` by default, so each safetensors file is read into host memory before its tensors are loaded.
+          Hopsworks skips this flag for vLLM-Omni, when the vLLM configuration file sets `safetensors-load-strategy` or enables `enable_multithread_load` in `model-loader-extra-config`, or when Hopsworks cannot read the file.
+        - `'RUNAI_STREAMER'` uses the same mount and loads weights with the Run:ai Model Streamer, which can be faster on several GPUs.
+          It requires plain vLLM on GPUs and safetensors weights at the top level of the model's files.
+        - `'DOWNLOAD'` copies the files to the pod's local disk before the model server starts and works with every model server.
+
+        Both mount strategies require the HopsFS CSI driver on the cluster.
+        The values are also available as `PREDICTOR.LOADING_STRATEGY_*` constants in `hsml.constants`.
+
+        On creation, `None` selects `'RUNAI_STREAMER'` when its requirements are met and `'DOWNLOAD'` otherwise.
+        On update, `None` keeps the stored strategy.
+        A saved model deployment reports the strategy in effect. A deployment without a model reports `None`.
+        """
+        return self._loading_strategy
+
+    @loading_strategy.setter
+    def loading_strategy(self, loading_strategy: str | None):
+        self._loading_strategy = self._validate_loading_strategy(
+            loading_strategy, self._model_server
+        )
 
     @public
     @property

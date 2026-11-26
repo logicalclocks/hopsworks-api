@@ -366,6 +366,38 @@ class TestDeployment:
         assert p.tracing is updated_tracing
         assert p.tracing.otel_tracing_storage == "both"
 
+    def test_loading_strategy_property_delegates_to_predictor(self, mocker):
+        # Arrange
+        mocker.patch(
+            "hsml.predictor.Predictor._validate_serving_tool",
+            return_value=PREDICTOR.SERVING_TOOL_KSERVE,
+        )
+        mocker.patch(
+            "hsml.predictor.Predictor._validate_resources",
+            return_value=resources.PredictorResources(0),
+        )
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+            loading_strategy=PREDICTOR.LOADING_STRATEGY_MOUNT,
+        )
+
+        # Act
+        d = deployment.Deployment(predictor=p)
+
+        # Assert
+        assert d.loading_strategy == PREDICTOR.LOADING_STRATEGY_MOUNT
+
+        d.loading_strategy = PREDICTOR.LOADING_STRATEGY_DOWNLOAD
+        assert p.loading_strategy == PREDICTOR.LOADING_STRATEGY_DOWNLOAD
+
+        with pytest.raises(ValueError, match="not supported"):
+            d.loading_strategy = PREDICTOR.LOADING_STRATEGY_RUNAI_STREAMER
+        assert p.loading_strategy == PREDICTOR.LOADING_STRATEGY_DOWNLOAD
+
     # from predictor
 
     def test_from_predictor(self, mocker):

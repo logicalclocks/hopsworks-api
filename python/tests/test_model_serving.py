@@ -126,6 +126,30 @@ class TestTracingForwarding:
         # Assert
         assert mock_for_model.call_args.kwargs["triton_image_tag"] == "26.09-py3"
 
+    def test_create_predictor_forwards_loading_strategy(self, ms, mocker):
+        # Arrange
+        model = mocker.Mock()
+        model._get_default_serving_name.return_value = "my_model"
+        mock_for_model = mocker.patch("hsml.model_serving.Predictor.for_model")
+
+        # Act
+        ms.create_predictor(model, loading_strategy="RUNAI_STREAMER")
+
+        # Assert
+        assert mock_for_model.call_args.kwargs["loading_strategy"] == "RUNAI_STREAMER"
+
+    def test_create_predictor_sends_no_loading_strategy_by_default(self, ms, mocker):
+        # Arrange
+        model = mocker.Mock()
+        model._get_default_serving_name.return_value = "my_model"
+        mock_for_model = mocker.patch("hsml.model_serving.Predictor.for_model")
+
+        # Act
+        ms.create_predictor(model)
+
+        # Assert
+        assert mock_for_model.call_args.kwargs["loading_strategy"] is None
+
     def test_create_endpoint_forwards_knative_mode(self, ms, mocker):
         # Arrange
         mock_for_server = mocker.patch("hsml.model_serving.Predictor.for_server")

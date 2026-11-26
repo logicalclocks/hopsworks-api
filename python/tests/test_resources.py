@@ -454,6 +454,118 @@ class TestResources:
                 num_instances=1, requests=resources.Resources(1, 1024, 0, disk=20)
             )
 
+    # - hopsfs mount
+
+    def test_constructor_component_resources_default_no_hopsfs_mount(self):
+        # Act
+        pr = resources.PredictorResources(num_instances=1)
+
+        # Assert
+        assert pr.hopsfs_mount is None
+        assert "hopsfsMountConfig" not in pr.to_dict()["predictorResources"]
+
+    def test_constructor_component_resources_hopsfs_mount(self):
+        # Act
+        pr = resources.PredictorResources(
+            num_instances=1,
+            hopsfs_mount={"cores": 0.5, "memory": 1024, "namenode_connections": 4},
+        )
+
+        # Assert
+        assert pr.hopsfs_mount == {
+            "cores": 0.5,
+            "memory": 1024,
+            "namenode_connections": 4,
+        }
+        assert pr.to_dict()["predictorResources"]["hopsfsMountConfig"] == {
+            "cores": 0.5,
+            "memory": 1024,
+            "namenodeConnections": 4,
+        }
+
+    def test_constructor_component_resources_hopsfs_mount_partial(self):
+        # Act
+        tr = resources.TransformerResources(
+            num_instances=1, hopsfs_mount={"cores": 0.5}
+        )
+
+        # Assert
+        assert tr.to_dict()["transformerResources"]["hopsfsMountConfig"] == {
+            "cores": 0.5
+        }
+
+    def test_constructor_component_resources_hopsfs_mount_empty_resets(self):
+        # Act
+        pr = resources.PredictorResources(num_instances=1, hopsfs_mount={"cores": None})
+        tr = resources.TransformerResources(num_instances=1, hopsfs_mount={})
+
+        # Assert
+        assert pr.to_dict()["predictorResources"]["hopsfsMountConfig"] == {}
+        assert tr.to_dict()["transformerResources"]["hopsfsMountConfig"] == {}
+
+    def test_constructor_component_resources_hopsfs_mount_unknown_key_refused(self):
+        # Act and Assert
+        with pytest.raises(
+            ValueError, match="allowed keys are cores, memory, namenode_connections"
+        ):
+            resources.PredictorResources(num_instances=1, hopsfs_mount={"cpu": 0.5})
+
+    def test_constructor_component_resources_hopsfs_mount_non_dict_refused(self):
+        # Act and Assert
+        with pytest.raises(ValueError, match="must be a dictionary"):
+            resources.TransformerResources(num_instances=1, hopsfs_mount=0.5)
+
+    def test_component_resources_hopsfs_mount_setter(self):
+        # Arrange
+        pr = resources.PredictorResources(num_instances=1)
+
+        # Act
+        pr.hopsfs_mount = {"memory": 2048}
+
+        # Assert
+        assert pr.to_dict()["predictorResources"]["hopsfsMountConfig"] == {
+            "memory": 2048
+        }
+        with pytest.raises(ValueError, match="Unknown HopsFS mount keys"):
+            pr.hopsfs_mount = {"disk": 1}
+        pr.hopsfs_mount = None
+        assert "hopsfsMountConfig" not in pr.to_dict()["predictorResources"]
+
+    def test_repr_component_resources_hopsfs_mount(self):
+        # Act
+        r = repr(resources.PredictorResources(1, hopsfs_mount={"cores": 0.5}))
+
+        # Assert
+        assert r.endswith("hopsfs_mount: {'cores': 0.5})")
+
+    def test_from_json_predictor_resources_user_dict_hopsfs_mount(self):
+        # Act
+        r = resources.PredictorResources.from_json(
+            {
+                "num_instances": 1,
+                "limits": {"cores": 2, "memory": 2048, "gpus": 0},
+                "hopsfs_mount": {"cores": 0.5, "namenode_connections": 2},
+            }
+        )
+
+        # Assert
+        assert r.limits.cores == 2
+        assert r.to_dict()["predictorResources"]["hopsfsMountConfig"] == {
+            "cores": 0.5,
+            "namenodeConnections": 2,
+        }
+
+    def test_from_json_transformer_resources_user_dict_hopsfs_mount(self):
+        # Act
+        r = resources.TransformerResources.from_json(
+            {"num_instances": 1, "hopsfs_mount": {"memory": 1024}}
+        )
+
+        # Assert
+        assert r.to_dict()["transformerResources"]["hopsfsMountConfig"] == {
+            "memory": 1024
+        }
+
     # PredictorResources
 
     def test_from_response_json_predictor_resources(self, backend_fixtures):
@@ -511,6 +623,82 @@ class TestResources:
         assert sent["limits"]["diskGb"] == 40
         assert "diskGb" not in sent["requests"]
 
+    def test_from_response_json_predictor_resources_hopsfs_mount_round_trip(self):
+        json = {
+            "requestedInstances": 1,
+            "predictorResources": {
+                "requests": {"cores": 1, "memory": 1024, "gpus": 0},
+                "limits": {"cores": 2, "memory": 2048, "gpus": 0},
+                "hopsfsMountConfig": {
+                    "memory": 1024,
+                    "cores": 0.5,
+                    "namenodeConnections": 4,
+                },
+            },
+        }
+
+        # Act
+        r = resources.PredictorResources.from_response_json(json)
+
+        # Assert
+        assert r.hopsfs_mount == {
+            "memory": 1024,
+            "cores": 0.5,
+            "namenode_connections": 4,
+        }
+        sent = r.to_dict()["predictorResources"]
+        assert (
+            sent["hopsfsMountConfig"] == json["predictorResources"]["hopsfsMountConfig"]
+        )
+
+    def test_from_response_json_predictor_resources_hopsfs_mount_unknown_key_ignored(
+        self,
+    ):
+        json = {
+            "requestedInstances": 1,
+            "predictorResources": {
+                "requests": {"cores": 1, "memory": 1024, "gpus": 0},
+                "limits": {"cores": 2, "memory": 2048, "gpus": 0},
+                "hopsfsMountConfig": {"cores": 0.5, "addedLater": 1},
+            },
+        }
+
+        # Act
+        r = resources.PredictorResources.from_response_json(json)
+
+        # Assert
+        assert r.hopsfs_mount == {"cores": 0.5}
+
+    def test_from_response_json_predictor_resources_hopsfs_mount_only_unknown_keys_kept(
+        self,
+    ):
+        json = {
+            "requestedInstances": 1,
+            "predictorResources": {
+                "requests": {"cores": 1, "memory": 1024, "gpus": 0},
+                "limits": {"cores": 2, "memory": 2048, "gpus": 0},
+                "hopsfsMountConfig": {"addedLater": 1},
+            },
+        }
+
+        # Act
+        r = resources.PredictorResources.from_response_json(json)
+
+        # Assert
+        assert r.hopsfs_mount is None
+        assert "hopsfsMountConfig" not in r.to_dict()["predictorResources"]
+
+    def test_constructor_component_resources_hopsfs_mount_is_copied(self):
+        # Arrange
+        hopsfs_mount = {"cores": 0.5}
+
+        # Act
+        r = resources.PredictorResources(hopsfs_mount=hopsfs_mount)
+        hopsfs_mount["unknown"] = 1
+
+        # Assert
+        assert r.hopsfs_mount == {"cores": 0.5}
+
     # TransformerResources
 
     def test_from_response_json_transformer_resources_disk_round_trip(self):
@@ -531,6 +719,24 @@ class TestResources:
         sent = r.to_dict()["transformerResources"]
         assert sent["limits"]["diskGb"] == 5
         assert "diskGb" not in sent["requests"]
+
+    def test_from_response_json_transformer_resources_hopsfs_mount_round_trip(self):
+        json = {
+            "requestedInstances": 1,
+            "transformerResources": {
+                "requests": {"cores": 1, "memory": 1024, "gpus": 0},
+                "limits": {"cores": 2, "memory": 2048, "gpus": 0},
+                "hopsfsMountConfig": {"namenodeConnections": 2},
+            },
+        }
+
+        # Act
+        r = resources.TransformerResources.from_response_json(json)
+
+        # Assert
+        assert r.hopsfs_mount == {"namenode_connections": 2}
+        sent = r.to_dict()["transformerResources"]
+        assert sent["hopsfsMountConfig"] == {"namenodeConnections": 2}
 
     def test_from_response_json_transformer_resources(self, backend_fixtures):
         json = backend_fixtures["resources"][
