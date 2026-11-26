@@ -248,9 +248,11 @@ class TestAgentCard:
             "retry_lost_tasks": 0,
             # a local run: no gRPC, no hostname, no public card
             "grpc": False,
+            "grpc_url": None,
             "hostname": None,
             "hostname_off": "not_set",
             "public_card": False,
+            "url": None,
         }
 
     def test_a2a_can_be_switched_off(self):

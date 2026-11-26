@@ -590,6 +590,10 @@ class A2AServer:
             os.environ.get("HOPSWORKS_AGENT_PUBLIC_URL") or self._app._public_url
         ) or None
 
+    @staticmethod
+    def _public_url_env() -> str:
+        return os.environ.get("HOPSWORKS_AGENT_PUBLIC_URL") or ""
+
     def _hostname(self) -> str | None:
         """The agent's own hostname, when the platform gave it one.
 
@@ -617,6 +621,15 @@ class A2AServer:
         discovery: dict[str, Any] = {
             "grpc": self._grpc_url is not None,
             "hostname": hostname,
+            # the agent's own URL on its hostname (scheme included: a cluster
+            # without a certificate serves it over http) and the gRPC address,
+            # as the card lists them, so a reader need not rebuild them
+            "url": urlunparse(
+                (urlparse(self._public_url_env()).scheme, hostname, "", "", "", "")
+            )
+            if hostname
+            else None,
+            "grpc_url": self._grpc_url,
             # whether the platform serves the card without a credential
             "public_card": _public_card(),
         }

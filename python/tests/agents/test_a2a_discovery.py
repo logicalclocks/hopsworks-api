@@ -347,8 +347,17 @@ class TestHostnameAndPublicCard:
         monkeypatch.setenv("HOPSWORKS_AGENT_PUBLIC_CARD", "true")
         view = a2a_view(echo_app())
         assert view["hostname"] == HOST
+        assert view["url"] == f"https://{HOST}"
         assert view["public_card"] is True
         assert "hostname_off" not in view
+
+    def test_the_manifest_gives_the_scheme_and_the_grpc_address_as_assigned(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("HOPSWORKS_AGENT_PUBLIC_URL", f"http://{HOST}")
+        view = a2a_view(echo_app())
+        assert view["url"] == f"http://{HOST}"
+        assert view["grpc_url"] is None
 
     def test_the_path_form_is_not_a_hostname(self, monkeypatch):
         monkeypatch.setenv(
@@ -357,6 +366,7 @@ class TestHostnameAndPublicCard:
         monkeypatch.setenv("HOPSWORKS_AGENT_HOSTNAME_OFF_REASON", "gateway_api_off")
         view = a2a_view(echo_app())
         assert view["hostname"] is None
+        assert view["url"] is None
         assert view["hostname_off"] == "gateway_api_off"
         assert view["public_card"] is False
 
