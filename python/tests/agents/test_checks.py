@@ -1322,10 +1322,6 @@ class TestSources:
                 return True
             """,
         )
-        # Short on purpose: the stuck thread keeps the process-wide import lock
-        # until its sleep ends, and the tests after this one would wait for it.
-        monkeypatch.setattr(checks_module, "DEFAULT_TIMEOUT_S", 0.3)
-        monkeypatch.setattr(checks_module, "IMPORT_LOCK_WAIT_S", 0.3)
         sources = _CheckSources(dataset_api=object())
         sources._download = lambda path: path  # type: ignore[method-assign]
         rows = _evaluators_from_spec(
@@ -1336,6 +1332,12 @@ class TestSources:
             ],
             sources=sources,
         )
+        # The control row loads under the real budgets: shrunk, they time out its import on a slow runner too.
+        _preload(rows[:1])
+        # Short on purpose: the stuck thread keeps the process-wide import lock
+        # until its sleep ends, and the tests after this one would wait for it.
+        monkeypatch.setattr(checks_module, "DEFAULT_TIMEOUT_S", 0.3)
+        monkeypatch.setattr(checks_module, "IMPORT_LOCK_WAIT_S", 0.3)
         started = time.monotonic()
         _preload(rows)
         results = _run_evaluators(rows, _task(), _trial(), None)
@@ -1711,8 +1713,6 @@ class TestRefusals:
                 return True
             """,
         )
-        monkeypatch.setattr(checks_module, "DEFAULT_TIMEOUT_S", 0.3)
-        monkeypatch.setattr(checks_module, "IMPORT_LOCK_WAIT_S", 0.2)
         sources = _CheckSources(dataset_api=object())
         sources._download = lambda path: path  # type: ignore[method-assign]
         rows = _evaluators_from_spec(
@@ -1723,6 +1723,10 @@ class TestRefusals:
             ],
             sources=sources,
         )
+        # The control row loads under the real budgets: shrunk, they time out its import on a slow runner too.
+        _preload(rows[:1])
+        monkeypatch.setattr(checks_module, "DEFAULT_TIMEOUT_S", 0.3)
+        monkeypatch.setattr(checks_module, "IMPORT_LOCK_WAIT_S", 0.2)
         started = time.monotonic()
         _preload(rows)
         results = _run_evaluators(rows, _task(), _trial(), None)

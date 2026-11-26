@@ -115,7 +115,11 @@ def _iter_modules(package_root: Path, package_name: str, include_protobuf: bool)
     """Yield dotted module names for every .py file under a package root."""
     for dirpath, dirnames, filenames in os.walk(package_root):
         # Prune skipped directories in place.
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIR_NAMES]
+        # A directory whose name is not an identifier (a skill's hops-reqs/) holds scripts that no import statement reaches.
+        # The rest are walked sorted: a module can change sys.path when imported, so the order is part of the result.
+        dirnames[:] = sorted(
+            d for d in dirnames if d not in SKIP_DIR_NAMES and d.isidentifier()
+        )
         rel_dir = Path(dirpath).relative_to(package_root)
         for filename in sorted(filenames):
             if not filename.endswith(".py"):
