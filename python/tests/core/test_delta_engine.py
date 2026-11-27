@@ -2024,6 +2024,14 @@ class TestDeltaEngine:
         spark.sql.assert_called_once()
         assert "VACUUM '/loc' RETAIN 24 HOURS" in spark.sql.call_args[0][0]
 
+    def test_table_size_unreadable_leaves_it_unset(self):
+        # a commit is registered without a size rather than failing the write
+        def unreadable():
+            raise RuntimeError("no detail")
+
+        assert DeltaEngine._table_size(unreadable) is None
+        assert DeltaEngine._table_size(lambda: 1734) == 1734
+
     def test_get_last_commit_metadata_importerror_spark(self, monkeypatch, mocker):
         # Arrange — classic (non-Connect) Spark session that can't import
         # delta-spark; the engine should raise a clear ImportError.
@@ -2085,6 +2093,10 @@ class TestDeltaEngine:
 
         # Patch DeltaTable
         mocker.patch("delta.tables.DeltaTable.forPath", return_value=mock_delta_table)
+        # the size of the table's live files, read from the table detail
+        mock_delta_table.detail.return_value.select.return_value.first.return_value = [
+            4096
+        ]
 
         # Act
         result = DeltaEngine._get_last_commit_metadata(
@@ -2095,7 +2107,7 @@ class TestDeltaEngine:
         assert result == "result"
         mocker_get_delta_feature_group_commit.assert_called_once()
         mocker_get_delta_feature_group_commit.assert_called_once_with(
-            mock_history_data[1], mock_history_data[0]
+            mock_history_data[1], mock_history_data[0], 4096
         )
 
     def test_get_last_commit_metadata_spark_connect(self, mocker):
@@ -2154,7 +2166,7 @@ class TestDeltaEngine:
         mock_spark.read.json.assert_called_once_with("s3://some/path/_delta_log/*.json")
         assert result == "result"
         mocker_get_delta_feature_group_commit.assert_called_once_with(
-            mock_history_data[1], mock_history_data[0]
+            mock_history_data[1], mock_history_data[0], None
         )
 
     def test_get_last_commit_metadata_deltars(self, mocker):
@@ -2175,6 +2187,11 @@ class TestDeltaEngine:
 
         mock_delta_rs_table = mocker.MagicMock()
         mock_delta_rs_table.history.return_value = mock_history_data
+        # the sizes of the table's live files, from its add actions
+        mock_delta_rs_table.get_add_actions.return_value.column.return_value.to_pylist.return_value = [
+            100,
+            200,
+        ]
         fake_deltalake.DeltaTable.return_value = mock_delta_rs_table
 
         mocker_get_delta_feature_group_commit = mocker.patch(
@@ -2189,7 +2206,7 @@ class TestDeltaEngine:
         assert result == "result"
         mocker_get_delta_feature_group_commit.assert_called_once()
         mocker_get_delta_feature_group_commit.assert_called_once_with(
-            mock_history_data[1], mock_history_data[0]
+            mock_history_data[1], mock_history_data[0], 300
         )
 
     def test_get_last_commit_metadata_empty_history(self, mocker):
@@ -2202,6 +2219,11 @@ class TestDeltaEngine:
 
         mock_delta_rs_table = mocker.MagicMock()
         mock_delta_rs_table.history.return_value = mock_history_data
+        # the sizes of the table's live files, from its add actions
+        mock_delta_rs_table.get_add_actions.return_value.column.return_value.to_pylist.return_value = [
+            100,
+            200,
+        ]
         fake_deltalake.DeltaTable.return_value = mock_delta_rs_table
 
         mocker_get_delta_feature_group_commit = mocker.patch(
@@ -2228,6 +2250,11 @@ class TestDeltaEngine:
 
         mock_delta_rs_table = mocker.MagicMock()
         mock_delta_rs_table.history.return_value = mock_history_data
+        # the sizes of the table's live files, from its add actions
+        mock_delta_rs_table.get_add_actions.return_value.column.return_value.to_pylist.return_value = [
+            100,
+            200,
+        ]
         fake_deltalake.DeltaTable.return_value = mock_delta_rs_table
 
         mocker_get_delta_feature_group_commit = mocker.patch(
@@ -2242,7 +2269,7 @@ class TestDeltaEngine:
         assert result == "result"
         mocker_get_delta_feature_group_commit.assert_called_once()
         mocker_get_delta_feature_group_commit.assert_called_once_with(
-            mock_history_data[0], mock_history_data[0]
+            mock_history_data[0], mock_history_data[0], 300
         )
 
     def test_get_last_commit_metadata_one_history_entry_optimize(self, mocker):
@@ -2261,6 +2288,11 @@ class TestDeltaEngine:
 
         mock_delta_rs_table = mocker.MagicMock()
         mock_delta_rs_table.history.return_value = mock_history_data
+        # the sizes of the table's live files, from its add actions
+        mock_delta_rs_table.get_add_actions.return_value.column.return_value.to_pylist.return_value = [
+            100,
+            200,
+        ]
         fake_deltalake.DeltaTable.return_value = mock_delta_rs_table
 
         mocker_get_delta_feature_group_commit = mocker.patch(
@@ -2985,6 +3017,211 @@ def test_commit_properties_become_a_delta_application_transaction(monkeypatch):
         ("fg/chunk/a", 1),
         ("fg/chunk/b", 1),
     ]
+
+
+class TestDeltaVersionAt:
+    """The log-tail version resolution reads the newest commit files first."""
+
+    @pytest.fixture(autouse=True)
+    def _client(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance")
+        # the constructor also configures delta-rs from the feature store's connector
+        mocker.patch.object(DeltaEngine, "_setup_delta_rs")
+
+    @staticmethod
+    def _engine_with_log(
+        mocker, commit_timestamps_by_version, extra_files=(), file_times_by_version=None
+    ):
+        # The JVM gateway is emulated with mocks: a log listing plus one reader per file.
+        # A commit file is written after its commitInfo timestamp, so its time defaults to a little later.
+        file_times = {
+            version: (timestamp or 0) + 7
+            for version, timestamp in commit_timestamps_by_version.items()
+        }
+        file_times.update(file_times_by_version or {})
+        files = [f"{version:020d}.json" for version in commit_timestamps_by_version]
+        files.extend(extra_files)
+        statuses = []
+        for name in files:
+            status = mocker.Mock()
+            status.getPath.return_value.getName.return_value = name
+            version = name.split(".")[0]
+            status.getModificationTime.return_value = (
+                file_times[int(version)] if name == f"{version}.json" else 0
+            )
+            statuses.append(status)
+        fs = mocker.Mock()
+        fs.listStatus.return_value = statuses
+        opened = []
+
+        def open_file(path):
+            opened.append(path.name)
+            return mocker.Mock()
+
+        fs.open.side_effect = open_file
+
+        def make_path(*args):
+            path = mocker.Mock()
+            path.name = args[-1] if len(args) > 1 else args[0]
+            path.getFileSystem.return_value = fs
+            return path
+
+        jvm = mocker.Mock()
+        jvm.org.apache.hadoop.fs.Path.side_effect = make_path
+
+        def make_reader(_stream_reader):
+            reader = mocker.Mock()
+            name = opened[-1]
+            version = int(name.split(".")[0])
+            timestamp = commit_timestamps_by_version[version]
+            lines = ['{"add": {"path": "part-0.parquet"}}']
+            if timestamp is not None:
+                lines.append(
+                    f'{{"commitInfo": {{"timestamp": {timestamp}, "operation": "WRITE"}}}}'
+                )
+            lines.append(None)
+            reader.readLine.side_effect = lines
+            return reader
+
+        jvm.java.io.BufferedReader.side_effect = make_reader
+        session = mocker.Mock()
+        session._jvm = jvm
+        session._jsc = mocker.Mock()
+        fg = mocker.Mock()
+        fg.name, fg.version = "fg", 1
+        # the constructor configures a real session; the mock is attached afterwards
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        engine._spark_session = session
+        return engine, opened
+
+    def test_latest_commit_needs_one_file(self, mocker):
+        engine, opened = self._engine_with_log(mocker, {0: 1000, 1: 2000, 2: 3000})
+
+        assert engine._delta_version_at("hdfs:///fg", 3000) == 2
+        assert opened == ["00000000000000000002.json"]
+
+    def test_walks_back_until_a_commit_at_or_before_the_end_time(self, mocker):
+        engine, opened = self._engine_with_log(mocker, {0: 1000, 1: 2000, 2: 3000})
+
+        assert engine._delta_version_at("hdfs:///fg", 2500) == 1
+        # within the clock skew of the bound an older version may still be the one recorded at it
+        assert opened == [
+            "00000000000000000002.json",
+            "00000000000000000001.json",
+            "00000000000000000000.json",
+        ]
+
+    def test_the_walk_stops_a_clock_skew_below_the_bound(self, mocker):
+        hour = 3600 * 1000
+        engine, opened = self._engine_with_log(
+            mocker, {0: 1 * hour, 1: 2 * hour, 2: 3 * hour}
+        )
+
+        assert engine._delta_version_at("hdfs:///fg", 3 * hour - 1) == 1
+        assert opened == ["00000000000000000002.json", "00000000000000000001.json"]
+
+    def test_a_recorded_commit_time_below_a_newer_backdated_version_resolves_to_its_version(
+        self, mocker
+    ):
+        # version 3 was written by a writer with a clock behind version 2's, so it is stamped before it
+        engine, _ = self._engine_with_log(mocker, {0: 900, 1: 1000, 2: 1200, 3: 950})
+
+        assert engine._delta_version_at("hdfs:///fg", 1000) == 1
+
+    def test_a_commit_file_time_resolves_to_its_version(self, mocker):
+        # a Spark writer records the commit file's time, after the commitInfo timestamp
+        engine, opened = self._engine_with_log(
+            mocker, {0: 1000, 1: 2000, 2: 3000}, file_times_by_version={1: 2100}
+        )
+
+        assert engine._delta_version_at("hdfs:///fg", 2100) == 1
+        assert opened == ["00000000000000000002.json", "00000000000000000001.json"]
+
+    def test_a_skewed_older_commit_does_not_hide_the_version_that_recorded_the_bound(
+        self, mocker
+    ):
+        # version 1 was written by a writer with a clock ahead of version 2's writer
+        engine, _ = self._engine_with_log(mocker, {0: 1000, 1: 3500, 2: 3000, 3: 4000})
+
+        assert engine._delta_version_at("hdfs:///fg", 3000) == 2
+
+    def test_end_time_before_every_commit_pins_the_earliest_version(self, mocker):
+        engine, _ = self._engine_with_log(mocker, {3: 1000, 4: 2000})
+
+        assert engine._delta_version_at("hdfs:///fg", 10) == 3
+
+    def test_checkpoints_and_compacted_files_are_not_commits(self, mocker):
+        engine, opened = self._engine_with_log(
+            mocker,
+            {0: 1000, 1: 2000},
+            extra_files=[
+                "00000000000000000001.checkpoint.parquet",
+                "00000000000000000002.checkpoint.0000000000000000abcd.json",
+                "00000000000000000000.00000000000000000001.compacted.json",
+                "_last_checkpoint",
+            ],
+        )
+
+        assert engine._delta_version_at("hdfs:///fg", 5000) == 1
+        assert opened == ["00000000000000000001.json", "00000000000000000000.json"]
+
+    def test_a_commit_file_without_commit_info_leaves_the_version_to_the_full_scan(
+        self, mocker
+    ):
+        # commitInfo past the line limit reads as none; skipping it would pin the version before it
+        engine, _ = self._engine_with_log(mocker, {0: 1000, 1: None, 2: 3000})
+
+        assert engine._delta_version_at("hdfs:///fg", 2500) is None
+
+    def test_a_bound_further_back_than_the_tail_leaves_the_version_to_the_full_scan(
+        self, mocker
+    ):
+        engine, opened = self._engine_with_log(mocker, {v: 1000 + v for v in range(10)})
+        engine._DELTA_LOG_TAIL_MAX_VERSIONS = 3
+
+        assert engine._delta_version_at("hdfs:///fg", 1005) is None
+        assert len(opened) == 3
+        # within the tail the version is found
+        assert engine._delta_version_at("hdfs:///fg", 1007) == 7
+
+    def test_without_a_jvm_the_caller_falls_back(self, mocker):
+        fg = mocker.Mock()
+        fg.name, fg.version = "fg", 1
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        engine._spark_session = mocker.Mock(spec=[])  # Spark Connect: no _jvm
+
+        assert engine._delta_version_at("hdfs:///fg", 1000) is None
+
+    def test_read_options_use_the_tail_before_the_full_scan(self, mocker):
+        fg = mocker.Mock()
+        fg.name, fg.version = "fg", 1
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        mocker.patch.object(engine, "_delta_version_at", return_value=7)
+        full_scan = mocker.patch.object(engine, "_get_delta_commits")
+        alias = mocker.Mock()
+        alias.left_feature_group_start_timestamp = None
+        alias.left_feature_group_end_timestamp = 3000
+
+        options = engine._setup_delta_read_opts(alias, location="hdfs:///fg")
+
+        assert options == {engine.DELTA_QUERY_TIME_TRAVEL_AS_OF_VERSION: 7}
+        full_scan.assert_not_called()
+
+    def test_read_options_fall_back_to_the_full_scan(self, mocker):
+        fg = mocker.Mock()
+        fg.name, fg.version = "fg", 1
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        mocker.patch.object(engine, "_delta_version_at", return_value=None)
+        mocker.patch.object(
+            engine, "_get_delta_commits", return_value=[(0, 1000), (1, 2000)]
+        )
+        alias = mocker.Mock()
+        alias.left_feature_group_start_timestamp = None
+        alias.left_feature_group_end_timestamp = 1500
+
+        options = engine._setup_delta_read_opts(alias, location="hdfs:///fg")
+
+        assert options == {engine.DELTA_QUERY_TIME_TRAVEL_AS_OF_VERSION: 0}
 
 
 class TestDeltaRsStorageOptionsS3:
