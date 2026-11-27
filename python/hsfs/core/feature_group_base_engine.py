@@ -48,8 +48,12 @@ class FeatureGroupBaseEngine:
         self._kafka_api = kafka_api.KafkaApi()
 
     def _delete(
-        self, feature_group, force=False, delete_feature_views=False, delete_data=True
-    ):
+        self,
+        feature_group,
+        force: bool = False,
+        delete_feature_views: bool = False,
+        delete_data: bool = True,
+    ) -> None:
         self._feature_group_api._delete(
             feature_group,
             force=force,
