@@ -79,6 +79,21 @@ class TestFeatureGroup:
             "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
         )
 
+    @pytest.mark.parametrize(
+        "kwargs, delete_data", [({}, True), ({"delete_data": False}, False)]
+    )
+    def test_delete_forwards_delete_data(self, mocker, kwargs, delete_data):
+        mock_delete = mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._delete"
+        )
+        fg = get_test_feature_group()
+
+        fg.delete(**kwargs)
+
+        mock_delete.assert_called_once_with(
+            fg, force=False, delete_feature_views=False, delete_data=delete_data
+        )
+
     def test_from_response_json(self, backend_fixtures):
         # Arrange
         json = backend_fixtures["feature_group"]["get"]["response"]
