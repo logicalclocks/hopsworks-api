@@ -36,6 +36,18 @@ if TYPE_CHECKING:
     from hsfs import feature_group as fg_mod
 
 
+# How often a wait whose counts have stopped moving asks the logs whether the missing rows were refused
+_REFUSAL_CHECK_INTERVAL = timedelta(seconds=10)
+# Failures fetched per search; search_after pages past the result window of OpenSearch, 10,000 by default
+_FAILURES_PAGE_SIZE = 1000
+# Every value OnlineFS logs is a string, which OpenSearch maps with a keyword subfield to sort on.
+# A daily index whose logs carry none of these fields has no mapping for them, hence unmapped_type.
+_FAILURES_SORT = [
+    {f"log_arguments.{field}.keyword": {"order": "asc", "unmapped_type": "keyword"}}
+    for field in ("topic", "partition", "offset")
+]
+
+
 @public
 class OnlineIngestion:
     """Metadata object used to provide Online Ingestion information for a feature group.
@@ -173,14 +185,15 @@ class OnlineIngestion:
         Parameters:
             options: Options for waiting.
                 - "timeout" (int): Maximum time to wait in seconds (default: 60).
-                  Set to `0` to wait until every entry is ingested.
+                  Set to `0` to wait until every entry is ingested or refused.
                   An ingestion without an entry count cannot tell when that is, so with `0` its wait does not end on its own; it warns when it starts.
                 - "period" (int): Polling period in seconds (default: 1).
 
         Raises:
             Warning: If the timeout is exceeded before completion, or if the ingestion completed with failed rows.
                 [`get_failures`][hsfs.core.online_ingestion.OnlineIngestion.get_failures] lists which records failed and why.
-                Rows refused because the project's online storage memory quota is used up are not counted in the results, so such an ingestion does not complete and its wait ends at the timeout.
+                Rows refused because the project's online storage memory quota is used up are not counted in the results.
+                Once the counts stop moving, the wait looks for such rows in the online ingestion service's logs, and completes when they make up every row still missing.
         """
         if options is None:
             options = {}
@@ -196,6 +209,8 @@ class OnlineIngestion:
         # Set timeout time
         timeout_delta = timedelta(seconds=timeout)
         timeout_time = datetime.now() + timeout_delta
+        last_rows_processed = None
+        next_refusal_check = None
 
         with tqdm(
             total=self.num_entries,
@@ -206,6 +221,9 @@ class OnlineIngestion:
             while True:
                 # Get total number of rows processed
                 rows_processed = sum(result.rows for result in self.results)
+                failed_rows = sum(
+                    result.rows for result in self.results if result.status == "FAILED"
+                )
 
                 # Update progress bar colour based on the worst status seen so far
                 if any(result.status == "FAILED" for result in self.results):
@@ -217,18 +235,26 @@ class OnlineIngestion:
 
                 # Check if the online ingestion is complete
                 if self.num_entries is not None and rows_processed >= self.num_entries:
-                    failed_rows = sum(
-                        result.rows
-                        for result in self.results
-                        if result.status == "FAILED"
-                    )
-                    if failed_rows:
-                        warnings.warn(
-                            f"Online ingestion {self.id} completed with {failed_rows} failed rows; "
-                            "get_failures() lists which records failed and why.",
-                            stacklevel=1,
-                        )
+                    self._warn_failed_rows(failed_rows)
                     break
+
+                # RonDB refuses the count of the rows it refused over the memory quota as well, so the counts of such an ingestion stop short; OnlineFS logs each of those rows instead.
+                if (
+                    self.num_entries is not None
+                    and rows_processed == last_rows_processed
+                    and (
+                        next_refusal_check is None
+                        or datetime.now() >= next_refusal_check
+                    )
+                ):
+                    next_refusal_check = datetime.now() + _REFUSAL_CHECK_INTERVAL
+                    # max, not sum: the disk quota leaves its refused rows counted as FAILED too.
+                    # Where other rows failed as well, this falls short and the wait goes on.
+                    refused_rows = max(failed_rows, self._count_quota_refusals())
+                    if rows_processed - failed_rows + refused_rows >= self.num_entries:
+                        self._warn_failed_rows(refused_rows)
+                        break
+                last_rows_processed = rows_processed
 
                 # Check if the timeout has been reached (if timeout is 0 we will wait indefinitely)
                 if timeout_delta != timedelta(0) and datetime.now() >= timeout_time:
@@ -245,17 +271,40 @@ class OnlineIngestion:
 
                 self.refresh()
 
+    def _warn_failed_rows(self, failed_rows: int) -> None:
+        """Warn that the ingestion completed with failed rows, if it did.
+
+        Parameters:
+            failed_rows: The number of rows that failed.
+        """
+        if failed_rows:
+            warnings.warn(
+                f"Online ingestion {self.id} completed with {failed_rows} failed rows. "
+                "get_failures() lists each failed record that the online ingestion service logged, and why; "
+                "a batch that failed as a whole, such as one over a vector index quota, is only reported in the project's online ingestion service logs.",
+                stacklevel=1,
+            )
+
+    def _count_quota_refusals(self) -> int:
+        """Count the records of this ingestion that were logged as refused over the project's online storage quota."""
+        return self._search_logs(
+            [{"match": {"log_arguments.failure_type": "QUOTA_EXCEEDED"}}],
+            0,
+            track_total_hits=True,
+        )["total"]["value"]
+
     def _search_logs(
-        self, must: list[dict[str, Any]], size: int
-    ) -> list[dict[str, Any]]:
+        self, must: list[dict[str, Any]], size: int, **body
+    ) -> dict[str, Any]:
         """Search the onlinefs logs of this ingestion in OpenSearch.
 
         Parameters:
             must: Additional query clauses narrowing the search.
             size: Maximum number of log entries to retrieve.
+            **body: Further fields of the search request, such as `sort`.
 
         Returns:
-            The matching log entries, most relevant first.
+            The `hits` of the response: the matching log entries under `hits`, and how many matched under `total`.
         """
         open_search_client = OpenSearchClientSingleton()
 
@@ -279,11 +328,12 @@ class OnlineIngestion:
                     }
                 },
                 "size": size,
+                **body,
             },
             index=f"onlinefs_{client._get_instance()._project_id}-*",
         )
 
-        return response["hits"]["hits"]
+        return response["hits"]
 
     @public
     def print_logs(self, priority: str = "error", size: int = 20) -> None:
@@ -293,18 +343,20 @@ class OnlineIngestion:
             priority: Log priority to filter by.
             size: Maximum number of log entries to retrieve.
         """
-        for hit in self._search_logs([{"match": {"priority": priority}}], size):
+        for hit in self._search_logs([{"match": {"priority": priority}}], size)["hits"]:
             print(hit["_source"]["error"]["data"])
 
     @public
     def get_failures(
-        self, size: int = 100
+        self, size: int | None = 100
     ) -> list[online_ingestion_failure.OnlineIngestionFailure]:
         """Get the records of this ingestion that never reached the online feature store.
 
         [`results`][hsfs.core.online_ingestion.OnlineIngestion.results] reports how many rows failed; this reports which ones and why.
         Each failure identifies a Kafka record by topic, partition and offset, and carries the reason it was rejected: a value too long for its online column, a payload that does not match the schema, a row the database refused, or a write refused because the project's online storage quota is used up.
+        Each record is listed once, even when the online ingestion service logged it more than once.
         Rows refused over the project's online storage memory quota are listed here but not counted in `results`, since the quota also refuses the count.
+        A batch that failed as a whole, such as one over a vector index quota, is counted in `results` but has no record listed here.
 
         Use it after an insert to find the rows that need correcting:
 
@@ -324,17 +376,39 @@ class OnlineIngestion:
             ingestion at all, and is only visible in the raw online ingestion service logs.
 
         Parameters:
-            size: Maximum number of failures to retrieve.
+            size: Maximum number of failures to retrieve, or `None` to retrieve every one of them.
 
         Returns:
             The failed records, or an empty list if none of this ingestion's records failed.
         """
-        return [
-            online_ingestion_failure.OnlineIngestionFailure._from_log_arguments(
-                hit["_source"]["log_arguments"]
+        failures = []
+        seen = set()
+        search_after = None
+        while size is None or len(failures) < size:
+            page_size = (
+                _FAILURES_PAGE_SIZE
+                if size is None
+                else min(_FAILURES_PAGE_SIZE, size - len(failures))
             )
-            for hit in self._search_logs(
-                [{"exists": {"field": "log_arguments.failure_type"}}], size
-            )
-            if "log_arguments" in hit.get("_source", {})
-        ]
+            hits = self._search_logs(
+                [{"exists": {"field": "log_arguments.failure_type"}}],
+                page_size,
+                sort=_FAILURES_SORT,
+                **({} if search_after is None else {"search_after": search_after}),
+            )["hits"]
+            for hit in hits:
+                if "log_arguments" not in hit.get("_source", {}):
+                    continue
+                failure = (
+                    online_ingestion_failure.OnlineIngestionFailure._from_log_arguments(
+                        hit["_source"]["log_arguments"]
+                    )
+                )
+                record = (failure.topic, failure.partition, failure.offset)
+                if failure.offset is None or record not in seen:
+                    seen.add(record)
+                    failures.append(failure)
+            if len(hits) < page_size:
+                break
+            search_after = hits[-1]["sort"]
+        return failures

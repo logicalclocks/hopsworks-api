@@ -169,6 +169,76 @@ class TestOnlineIngestion:
         assert {"exists": {"field": "log_arguments.failure_type"}} in must
         assert {"match": {"log_arguments.feature_group_id": "119"}} in must
         assert {"match": {"log_arguments.online_ingestion_id": "5"}} in must
+        assert body["sort"] == online_ingestion._FAILURES_SORT
+        assert "search_after" not in body
+
+    @staticmethod
+    def _page(*offsets):
+        return {
+            "hits": {
+                "hits": [
+                    {
+                        "_source": {"log_arguments": _log_arguments(offset=offset)},
+                        "sort": ["119_onlinefs", "2", offset],
+                    }
+                    for offset in offsets
+                ]
+            }
+        }
+
+    def test_get_failures_pages_through_every_failure(self, mocker):
+        # Arrange - pages of two, and offset 2 logged twice, as a retried batch does
+        ingestion, search = self._ingestion(mocker, [])
+        mocker.patch.object(online_ingestion, "_FAILURES_PAGE_SIZE", 2)
+        search.side_effect = [
+            self._page("1", "2"),
+            self._page("2", "3"),
+            self._page("4"),
+        ]
+
+        # Act
+        failures = ingestion.get_failures(size=None)
+
+        # Assert
+        assert [failure.offset for failure in failures] == [1, 2, 3, 4]
+        bodies = [call.kwargs["body"] for call in search.call_args_list]
+        assert [body["size"] for body in bodies] == [2, 2, 2]
+        assert [body.get("search_after") for body in bodies] == [
+            None,
+            ["119_onlinefs", "2", "2"],
+            ["119_onlinefs", "2", "3"],
+        ]
+
+    def test_get_failures_stops_at_size(self, mocker):
+        # Arrange
+        ingestion, search = self._ingestion(mocker, [])
+        mocker.patch.object(online_ingestion, "_FAILURES_PAGE_SIZE", 2)
+        search.side_effect = [self._page("1", "2"), self._page("3")]
+
+        # Act
+        failures = ingestion.get_failures(size=3)
+
+        # Assert
+        assert [failure.offset for failure in failures] == [1, 2, 3]
+        assert [call.kwargs["body"]["size"] for call in search.call_args_list] == [
+            2,
+            1,
+        ]
+
+    def test_count_quota_refusals(self, mocker):
+        # Arrange
+        ingestion, search = self._ingestion(mocker, [])
+        search.return_value = {"hits": {"hits": [], "total": {"value": 6}}}
+
+        # Act & Assert
+        assert ingestion._count_quota_refusals() == 6
+        body = search.call_args.kwargs["body"]
+        assert body["size"] == 0
+        # beyond 10,000 hits OpenSearch reports a lower bound unless asked for the exact total
+        assert body["track_total_hits"] is True
+        assert {"match": {"log_arguments.failure_type": "QUOTA_EXCEEDED"}} in body[
+            "query"
+        ]["bool"]["must"]
 
     def test_print_logs(self, mocker):
         # Arrange
@@ -302,10 +372,89 @@ class TestOnlineIngestion:
 
         # Assert
         assert messages == [
-            "Online ingestion 5 completed with 3 failed rows; "
-            "get_failures() lists which records failed and why."
+            "Online ingestion 5 completed with 3 failed rows. "
+            "get_failures() lists each failed record that the online ingestion service logged, and why; "
+            "a batch that failed as a whole, such as one over a vector index quota, is only reported in the project's online ingestion service logs."
         ]
         assert ended
+
+    def test_wait_for_completion_ends_once_the_logs_account_for_the_missing_rows(
+        self, mocker
+    ):
+        # Arrange - 4 rows counted, and the 6 refused over the memory quota only in the logs
+        counted = [
+            OnlineIngestionResult(online_ingestion_id=5, status="UPSERTED", rows=4)
+        ]
+        self._patch_wait(mocker, results_after_refresh=counted)
+        count_refusals = mocker.patch.object(
+            online_ingestion.OnlineIngestion, "_count_quota_refusals", return_value=6
+        )
+        ingestion = online_ingestion.OnlineIngestion(
+            id=5, num_entries=10, results=counted
+        )
+
+        # Act
+        messages, ended = self._wait(ingestion, {"timeout": 0})
+
+        # Assert
+        assert ended
+        assert len(messages) == 1
+        assert messages[0].startswith(
+            "Online ingestion 5 completed with 6 failed rows."
+        )
+        count_refusals.assert_called_once()
+
+    def test_wait_for_completion_keeps_waiting_while_rows_are_missing(self, mocker):
+        # Arrange - the logs account for only 5 of the 6 missing rows
+        counted = [
+            OnlineIngestionResult(online_ingestion_id=5, status="UPSERTED", rows=4)
+        ]
+        self._patch_wait(mocker, results_after_refresh=counted)
+        mocker.patch.object(
+            online_ingestion.OnlineIngestion, "_count_quota_refusals", return_value=5
+        )
+        ingestion = online_ingestion.OnlineIngestion(
+            id=5, num_entries=10, results=counted
+        )
+
+        # Act
+        messages, ended = self._wait(ingestion, {"timeout": 0})
+
+        # Assert
+        assert messages == []
+        assert not ended
+
+    def test_wait_for_completion_does_not_read_the_logs_while_rows_arrive(self, mocker):
+        # Arrange - one more row is counted on every refresh, while the logs would account for the rest at any time
+        self._patch_wait(mocker)
+        progress = itertools.count(5)
+        online_ingestion.OnlineIngestion.refresh.side_effect = lambda self: setattr(
+            self,
+            "_results",
+            [
+                OnlineIngestionResult(
+                    online_ingestion_id=5, status="UPSERTED", rows=next(progress)
+                )
+            ],
+        )
+        count_refusals = mocker.patch.object(
+            online_ingestion.OnlineIngestion, "_count_quota_refusals", return_value=6
+        )
+        ingestion = online_ingestion.OnlineIngestion(
+            id=5,
+            num_entries=10,
+            results=[
+                OnlineIngestionResult(online_ingestion_id=5, status="UPSERTED", rows=4)
+            ],
+        )
+
+        # Act
+        messages, ended = self._wait(ingestion, {"timeout": 0})
+
+        # Assert
+        assert messages == []
+        assert ended
+        count_refusals.assert_not_called()
 
     def test_wait_for_completion_timeout_with_uncounted_rows_points_at_get_failures(
         self, mocker
