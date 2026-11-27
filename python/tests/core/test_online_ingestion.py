@@ -17,10 +17,14 @@ import itertools
 import warnings
 from datetime import datetime, timedelta
 
+from hopsworks_common.core.opensearch import (
+    OpensearchRequestOption,
+    ProjectOpenSearchClient,
+)
 from hsfs.core import online_ingestion
 from hsfs.core.online_ingestion_failure import OnlineIngestionFailure
 from hsfs.core.online_ingestion_result import OnlineIngestionResult
-from opensearchpy.exceptions import AuthorizationException
+from opensearchpy.exceptions import AuthorizationException, ConnectionTimeout
 
 
 class _StillWaiting(Exception):
@@ -289,19 +293,24 @@ class TestOnlineIngestion:
         assert ingestion._count_logged_records(4, None) == (0, 0)
         assert search.call_count == 1
 
-    def _slow_searches(self, mocker, search, seconds):
-        """Run the module's clock from 0 by hand, each search taking the given seconds; return the start times."""
+    def _clock(self, mocker):
+        """Run the module's clock from a fixed start by hand; return the start and the clock to advance."""
         start = datetime(2026, 1, 1)
         clock = [start]
         mock_datetime = mocker.patch("hsfs.core.online_ingestion.datetime")
         mock_datetime.now.side_effect = lambda: clock[0]
+        return start, clock
+
+    def _slow_searches(self, mocker, search, seconds, records=None):
+        """Make each search take the given seconds on the module's clock, from 0; return the start times."""
+        start, clock = self._clock(mocker)
         started = []
 
         def slow_search(**kwargs):
             started.append((clock[0] - start).total_seconds())
             clock[0] += timedelta(seconds=seconds)
-            # a full page of records, so the scan would go on
-            return self._records(
+            # by default a full page of records, so the scan would go on
+            return records or self._records(
                 100, *((str(i), 1) for i in range(online_ingestion._PAGE_SIZE))
             )
 
@@ -310,15 +319,45 @@ class TestOnlineIngestion:
 
     def test_count_logged_records_starts_no_search_after_the_deadline(self, mocker):
         # Arrange - pages of two, each search taking 6 seconds, 2 seconds before the deadline
-        ingestion, search = self._ingestion(mocker, [])
+        ingestion, _ = self._ingestion(mocker, [])
+        search_once = (
+            online_ingestion.OpenSearchClientSingleton.return_value._search_once
+        )
         mocker.patch.object(online_ingestion, "_PAGE_SIZE", 2)
-        start, _, started = self._slow_searches(mocker, search, 6)
+        start, _, started = self._slow_searches(mocker, search_once, 6)
 
         # Act & Assert - the scan is dropped rather than counted in part
         assert ingestion._count_logged_records(4, start + timedelta(seconds=2)) is None
         assert started == [0]
-        # bounded by the time left
-        assert search.call_args.kwargs["options"] == {"timeout": 2}
+        # one request, bounded by the time left
+        assert search_once.call_args.kwargs["options"] == {"timeout": 2}
+
+    def test_count_logged_records_drops_a_page_returned_after_the_deadline(
+        self, mocker
+    ):
+        # Arrange - the last page, which takes 6 seconds with 2 left
+        ingestion, _ = self._ingestion(mocker, [])
+        search_once = (
+            online_ingestion.OpenSearchClientSingleton.return_value._search_once
+        )
+        start, _, _ = self._slow_searches(
+            mocker, search_once, 6, self._records(4, ("1", 1))
+        )
+
+        # Act & Assert
+        assert ingestion._count_logged_records(4, start + timedelta(seconds=2)) is None
+
+    def test_count_logged_records_without_a_deadline_keeps_the_client_retries(
+        self, mocker
+    ):
+        # Arrange
+        ingestion, search = self._ingestion(mocker, [])
+        search.return_value = self._records(1, ("1", 1))
+
+        # Act & Assert
+        assert ingestion._count_logged_records(1, None) == (1, 0)
+        assert search.call_args.kwargs["options"] is None
+        online_ingestion.OpenSearchClientSingleton.return_value._search_once.assert_not_called()
 
     def test_print_logs(self, mocker):
         # Arrange
@@ -687,14 +726,9 @@ class TestOnlineIngestion:
             "The online ingestion service logs could not be read, so the wait for online ingestion 5 goes on with its counts alone:"
         )
 
-    def test_wait_for_completion_starts_no_log_search_after_its_timeout(self, mocker):
-        # Arrange - 4 of 10 rows counted, a 2 second timeout, and log searches of 6 seconds over many pages
+    def _wait_two_seconds(self, mocker, clock):
+        """Wait 2 seconds for 10 rows with 4 counted, on the module's clock; return the warnings and whether it ended."""
         mocker.patch("hopsworks_common.client._get_instance")
-        singleton = mocker.patch("hsfs.core.online_ingestion.OpenSearchClientSingleton")
-        mocker.patch.object(online_ingestion, "_PAGE_SIZE", 2)
-        _, clock, started = self._slow_searches(
-            mocker, singleton.return_value._search, 6
-        )
         mock_time = mocker.patch("hsfs.core.online_ingestion.time")
         mock_time.sleep.side_effect = lambda period: clock.__setitem__(
             0, clock[0] + timedelta(seconds=period)
@@ -711,12 +745,57 @@ class TestOnlineIngestion:
         ingestion = online_ingestion.OnlineIngestion(
             id=5, num_entries=10, results=counted, feature_group=mocker.Mock(id=119)
         )
+        return self._wait(ingestion, {"timeout": 2})
+
+    def test_wait_for_completion_starts_no_log_search_after_its_timeout(self, mocker):
+        # Arrange - log searches of 6 seconds over many pages
+        singleton = mocker.patch("hsfs.core.online_ingestion.OpenSearchClientSingleton")
+        mocker.patch.object(online_ingestion, "_PAGE_SIZE", 2)
+        _, clock, started = self._slow_searches(
+            mocker, singleton.return_value._search_once, 6
+        )
 
         # Act
-        messages, ended = self._wait(ingestion, {"timeout": 2})
+        messages, ended = self._wait_two_seconds(mocker, clock)
 
         # Assert - one page, started at 1 second, then the timeout with nothing counted from the partial scan
         assert started == [1]
+        assert ended
+        assert len(messages) == 1
+        assert messages[0].startswith("Timeout of 0:00:02 was exceeded")
+
+    def test_wait_for_completion_makes_one_log_request_within_its_timeout(self, mocker):
+        # Arrange - the OpenSearch wrapper, which retries a timed out search with backoff, over a client whose
+        # requests all time out at the limit they are given
+        start, clock = self._clock(mocker)
+        opensearch = mocker.Mock()
+        started = []
+
+        def timed_out(**kwargs):
+            started.append((clock[0] - start).total_seconds())
+            clock[0] += timedelta(seconds=1)
+            raise ConnectionTimeout("TIMEOUT", "Read timed out", None)
+
+        opensearch.search.side_effect = timed_out
+        wrapper = ProjectOpenSearchClient(
+            opensearch_client=opensearch, is_cluster_client=False
+        )
+        # a reconnect that succeeds, keeping the client
+        mocker.patch.object(wrapper, "_refresh_opensearch_connection")
+        mocker.patch(
+            "hsfs.core.online_ingestion.OpenSearchClientSingleton",
+            return_value=wrapper,
+        )
+
+        # Act
+        messages, ended = self._wait_two_seconds(mocker, clock)
+
+        # Assert - one request at 1 second, bounded by the second left and not retried, then the timeout, not
+        # reported as unreadable logs
+        assert started == [1]
+        assert opensearch.search.call_args.kwargs[
+            "params"
+        ] == OpensearchRequestOption.get_options({"timeout": 1})
         assert ended
         assert len(messages) == 1
         assert messages[0].startswith("Timeout of 0:00:02 was exceeded")

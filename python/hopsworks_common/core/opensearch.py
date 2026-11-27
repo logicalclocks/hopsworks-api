@@ -205,6 +205,32 @@ class ProjectOpenSearchClient:
             body=body, index=index, params=OpensearchRequestOption.get_options(options)
         )
 
+    def _search_once(self, index=None, body=None, options=None):
+        """Search in one request, so that it takes no longer than the timeout in `options`.
+
+        Unlike `_search`, it neither retries nor backs off, and raises what the OpenSearch client raises.
+        A failed connection or authentication is refreshed for the next request; a timeout is not, as the caller set it.
+
+        Parameters:
+            index: The indices to search.
+            body: The search request.
+            options: The request options, such as `timeout`, as `OpensearchRequestOption.get_options` takes them.
+
+        Returns:
+            The search response.
+        """
+        try:
+            return self._get_opensearch_client().search(
+                body=body,
+                index=index,
+                params=OpensearchRequestOption.get_options(options),
+            )
+        except ConnectionTimeout:
+            raise
+        except (ConnectionError, AuthenticationException):
+            self._refresh_opensearch_connection()
+            raise
+
     @retry(
         wait_exponential_multiplier=1000,
         stop_max_attempt_number=5,

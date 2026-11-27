@@ -331,7 +331,7 @@ class OnlineIngestion:
 
         Parameters:
             at_least: The fewest log entries that could account for the rows the wait is missing; with fewer, the records are not counted.
-            deadline: When the wait times out; no search starts after it, and each is bounded by the time left.
+            deadline: When the wait times out; no search starts after it, each is one request bounded by the time left, and a page returned after it is not used.
 
         Returns:
             The number of failed records and the number of applied records, `(0, 0)` if fewer than `at_least` log entries report either, or `None` if the deadline passed before every record was counted.
@@ -362,6 +362,8 @@ class OnlineIngestion:
                     }
                 },
             )
+            if deadline is not None and datetime.now() >= deadline:
+                return None
             if response["hits"]["total"]["value"] < at_least:
                 return 0, 0
             records = response["aggregations"]["records"]
@@ -386,16 +388,21 @@ class OnlineIngestion:
         Parameters:
             must: Additional query clauses narrowing the search.
             size: Maximum number of log entries to retrieve.
-            request_timeout: Seconds the request may take, or `None` for the client's default.
+            request_timeout: Seconds the search may take in one request, without retries, or `None` for the client's default timeout and retries.
             **body: Further fields of the search request, such as `sort` or `aggs`.
 
         Returns:
             The search response: the matching log entries under `hits.hits`, how many matched under `hits.total`, and any aggregations under `aggregations`.
         """
         open_search_client = OpenSearchClientSingleton()
+        search, options = (
+            (open_search_client._search, None)
+            if request_timeout is None
+            else (open_search_client._search_once, {"timeout": request_timeout})
+        )
 
-        return open_search_client._search(
-            options=None if request_timeout is None else {"timeout": request_timeout},
+        return search(
+            options=options,
             body={
                 "query": {
                     "bool": {

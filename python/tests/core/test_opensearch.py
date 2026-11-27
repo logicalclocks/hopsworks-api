@@ -23,6 +23,7 @@ from opensearchpy.exceptions import (
     AuthenticationException,
     AuthorizationException,
     ConnectionError,
+    ConnectionTimeout,
     NotFoundError,
     RequestError,
 )
@@ -156,6 +157,63 @@ class TestOpenSearchClientSingleton:
         mock_refresh.assert_called_once()
         assert e.value.reason == VectorDatabaseException.REQUESTED_K_TOO_LARGE
         assert isinstance(e.value.__cause__, RequestError)
+
+    def test_search_once_makes_one_request_with_its_options(self):
+        opensearch_client = MagicMock()
+        opensearch_client.search.return_value = {"hits": {}}
+        target = ProjectOpenSearchClient(
+            opensearch_client=opensearch_client, is_cluster_client=False
+        )
+
+        assert target._search_once(index="index", body={}, options={"timeout": 3}) == {
+            "hits": {}
+        }
+        opensearch_client.search.assert_called_once_with(
+            body={},
+            index="index",
+            params=OpensearchRequestOption.get_options({"timeout": 3}),
+        )
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            AuthenticationException(401, "security_exception", {}),
+            ConnectionError("N/A", "connection refused", None),
+        ],
+        ids=["expired_token", "closed_connection"],
+    )
+    def test_search_once_refreshes_the_connection_for_the_next_request(
+        self, mocker, error
+    ):
+        opensearch_client = MagicMock()
+        opensearch_client.search.side_effect = error
+        target = ProjectOpenSearchClient(
+            opensearch_client=opensearch_client, is_cluster_client=False
+        )
+        mock_refresh = mocker.patch.object(target, "_refresh_opensearch_connection")
+
+        with pytest.raises(type(error)):
+            target._search_once(index="index", body={})
+
+        # not retried
+        opensearch_client.search.assert_called_once()
+        mock_refresh.assert_called_once()
+
+    def test_search_once_neither_retries_nor_refreshes_a_timeout(self, mocker):
+        opensearch_client = MagicMock()
+        opensearch_client.search.side_effect = ConnectionTimeout(
+            "TIMEOUT", "Read timed out", None
+        )
+        target = ProjectOpenSearchClient(
+            opensearch_client=opensearch_client, is_cluster_client=False
+        )
+        mock_refresh = mocker.patch.object(target, "_refresh_opensearch_connection")
+
+        with pytest.raises(ConnectionTimeout):
+            target._search_once(index="index", body={}, options={"timeout": 1})
+
+        opensearch_client.search.assert_called_once()
+        mock_refresh.assert_not_called()
 
     @pytest.mark.parametrize(
         "error",
