@@ -15,6 +15,7 @@ import shlex
 from pathlib import Path
 
 import click
+from hopsworks._skill_catalogue import _collect_skills, _packaged_skills_dir
 from hopsworks.cli import output, scaffold
 
 
@@ -38,116 +39,8 @@ def _skills_dir() -> Path | None:
         candidate = Path(env).expanduser()
         return candidate if candidate.is_dir() else None
 
-    for candidate in (
-        Path("/opt/hopsworks-api/python/hopsworks/skills"),
-        Path(__file__).resolve().parents[2] / "skills",
-    ):
-        if candidate.is_dir():
-            return candidate
-
-    return None
-
-
-def _packaged_skills_dir() -> Path | None:
-    """The skills this installation ships, ignoring any environment override.
-
-    ``_skills_dir`` answers "what do the agents here load", which inside a
-    terminal is a merged directory of platform and user skills. This answers
-    "what did this package ship", which is what gets copied into a repository.
-
-    Returns:
-        The packaged skills directory, or None when it is missing.
-    """
-    packaged = Path(__file__).resolve().parents[2] / "skills"
-    return packaged if packaged.is_dir() else None
-
-
-def _parse_frontmatter(skill_md: Path) -> dict[str, str]:
-    """Extract ``name`` and ``description`` from a ``SKILL.md`` YAML header.
-
-    A deliberately small parser: it reads only the two scalar fields needed for
-    a listing and folds an indented multi-line ``description`` back into one
-    line, avoiding a YAML dependency for what is a fixed, simple shape.
-
-    Args:
-        skill_md: Path to the ``SKILL.md`` file.
-
-    Returns:
-        A mapping with ``name`` and ``description`` keys (values may be empty).
-    """
-    empty = {"name": "", "description": ""}
-    try:
-        lines = skill_md.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return empty
-    if not lines or lines[0].strip() != "---":
-        return empty
-
-    block: list[str] = []
-    for line in lines[1:]:
-        if line.strip() == "---":
-            break
-        block.append(line)
-
-    name = ""
-    description = ""
-    i = 0
-    while i < len(block):
-        key, sep, value = block[i].partition(":")
-        field = key.strip()
-        if sep and field == "name":
-            name = value.strip()
-        elif sep and field == "description":
-            parts = [value.strip()]
-            j = i + 1
-            while j < len(block) and block[j][:1] in (" ", "\t") and block[j].strip():
-                parts.append(block[j].strip())
-                j += 1
-            description = " ".join(p for p in parts if p)
-            i = j
-            continue
-        i += 1
-    return {"name": name, "description": description}
-
-
-def _collect_skills(skills_dir: Path) -> list[dict[str, str]]:
-    """Scan ``skills_dir`` and return one record per skill.
-
-    Both layouts are accepted.
-    The package ships skills grouped into buckets
-    (``<bucket>/<skill>/SKILL.md``), while a user's project home holds them
-    flat (``<skill>/SKILL.md``), because one level is what a coding agent
-    discovers.
-    A flat skill reports an empty bucket.
-
-    Args:
-        skills_dir: Directory containing the skills, in either layout.
-
-    Returns:
-        Records sorted by bucket then name, each with ``bucket``, ``name`` (the
-        folder, which is how skills are invoked), ``frontmatter_name`` (the
-        declared ``name``, shown only when it differs), ``description`` and
-        ``path`` keys.
-    """
-    root = skills_dir.resolve()
-    found = list(skills_dir.glob("*/*/SKILL.md")) + list(skills_dir.glob("*/SKILL.md"))
-    skills: list[dict[str, str]] = []
-    for skill_md in found:
-        skill_root = skill_md.parent.parent.resolve()
-        front = _parse_frontmatter(skill_md)
-        declared = front["name"]
-        folder = skill_md.parent.name
-        skills.append(
-            {
-                "bucket": "" if skill_root == root else skill_md.parent.parent.name,
-                "name": folder,
-                "frontmatter_name": declared if declared and declared != folder else "",
-                "description": front["description"],
-                "path": str(skill_md),
-            }
-        )
-    skills.sort(key=lambda s: (s["bucket"], s["name"]))
-    return skills
+    checkout = Path("/opt/hopsworks-api/python/hopsworks/skills")
+    return checkout if checkout.is_dir() else _packaged_skills_dir()
 
 
 @click.group("skills")

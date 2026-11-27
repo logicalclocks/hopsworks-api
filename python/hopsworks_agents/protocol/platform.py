@@ -141,6 +141,42 @@ class PlatformClient:
                 self._client = hopsworks_client._get_instance()
         return self._client
 
+    def _post_as_deployment(self, url: str, body: dict[str, Any]) -> Any:
+        """POST to the platform as the deployment itself, with its own workload key.
+
+        The client connected for the agent may act as the user who started the
+        deployment; a call the platform allows only to the deployment (signing
+        its card) is made with ``SERVING_API_KEY`` instead, to the URL the
+        platform gave, verified against the cluster's certificate authority.
+
+        Raises:
+            AgentError: The deployment has no key, or the platform refused.
+        """
+        import requests  # noqa: PLC0415
+
+        key = os.environ.get("SERVING_API_KEY")
+        if not key:
+            raise AgentError(
+                "this deployment has no workload key to call the platform with",
+                code="platform_unavailable",
+                status_code=503,
+            )
+        verify = getattr(self._connect(), "_verify", True)
+        response = requests.post(
+            url,
+            json=body,
+            headers={"Authorization": f"ApiKey {key}"},
+            verify=verify,
+            timeout=30,
+        )
+        if response.status_code >= 400:
+            raise AgentError(
+                _message(response),
+                code="platform_refused",
+                status_code=response.status_code,
+            )
+        return response.json()
+
     def _request(
         self,
         method: str,

@@ -12,6 +12,7 @@ import sys
 from typing import Any
 
 import click
+from hopsworks._skill_catalogue import _render_catalogue
 from hopsworks.cli import output, session
 from hopsworks.cli.commands import fv as fv_cmd
 from hopsworks.cli.commands import model as model_cmd
@@ -175,14 +176,7 @@ def _render_guidance(out: Any) -> None:
     skills_dir = skills_cmd._skills_dir()
     skills = skills_cmd._collect_skills(skills_dir) if skills_dir else []
     if skills:
-        out("## Available skills\n\n")
-        out("| Bucket | Skill | When to use |\n|---|---|---|\n")
-        for skill in skills:
-            out(
-                f"| {skill['bucket']} | {skill['name']} | "
-                f"{output.first_line(skill['description'])} |\n"
-            )
-        out("\n")
+        out(_render_catalogue(skills))
     else:
         out("Run `hops skills list` to see available skills.\n\n")
 
