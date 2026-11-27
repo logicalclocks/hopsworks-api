@@ -17,6 +17,7 @@
 
 package com.logicalclocks.hsfs.spark.engine.profile;
 
+import com.logicalclocks.hsfs.spark.engine.SparkEngine;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.RowFactory;
@@ -24,6 +25,7 @@ import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructType;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -32,6 +34,18 @@ import java.util.List;
 import java.util.Map;
 
 public class HistogramBuilderTest {
+
+  // A fresh SparkContext, as in the other profiler tests: TestStorageConnector leaves files registered with
+  // addFile on the shared one, and the first Spark job here fails to fetch them (KllMergeSmokeTest explains).
+  @BeforeEach
+  void recreateSparkSession() {
+    if (SparkSession.getDefaultSession().isDefined()) {
+      SparkSession.getDefaultSession().get().stop();
+    }
+    SparkSession.clearActiveSession();
+    SparkSession.clearDefaultSession();
+    SparkEngine.setInstance(null);
+  }
 
   @Test
   void aValueOutsideTheGridLandsInTheNearestBin() {
