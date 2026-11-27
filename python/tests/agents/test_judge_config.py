@@ -706,7 +706,9 @@ class TestProviderRequestShape:
 
         parameters = _AnthropicMessagesParameters("claude-sonnet-5", 0.0, 1500, "high")
         assert parameters._send(call) == "graded"
-        assert seen == [{"max_tokens": 1500, "output_config": {"effort": "high"}}]
+        assert seen == [
+            {"max_tokens": 1500, "extra_body": {"output_config": {"effort": "high"}}}
+        ]
 
     @pytest.mark.parametrize("model", ["claude-sonnet-5-5", "claude-haiku-5-5"])
     @pytest.mark.parametrize("effort", ["low", "medium", "high", "xhigh", "max"])
@@ -722,7 +724,9 @@ class TestProviderRequestShape:
 
         parameters = _AnthropicMessagesParameters(model, 0.0, 1500, effort)
         assert parameters._send(call) == "graded"
-        assert seen == [{"max_tokens": 1500, "output_config": {"effort": effort}}]
+        assert seen == [
+            {"max_tokens": 1500, "extra_body": {"output_config": {"effort": effort}}}
+        ]
 
     def test_the_default_openai_judge_sends_reasoning_effort(self):
         from hopsworks_agents.eval.judge_config import _ChatCompletionParameters
@@ -737,7 +741,12 @@ class TestProviderRequestShape:
             "openai", "gpt-6.1-terra", 0.0, 1500, "xhigh"
         )
         assert parameters._send(call) == "graded"
-        assert seen == [{"max_completion_tokens": 1500, "reasoning_effort": "xhigh"}]
+        assert seen == [
+            {
+                "max_completion_tokens": 1500,
+                "extra_body": {"reasoning_effort": "xhigh"},
+            }
+        ]
 
     @pytest.mark.parametrize(
         ("model", "effort", "sent"),
@@ -768,7 +777,35 @@ class TestProviderRequestShape:
 
         parameters = _ChatCompletionParameters("openai", model, 0.0, 1500, effort)
         assert parameters._send(call) == "graded"
-        assert ("reasoning_effort" in seen[0]) is sent
+        assert ("reasoning_effort" in seen[0].get("extra_body", {})) is sent
+
+    @pytest.mark.parametrize(
+        ("model", "effort", "sent"),
+        [
+            # Google documents minimal as an error on 3.8 Flash, and Gemini 3 thinking
+            # cannot be turned off
+            ("gemini-3.8-flash", "minimal", False),
+            ("gemini-3.8-flash", "none", False),
+            ("gemini-3.8-flash", "low", True),
+            ("gemini-3.8-flash", "high", True),
+            # 3.6 Flash keeps minimal
+            ("gemini-3.6-flash", "minimal", True),
+        ],
+    )
+    def test_gemini_judges_send_only_the_efforts_the_model_takes(
+        self, model, effort, sent
+    ):
+        from hopsworks_agents.eval.judge_config import _ChatCompletionParameters
+
+        seen = []
+
+        def call(**extra):
+            seen.append(extra)
+            return "graded"
+
+        parameters = _ChatCompletionParameters("google", model, 0.0, 1500, effort)
+        assert parameters._send(call) == "graded"
+        assert ("reasoning_effort" in seen[0].get("extra_body", {})) is sent
 
     def test_anthropic_omits_effort_for_models_that_do_not_support_it(self):
         from hopsworks_agents.eval.judge_config import _AnthropicMessagesParameters
@@ -860,7 +897,8 @@ class TestProviderRequestShape:
         assert complete("grade this") == '{"passed": true}'
         assert budgets == [1500, 3000]
 
-    def test_openai_reasoning_effort_is_top_level(self):
+    def test_openai_reasoning_effort_goes_in_the_body(self):
+        # extra_body, not an argument: openai before 1.58 refuses the argument
         from hopsworks_agents.eval.judge_config import _ChatCompletionParameters
 
         seen = []
@@ -873,7 +911,12 @@ class TestProviderRequestShape:
             "openai", "gpt-5.6-terra", 0.0, 1500, "high"
         )
         assert parameters._send(call) == "graded"
-        assert seen == [{"max_completion_tokens": 1500, "reasoning_effort": "high"}]
+        assert seen == [
+            {
+                "max_completion_tokens": 1500,
+                "extra_body": {"reasoning_effort": "high"},
+            }
+        ]
 
     def test_non_reasoning_chat_omits_reasoning_effort(self):
         from hopsworks_agents.eval.judge_config import _ChatCompletionParameters
@@ -904,8 +947,10 @@ class TestProviderRequestShape:
         assert seen == [
             {
                 "max_tokens": 1500,
-                "reasoning_effort": "max",
-                "extra_body": {"thinking": {"type": "enabled"}},
+                "extra_body": {
+                    "thinking": {"type": "enabled"},
+                    "reasoning_effort": "max",
+                },
             }
         ]
 
@@ -936,7 +981,7 @@ class TestProviderRequestShape:
 
         def call(**extra):
             seen.append(extra)
-            if "reasoning_effort" in extra:
+            if "reasoning_effort" in extra.get("extra_body", {}):
                 raise RuntimeError(
                     "Error code: 400 - unsupported parameter reasoning_effort"
                 )
@@ -948,7 +993,11 @@ class TestProviderRequestShape:
         assert parameters._send(call) == "graded"
         assert parameters._send(call) == "graded"
         assert seen == [
-            {"max_tokens": 1500, "temperature": 0.0, "reasoning_effort": "high"},
+            {
+                "max_tokens": 1500,
+                "temperature": 0.0,
+                "extra_body": {"reasoning_effort": "high"},
+            },
             {"max_tokens": 1500, "temperature": 0.0},
             {"max_tokens": 1500, "temperature": 0.0},
         ]

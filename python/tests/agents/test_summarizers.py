@@ -61,8 +61,9 @@ class TestOpenAISummarizer:
         # a reasoning model rejects max_tokens with a 400
         assert create["max_completion_tokens"] == 1024
         assert "max_tokens" not in create
-        # its reasoning would spend the budget a summary needs
-        assert create["reasoning_effort"] == "none"
+        # its reasoning would spend the budget a summary needs; in extra_body, as
+        # openai before 1.58 refuses the argument
+        assert create["extra_body"] == {"reasoning_effort": "none"}
         assert create["messages"][0] == {"role": "system", "content": SYSTEM_PROMPT}
         user = create["messages"][1]["content"]
         assert "older summary" in user and "user: I live in Oslo" in user
@@ -94,7 +95,7 @@ class TestOpenAISummarizer:
         assert calls["create"]["model"] == "llama-3.1-8b"
         assert calls["create"]["max_tokens"] == 1024
         assert "max_completion_tokens" not in calls["create"]
-        assert "reasoning_effort" not in calls["create"]
+        assert "extra_body" not in calls["create"]
 
     def test_sol_and_astra_reason_at_low_as_they_reject_none(self, monkeypatch):
         from hopsworks_agents.protocol.summarizers import openai_summarizer
@@ -103,7 +104,7 @@ class TestOpenAISummarizer:
             calls = _fake_openai(monkeypatch)
             monkeypatch.setenv("OPENAI_API_KEY", "sk-env")
             asyncio.run(openai_summarizer(model)(None, TURNS))
-            assert calls["create"]["reasoning_effort"] == "low"
+            assert calls["create"]["extra_body"] == {"reasoning_effort": "low"}
 
     def test_a_cut_off_summary_is_asked_again_with_double_the_budget(self, monkeypatch):
         from hopsworks_agents.protocol.summarizers import openai_summarizer

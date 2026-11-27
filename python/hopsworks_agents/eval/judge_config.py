@@ -809,7 +809,12 @@ class _TemperatureParameter:
 
 
 class _ReasoningEffortParameter:
-    """Provider-specific kwargs for reasoning effort, with one rejection retry."""
+    """Provider-specific kwargs for reasoning effort, with one rejection retry.
+
+    The fields go in ``extra_body``: the SDKs take them as arguments only from anthropic
+    0.77 (``output_config``) and openai 1.58 (``reasoning_effort``), and the eval extra
+    allows anthropic 0.40 and openai 1.0, which would refuse them before sending.
+    """
 
     def __init__(self, extra: dict[str, Any]):
         self._extra = extra
@@ -818,7 +823,7 @@ class _ReasoningEffortParameter:
     def _for_anthropic(cls, model: str, effort: str) -> _ReasoningEffortParameter:
         if not _supports_anthropic_reasoning_effort(model, effort):
             return cls({})
-        return cls({"output_config": {"effort": effort}})
+        return cls({"extra_body": {"output_config": {"effort": effort}}})
 
     @classmethod
     def _for_chat_completion(
@@ -1085,13 +1090,11 @@ def _chat_completion_reasoning_effort_extra(
         return {}
     if provider == "deepseek":
         thinking_type = "disabled" if effort == "none" else "enabled"
-        extra: dict[str, Any] = {
-            "extra_body": {"thinking": {"type": thinking_type}},
-        }
+        body: dict[str, Any] = {"thinking": {"type": thinking_type}}
         if effort != "none":
-            extra["reasoning_effort"] = effort
-        return extra
-    return {"reasoning_effort": effort}
+            body["reasoning_effort"] = effort
+        return {"extra_body": body}
+    return {"extra_body": {"reasoning_effort": effort}}
 
 
 def _supports_chat_completion_reasoning_effort(
@@ -1106,13 +1109,9 @@ def _supports_chat_completion_reasoning_effort(
             return False
         return effort in _openai_reasoning_efforts(model)
     if provider == "google":
-        return effort in {
-            "none",
-            "minimal",
-            "low",
-            "medium",
-            "high",
-        } and _has_model_prefix(model, "gemini-")
+        if not _has_model_prefix(model, "gemini-"):
+            return False
+        return effort in _gemini_reasoning_efforts(model)
     if provider == "deepseek":
         return effort in {
             "none",
@@ -1157,7 +1156,7 @@ def _supports_inferred_chat_reasoning_effort(model: str, effort: str) -> bool:
     if _is_openai_reasoning_model(model):
         return effort in _openai_reasoning_efforts(model)
     if _has_model_prefix(model, "gemini-"):
-        return effort in {"none", "minimal", "low", "medium", "high"}
+        return effort in _gemini_reasoning_efforts(model)
     if _is_deepseek_thinking_model(model):
         return effort in {"none", "low", "medium", "high", "xhigh", "max"}
     if _has_model_prefix(model, "kimi-", "qwen", "glm", "minimax", "gpt-oss"):
@@ -1238,6 +1237,17 @@ def _openai_reasoning_efforts(model: str) -> set[str]:
     if any("-sol" in name or "-astra" in name for name in _model_identifiers(model)):
         return {"low", "medium", "high", "xhigh", "max"}
     return {"none", "low", "medium", "high", "xhigh", "max"}
+
+
+def _gemini_reasoning_efforts(model: str) -> set[str]:
+    """The reasoning efforts a Gemini model accepts.
+
+    Gemini 3.8 Flash and Gemini 4 take low to high: Google documents minimal as an error
+    there, and their thinking cannot be turned off.
+    """
+    if _has_model_prefix(model, "gemini-3.8", "gemini-4"):
+        return {"low", "medium", "high"}
+    return {"none", "minimal", "low", "medium", "high"}
 
 
 def _is_claude_fixed_sampling_model(model: str) -> bool:

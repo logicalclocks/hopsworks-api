@@ -395,7 +395,10 @@ async def _chat_completion(
     token_limit="max_tokens",
     reasoning_effort=None,
 ):
-    extra = {} if reasoning_effort is None else {"reasoning_effort": reasoning_effort}
+    # In extra_body: the OpenAI SDK takes reasoning_effort as an argument only from 1.58.
+    extra = {}
+    if reasoning_effort is not None:
+        extra = {"extra_body": {"reasoning_effort": reasoning_effort}}
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": _user_message(previous, turns)},
