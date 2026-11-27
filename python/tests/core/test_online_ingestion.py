@@ -17,14 +17,17 @@ import itertools
 import warnings
 from datetime import datetime, timedelta
 
-from hopsworks_common.core.opensearch import (
-    OpensearchRequestOption,
-    ProjectOpenSearchClient,
-)
+import pytest
+from hopsworks_common.core.opensearch import ProjectOpenSearchClient
 from hsfs.core import online_ingestion
 from hsfs.core.online_ingestion_failure import OnlineIngestionFailure
 from hsfs.core.online_ingestion_result import OnlineIngestionResult
-from opensearchpy.exceptions import AuthorizationException, ConnectionTimeout
+from opensearchpy import OpenSearch
+from opensearchpy.exceptions import (
+    AuthorizationException,
+    ConnectionTimeout,
+    TransportError,
+)
 
 
 class _StillWaiting(Exception):
@@ -764,19 +767,46 @@ class TestOnlineIngestion:
         assert len(messages) == 1
         assert messages[0].startswith("Timeout of 0:00:02 was exceeded")
 
-    def test_wait_for_completion_makes_one_log_request_within_its_timeout(self, mocker):
-        # Arrange - the OpenSearch wrapper, which retries a timed out search with backoff, over a client whose
-        # requests all time out at the limit they are given
+    @pytest.mark.parametrize(
+        "error, seconds, warned",
+        [
+            # cut short at the time left: the timeout, not reported as unreadable logs
+            (
+                ConnectionTimeout("TIMEOUT", "Read timed out", None),
+                1,
+                ["Timeout of 0:00:02 was exceeded"],
+            ),
+            # refused before the time is up: unreadable logs, then the timeout
+            (
+                TransportError(503, "service_unavailable", {}),
+                0.9,
+                [
+                    "The online ingestion service logs could not be read",
+                    "Timeout of 0:00:02 was exceeded",
+                ],
+            ),
+        ],
+        ids=["timed_out", "unavailable"],
+    )
+    def test_wait_for_completion_makes_one_log_request_within_its_timeout(
+        self, mocker, error, seconds, warned
+    ):
+        # Arrange - the OpenSearch wrapper, whose search retries with backoff, over a real client and transport,
+        # which retry a 503 and a failed connection themselves; only the HTTP connection is substituted
         start, clock = self._clock(mocker)
-        opensearch = mocker.Mock()
         started = []
 
-        def timed_out(**kwargs):
+        def request(*args, **kwargs):
             started.append((clock[0] - start).total_seconds())
-            clock[0] += timedelta(seconds=1)
-            raise ConnectionTimeout("TIMEOUT", "Read timed out", None)
+            clock[0] += timedelta(seconds=seconds)
+            raise error
 
-        opensearch.search.side_effect = timed_out
+        opensearch = OpenSearch(hosts=[{"host": "localhost", "port": 9200}])
+        connection = mocker.patch.object(
+            opensearch.transport.connection_pool.connections[0],
+            "perform_request",
+            side_effect=request,
+        )
         wrapper = ProjectOpenSearchClient(
             opensearch_client=opensearch, is_cluster_client=False
         )
@@ -790,15 +820,16 @@ class TestOnlineIngestion:
         # Act
         messages, ended = self._wait_two_seconds(mocker, clock)
 
-        # Assert - one request at 1 second, bounded by the second left and not retried, then the timeout, not
-        # reported as unreadable logs
+        # Assert - one request at 1 second, bounded by the second left and retried by neither the wrapper nor
+        # the transport
         assert started == [1]
-        assert opensearch.search.call_args.kwargs[
-            "params"
-        ] == OpensearchRequestOption.get_options({"timeout": 1})
+        assert connection.call_args.kwargs["timeout"] == 1
         assert ended
-        assert len(messages) == 1
-        assert messages[0].startswith("Timeout of 0:00:02 was exceeded")
+        assert len(messages) == len(warned)
+        assert all(
+            message.startswith(start_of_message)
+            for message, start_of_message in zip(messages, warned, strict=True)
+        )
 
     def test_wait_for_completion_warns_once_while_the_logs_cannot_be_read(self, mocker):
         # Arrange
