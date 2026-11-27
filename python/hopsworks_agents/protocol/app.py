@@ -22,7 +22,7 @@ import asyncio
 import inspect
 import json
 from collections import OrderedDict
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -56,6 +56,7 @@ from .models import (
     new_response_id,
 )
 from .pending import EXPIRED_GRACE, RETENTION, _PendingQuestions, _ProcessPending
+from .skills import DeploymentSkills
 from .tracing import resolve_framework, setup_tracing, turn_span
 
 
@@ -135,6 +136,7 @@ class AgentApp(FastAPI):
         fetch_urls: list[str] | None = None,
         input_media_types: list[str] | None = None,
         output_media_types: list[str] | None = None,
+        platform_skills: Sequence[str] | None = None,
         **fastapi_kwargs: Any,
     ):
         super().__init__(title=name, description=description, **fastapi_kwargs)
@@ -217,6 +219,9 @@ class AgentApp(FastAPI):
         # framework: explicit arg > AGENT_FRAMEWORK env (platform-injected) >
         # 'custom'. Drives which OpenInference instrumentor tracing activates.
         self.framework = resolve_framework(framework)
+        self.platform_skills = DeploymentSkills(
+            platform_skills, framework=self.framework
+        )
         # platform-injected when the deployment runs with tools mocked or
         # pointed at scratch resources; reported in the manifest so an eval
         # runner can verify it rather than trust a naming convention
@@ -285,6 +290,18 @@ class AgentApp(FastAPI):
         self._chat_handler: ChatHandler | None = None
         self._stream_handler: StreamHandler | None = None
 
+        # A private agent (memory_routes=False) keeps each caller's
+        # conversations, memory and open questions apart: every id is
+        # namespaced by the caller the gateway named, at the stores, and a
+        # request that names no caller is refused at the door. See scope.py.
+        if not memory_routes:
+            from .scope import _PrincipalGate, _ScopedMemory, _ScopedPending
+
+            if self.memory is not None:
+                self.memory = _ScopedMemory(self.memory)
+            self._local_pending = _ScopedPending(self._local_pending)
+            self.add_middleware(_PrincipalGate)
+
         # when tool events are on and tracing is active, auto-emit tool events
         # from the framework's spans so tool calls show up with zero agent code
         if self._tool_events and self.tracer_provider is not None:
@@ -309,9 +326,11 @@ class AgentApp(FastAPI):
         # upgraded hopsworks without the agents extra keeps its AG-UI agent.
         self._a2a: Any = None
         self._a2a_missing = False
+        # why A2A is off although nobody turned it off, for the manifest
+        self._a2a_off_reason: str | None = None
         if a2a is None or a2a:
             try:
-                from .a2a import A2AConfig, A2AServer
+                from .a2a import A2AConfig, A2AServer, _NoDatabase
             except ModuleNotFoundError as err:
                 if a2a is not None or (err.name or "").split(".")[0] != "a2a":
                     raise
@@ -322,10 +341,37 @@ class AgentApp(FastAPI):
                     "a2a-sdk is not installed, so this agent serves no Agent Card "
                     "and no A2A routes; install hopsworks[agents] to serve A2A"
                 )
+                self._a2a_off_reason = "sdk_missing"
             else:
-                self._a2a = A2AServer(
-                    self, a2a if isinstance(a2a, A2AConfig) else A2AConfig()
-                )
+                try:
+                    self._a2a = A2AServer(
+                        self, a2a if isinstance(a2a, A2AConfig) else A2AConfig()
+                    )
+                except _NoDatabase as off:
+                    # Durable tasks are what a deployment's A2A promises, and
+                    # this one has nowhere to keep them. Memory is never a
+                    # silent fallback: the author chooses it, or A2A is off.
+                    self._a2a_off_reason = off.reason
+                    import logging  # noqa: PLC0415
+
+                    logging.getLogger(__name__).warning(
+                        "this deployment cannot keep A2A tasks in the project's "
+                        "online database (%s), so the agent serves no Agent Card "
+                        "and no A2A routes; give the project an online feature "
+                        "store and the environment hopsworks[agents-memory], or "
+                        'pass a2a=A2AConfig(task_store="memory") to keep tasks '
+                        "in the process, per replica",
+                        off.reason,
+                    )
+                else:
+
+                    @self.on_event("startup")
+                    async def _start_a2a() -> None:  # pragma: no cover - lifespan hook
+                        await self._a2a._start()
+
+                    @self.on_event("shutdown")
+                    async def _stop_a2a() -> None:  # pragma: no cover - lifespan hook
+                        await self._a2a._stop()
 
     # ── handler decorators ────────────────────────────────────────────────
 
@@ -448,8 +494,8 @@ class AgentApp(FastAPI):
             # SDK from one that opted out.
             "a2a": self._a2a._capabilities()
             if self._a2a is not None
-            else {"enabled": False, "reason": "sdk_missing"}
-            if self._a2a_missing
+            else {"enabled": False, "reason": self._a2a_off_reason}
+            if self._a2a_off_reason
             else {"enabled": False},
             "streaming": streaming,
             # protocol-level statement that history is server-side. The

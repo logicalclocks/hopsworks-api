@@ -4,8 +4,8 @@
 
 | Mode | How a new deployment gets it | Autoscaler | Scales to zero |
 |---|---|---|---|
-| Standard (default) | `knative_mode` unset or `False` | KEDA where the cluster has it (`Autoscaler.KEDA`, the default), else KServe's own HPA (`Autoscaler.HPA`, cpu and memory only) | With `min_instances=0`, through the KEDA HTTP add-on: predictor without a transformer only |
-| Knative | `knative_mode=True` | Knative's request-based autoscaler (no `autoscaler` field; it is rejected) | With `min_instances=0`, natively |
+| Standard (default) | `knative_mode` unset or `False`; a Knative deployment converts with `deployment.knative_mode = False; deployment.save()` while stopped, stopped first and started again only if it was running | KEDA where the cluster has it (`Autoscaler.KEDA`, the default), else KServe's own HPA (`Autoscaler.HPA`, cpu and memory only) | With `min_instances=0`, through the KEDA HTTP add-on: predictor without a transformer only |
+| Knative (deprecated since 5.3, removed in 5.4) | `knative_mode=True` | Knative's request-based autoscaler (no `autoscaler` field; it is rejected) | With `min_instances=0`, natively |
 
 Equal `min_instances` and `max_instances` run a fixed replica count: the metric, target and autoscaler are cleared. A minimum of 0 with a maximum of 1 is one instance while active and zero when idle. An LLM deployment defaults to a fixed count of one.
 

@@ -30,6 +30,7 @@ from hopsworks_agents.protocol import (
     Artifact,
     TextContent,
 )
+from hopsworks_agents.protocol.a2a import A2AConfig
 from hopsworks_agents.protocol.pending import _task_key
 
 
@@ -237,11 +238,14 @@ class TestAgentCard:
         assert manifest["capabilities"]["custom"]["hopsworks"]["a2a"] == {
             "enabled": True,
             "bindings": ["JSONRPC", "HTTP+JSON"],
-            "push_notifications": False,
+            "push_notifications": True,
+            "extended_card": True,
             "signed": False,
             "task_store": "memory",
             "task_limit": 1000,
             "serialize_context": False,
+            "private": False,
+            "retry_lost_tasks": 0,
         }
 
     def test_a2a_can_be_switched_off(self):
@@ -290,7 +294,8 @@ class TestSendMessage:
     def test_the_subject_and_context_ride_in_the_extension(self, monkeypatch):
         monkeypatch.setenv("DEPLOYMENT_ID", "7")
         seen = {}
-        app = AgentApp()
+        # a deployment with no database serves A2A only when memory is chosen
+        app = AgentApp(a2a=A2AConfig(task_store="memory"))
 
         @app.chat
         async def chat(request, ctx):
@@ -1187,6 +1192,7 @@ class TestReviewRoundOne:
     def test_history_is_a_snapshot_and_turns_stay_contiguous(self, tmp_path):
         memory = self._memory(tmp_path)
         gate = asyncio.Event()
+        started = asyncio.Event()
         seen = {}
         app = AgentApp(memory=memory)
 
@@ -1194,6 +1200,7 @@ class TestReviewRoundOne:
         async def chat(request, ctx):
             if request.text == "slow":
                 first = ctx.history
+                started.set()
                 await gate.wait()
                 seen["reads"] = (first, ctx.history)
                 return "slow done"
@@ -1204,7 +1211,8 @@ class TestReviewRoundOne:
             slow = asyncio.create_task(
                 send(client, user_message("slow", context_id="c"))
             )
-            await asyncio.sleep(0.1)
+            # the slow turn has read its history before the fast one is sent
+            await asyncio.wait_for(started.wait(), 30)
             task_of(await send(client, user_message("fast", context_id="c")))
             gate.set()
             task_of(await slow)

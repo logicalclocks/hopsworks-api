@@ -87,3 +87,19 @@ class TestBuildGetQueryParams:
 
         assert params["sort_by"] == ["computation_time:desc"]
         assert "filter_by" not in params
+
+    @pytest.mark.parametrize(
+        ("with_content", "fields"),
+        [
+            (True, "content"),
+            ("content", "content"),
+            ("descriptive", "descriptive"),
+            (False, None),
+        ],
+    )
+    def test_with_content_selects_the_fields_the_backend_returns(
+        self, with_content, fields
+    ):
+        params = self._api()._build_get_query_params(with_content=with_content)
+
+        assert params.get("fields") == fields

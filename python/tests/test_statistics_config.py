@@ -46,3 +46,22 @@ class TestStatistics:
         assert sc.histograms is False
         assert sc.exact_uniqueness is False
         assert sc.columns == []
+
+    def test_incremental_defaults_to_none_and_is_always_serialized(self):
+        # Act
+        sc = statistics_config.StatisticsConfig()
+
+        # Assert
+        assert sc.incremental is None
+        assert sc.to_dict()["incremental"] is None
+
+    def test_incremental_round_trip(self):
+        for value in (None, True, False):
+            # Act
+            sc = statistics_config.StatisticsConfig.from_response_json(
+                {"enabled": True, "incremental": value}
+            )
+
+            # Assert
+            assert sc.incremental is value
+            assert sc.to_dict()["incremental"] is value

@@ -67,6 +67,7 @@ class StatisticsApi:
         row_percentage: float | None = None,
         before_transformation: bool | None = None,
         training_dataset_version: int | None = None,
+        with_content: bool | str = True,
     ) -> statistics.Statistics | None:
         """Get single statistics of an entity.
 
@@ -82,6 +83,8 @@ class StatisticsApi:
             row_percentage: Percentage of feature values used during statistics computation
             before_transformation: Whether the statistics were computed before transformations or not
             training_dataset_version: Version of the training dataset on which statistics were computed
+            with_content: Whether to include the feature descriptive statistics, with their extended statistics (`True`, `"content"`).
+                `"descriptive"` includes them alone.
 
         Returns:
             The statistics object, or `None` if not found.
@@ -109,7 +112,7 @@ class StatisticsApi:
             # retrieve only one entity statistics, including the feature descriptive statistics
             offset=offset,
             limit=limit,
-            with_content=True,
+            with_content=with_content,
         )
 
         # response is either a single item or not found exception
@@ -182,8 +185,10 @@ class StatisticsApi:
         end_commit_time: int | None = None,
         feature_names: list[str] | None = None,
         limit: int | None = None,
+        row_percentage: float | None = None,
+        with_content: bool | str = True,
     ) -> list[statistics.Statistics] | None:
-        """Get all statistics rows for an entity within a commit time window, with content.
+        """Get all statistics rows for an entity within a commit time window, with content by default.
 
         Used by the KLL-merge path to enumerate per-batch statistics rows. Passing `limit`
         caps the response size; callers should treat a fully-populated response as a
@@ -196,9 +201,11 @@ class StatisticsApi:
             feature_names: List of feature names to retrieve statistics for
             limit: Maximum number of rows to return; None = unlimited (not recommended
                 for content-heavy responses).
+            row_percentage: Percentage of feature values used during statistics computation
+            with_content: Whether to include the feature descriptive statistics, as in `_get`.
 
         Returns:
-            A list of statistics objects with feature descriptive statistics, or None.
+            A list of statistics objects, or None.
         """
         _client = client._get_instance()
         path_params = self._get_path(metadata_instance, None)
@@ -209,9 +216,10 @@ class StatisticsApi:
             end_commit_time=end_commit_time,
             filter_eq_times=False,
             feature_names=feature_names,
+            row_percentage=row_percentage,
             offset=0,
             limit=limit,
-            with_content=True,
+            with_content=with_content,
         )
 
         return statistics.Statistics.from_response_json(
@@ -319,7 +327,7 @@ class StatisticsApi:
         training_dataset_version: int | None = None,
         offset: int = 0,
         limit: int | None = None,
-        with_content: bool = False,
+        with_content: bool | str = False,
     ) -> dict[str, Any]:
         """Build query parameters for statistics requests.
 
@@ -336,7 +344,10 @@ class StatisticsApi:
             training_dataset_version: Version of the training dataset on which statistics were computed
             offset: Offset for pagination queries
             limit: Limit for pagination queries
-            with_content: Whether include feature descriptive statistics in the response or not
+            with_content: Whether to include the feature descriptive statistics in the response.
+                `True` or `"content"` includes them with their extended statistics.
+                The backend reads those from one file per feature.
+                `"descriptive"` includes the descriptive values alone.
         """
         if (start_commit_time is not None or end_commit_time is not None) and (
             start_event_time is not None
@@ -351,7 +362,9 @@ class StatisticsApi:
         if limit is not None:
             query_params["limit"] = limit
         if with_content:
-            query_params["fields"] = "content"
+            query_params["fields"] = (
+                with_content if isinstance(with_content, str) else "content"
+            )
 
         sorts: list[str] = []
         filters: list[str] = []
