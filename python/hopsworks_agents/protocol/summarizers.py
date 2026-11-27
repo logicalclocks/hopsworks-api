@@ -395,18 +395,19 @@ async def _chat_completion(
     token_limit="max_tokens",
     reasoning_effort=None,
 ):
-    # In extra_body: the OpenAI SDK takes reasoning_effort as an argument only from 1.58.
-    extra = {}
-    if reasoning_effort is not None:
-        extra = {"extra_body": {"reasoning_effort": reasoning_effort}}
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": _user_message(previous, turns)},
     ]
 
     async def ask(limit: int) -> tuple[str, bool]:
+        # In extra_body: the OpenAI SDK takes max_completion_tokens as an argument only
+        # from 1.45, and reasoning_effort only from 1.58.
+        body = {token_limit: limit}
+        if reasoning_effort is not None:
+            body["reasoning_effort"] = reasoning_effort
         response = await client.chat.completions.create(
-            model=model, **{token_limit: limit}, **extra, messages=messages
+            model=model, messages=messages, extra_body=body
         )
         choice = response.choices[0]
         text = (choice.message.content or "").strip()

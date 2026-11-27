@@ -33,6 +33,7 @@ import decimal
 import json
 import logging
 import os
+import re
 import threading
 import time
 from functools import lru_cache
@@ -113,10 +114,11 @@ def _llm_settings() -> tuple[str, str, str] | None:
 def _temperature(model: str) -> dict[str, float]:
     """Temperature 0 for repeatable answers, left out for OpenAI's reasoning models.
 
-    The o-series, GPT-5 and GPT-6 set their own sampling, so they are sent none.
+    The o-series, GPT-5 and GPT-6 set their own sampling, so they are sent none. Only
+    their whole ids match (o3, o4-mini, gpt-5.1), so a deployment named o11y keeps 0.
     """
     name = model.strip().lower().rsplit("/", 1)[-1]
-    if name.startswith(("o1", "o3", "o4", "gpt-5", "gpt-6")):
+    if re.match(r"(o[134]|gpt-[56])([.-]|$)", name):
         return {}
     return {"temperature": 0}
 

@@ -1242,11 +1242,14 @@ def _openai_reasoning_efforts(model: str) -> set[str]:
 def _gemini_reasoning_efforts(model: str) -> set[str]:
     """The reasoning efforts a Gemini model accepts.
 
-    Gemini 3.8 Flash and Gemini 4 take low to high: Google documents minimal as an error
-    there, and their thinking cannot be turned off.
+    Gemini 3.8 Flash and Gemini 4 think at low to high and cannot turn thinking off.
+    Google lists minimal as unsupported on 3.8 Flash, while its OpenAI-compatible
+    endpoint runs minimal on Gemini 4 at low, so a judge saved with minimal keeps it.
     """
-    if _has_model_prefix(model, "gemini-3.8", "gemini-4"):
+    if _has_model_prefix(model, "gemini-3.8"):
         return {"low", "medium", "high"}
+    if _has_model_prefix(model, "gemini-4"):
+        return {"minimal", "low", "medium", "high"}
     return {"none", "minimal", "low", "medium", "high"}
 
 

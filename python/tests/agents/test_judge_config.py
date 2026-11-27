@@ -782,12 +782,16 @@ class TestProviderRequestShape:
     @pytest.mark.parametrize(
         ("model", "effort", "sent"),
         [
-            # Google documents minimal as an error on 3.8 Flash, and Gemini 3 thinking
+            # Google lists minimal as unsupported on 3.8 Flash, and Gemini 3 thinking
             # cannot be turned off
             ("gemini-3.8-flash", "minimal", False),
             ("gemini-3.8-flash", "none", False),
             ("gemini-3.8-flash", "low", True),
             ("gemini-3.8-flash", "high", True),
+            # Google's OpenAI-compatible endpoint runs minimal on Gemini 4 at low
+            ("gemini-4-neon", "minimal", True),
+            ("gemini-4-neon", "none", False),
+            ("gemini-4-carbon", "low", True),
             # 3.6 Flash keeps minimal
             ("gemini-3.6-flash", "minimal", True),
         ],

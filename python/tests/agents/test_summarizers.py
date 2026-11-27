@@ -58,12 +58,15 @@ class TestOpenAISummarizer:
         assert calls["client"] == {"api_key": "sk-env"}
         create = calls["create"]
         assert create["model"] == "gpt-6-luna"
-        # a reasoning model rejects max_tokens with a 400
-        assert create["max_completion_tokens"] == 1024
+        # a reasoning model rejects max_tokens with a 400, and its reasoning would
+        # spend the budget a summary needs; in extra_body, as openai before 1.45
+        # refuses max_completion_tokens and before 1.58 reasoning_effort
+        assert create["extra_body"] == {
+            "max_completion_tokens": 1024,
+            "reasoning_effort": "none",
+        }
         assert "max_tokens" not in create
-        # its reasoning would spend the budget a summary needs; in extra_body, as
-        # openai before 1.58 refuses the argument
-        assert create["extra_body"] == {"reasoning_effort": "none"}
+        assert "max_completion_tokens" not in create
         assert create["messages"][0] == {"role": "system", "content": SYSTEM_PROMPT}
         user = create["messages"][1]["content"]
         assert "older summary" in user and "user: I live in Oslo" in user
@@ -93,9 +96,7 @@ class TestOpenAISummarizer:
             "default_headers": {"X-Team": "ml"},
         }
         assert calls["create"]["model"] == "llama-3.1-8b"
-        assert calls["create"]["max_tokens"] == 1024
-        assert "max_completion_tokens" not in calls["create"]
-        assert "extra_body" not in calls["create"]
+        assert calls["create"]["extra_body"] == {"max_tokens": 1024}
 
     def test_sol_and_astra_reason_at_low_as_they_reject_none(self, monkeypatch):
         from hopsworks_agents.protocol.summarizers import openai_summarizer
@@ -104,7 +105,7 @@ class TestOpenAISummarizer:
             calls = _fake_openai(monkeypatch)
             monkeypatch.setenv("OPENAI_API_KEY", "sk-env")
             asyncio.run(openai_summarizer(model)(None, TURNS))
-            assert calls["create"]["extra_body"] == {"reasoning_effort": "low"}
+            assert calls["create"]["extra_body"]["reasoning_effort"] == "low"
 
     def test_a_cut_off_summary_is_asked_again_with_double_the_budget(self, monkeypatch):
         from hopsworks_agents.protocol.summarizers import openai_summarizer
@@ -112,7 +113,7 @@ class TestOpenAISummarizer:
         calls = _fake_openai(monkeypatch, finish_reasons=("length", "stop"))
         monkeypatch.setenv("OPENAI_API_KEY", "sk-env")
         assert asyncio.run(openai_summarizer()(None, TURNS)) == "folded"
-        limits = [c["max_completion_tokens"] for c in calls["creates"]]
+        limits = [c["extra_body"]["max_completion_tokens"] for c in calls["creates"]]
         assert limits == [1024, 2048]
 
     def test_a_vllm_summary_doubles_max_tokens(self, monkeypatch):
@@ -123,7 +124,8 @@ class TestOpenAISummarizer:
             "llama-3.1-8b", base_url="http://vllm:8000/v1", api_key="k"
         )
         asyncio.run(summarize(None, TURNS))
-        assert [c["max_tokens"] for c in calls["creates"]] == [1024, 2048]
+        limits = [c["extra_body"]["max_tokens"] for c in calls["creates"]]
+        assert limits == [1024, 2048]
 
     def test_a_summary_still_cut_off_at_four_times_the_budget_fails(self, monkeypatch):
         from hopsworks_agents.protocol.summarizers import openai_summarizer
@@ -134,7 +136,7 @@ class TestOpenAISummarizer:
         monkeypatch.setenv("OPENAI_API_KEY", "sk-env")
         with pytest.raises(RuntimeError, match="ran out of output tokens at 4096"):
             asyncio.run(openai_summarizer()(None, TURNS))
-        limits = [c["max_completion_tokens"] for c in calls["creates"]]
+        limits = [c["extra_body"]["max_completion_tokens"] for c in calls["creates"]]
         assert limits == [1024, 2048, 4096]
 
     def test_without_a_key_the_sdk_resolves_it(self, monkeypatch):
