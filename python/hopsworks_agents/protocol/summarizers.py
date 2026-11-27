@@ -175,12 +175,45 @@ def anthropic_summarizer(
             max_tokens=max_tokens,
             system=system_prompt,
             messages=[{"role": "user", "content": _user_message(previous, turns)}],
+            **_anthropic_effort(model),
         )
+        if getattr(response, "stop_reason", None) == "max_tokens":
+            raise _out_of_tokens(max_tokens)
         return "".join(
             block.text for block in response.content if block.type == "text"
         ).strip()
 
     return summarize
+
+
+def _anthropic_effort(model: str) -> dict:
+    """The effort to ask of a Claude model, as request fields.
+
+    Claude 5 models think by default, and their thinking counts against ``max_tokens``, so a
+    summary could be cut off. A rewrite needs little thought, so they get ``low``.
+    Earlier models think only when asked.
+    """
+    if _claude_major_version(model) >= 5:
+        return {"output_config": {"effort": "low"}}
+    return {}
+
+
+def _claude_major_version(model: str) -> int:
+    """The major version in a Claude model id, 5 for claude-haiku-5-5; 0 when it names none."""
+    name = model.strip().lower().rsplit("/", 1)[-1]
+    if "claude-" not in name:
+        return 0
+    for part in name.split("claude-", 1)[1].split("-"):
+        if part.isdigit():
+            return int(part)
+    return 0
+
+
+def _out_of_tokens(max_tokens: int) -> RuntimeError:
+    """The error for a summary cut off at the token limit, which must not replace the history."""
+    return RuntimeError(
+        f"the summary ran out of output tokens at {max_tokens} and is not saved"
+    )
 
 
 @public
@@ -317,10 +350,15 @@ def _openai_reasoning_effort(model: str) -> str | None:
 
     GPT-6 models reason at ``medium`` by default, and their reasoning counts against the
     completion budget, so a summary could run out of tokens before it is written. A
-    rewrite needs no reasoning, and GPT-6 accepts ``none``. Earlier models keep their default.
+    rewrite needs no reasoning: Luna and Terra take ``none``, while Sol and Astra reject it
+    and get ``low``, their lowest. Earlier models keep their default.
     """
     name = model.strip().lower().rsplit("/", 1)[-1]
-    return "none" if name.startswith("gpt-6") else None
+    if not name.startswith("gpt-6"):
+        return None
+    if "-sol" in name or "-astra" in name:
+        return "low"
+    return "none"
 
 
 async def _chat_completion(
@@ -343,7 +381,10 @@ async def _chat_completion(
             {"role": "user", "content": _user_message(previous, turns)},
         ],
     )
-    return (response.choices[0].message.content or "").strip()
+    choice = response.choices[0]
+    if getattr(choice, "finish_reason", None) == "length":
+        raise _out_of_tokens(max_tokens)
+    return (choice.message.content or "").strip()
 
 
 def _resolve_hopsworks_deployment(deployment) -> tuple[str, str, str | bool]:

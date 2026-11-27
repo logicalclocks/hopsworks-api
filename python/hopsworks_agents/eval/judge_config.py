@@ -1102,14 +1102,9 @@ def _supports_chat_completion_reasoning_effort(
     if not effort:
         return False
     if provider == "openai":
-        return effort in {
-            "none",
-            "minimal",
-            "low",
-            "medium",
-            "high",
-            "xhigh",
-        } and _is_openai_reasoning_model(model)
+        if not _is_openai_reasoning_model(model):
+            return False
+        return effort in _openai_reasoning_efforts(model)
     if provider == "google":
         return effort in {
             "none",
@@ -1160,7 +1155,7 @@ def _supports_chat_completion_reasoning_effort(
 
 def _supports_inferred_chat_reasoning_effort(model: str, effort: str) -> bool:
     if _is_openai_reasoning_model(model):
-        return effort in {"none", "minimal", "low", "medium", "high", "xhigh"}
+        return effort in _openai_reasoning_efforts(model)
     if _has_model_prefix(model, "gemini-"):
         return effort in {"none", "minimal", "low", "medium", "high"}
     if _is_deepseek_thinking_model(model):
@@ -1231,6 +1226,18 @@ def _omits_temperature(provider: str, model: str) -> bool:
 
 def _is_openai_reasoning_model(model: str) -> bool:
     return _has_model_prefix(model, "o1", "o3", "o4", "gpt-5", "gpt-6")
+
+
+def _openai_reasoning_efforts(model: str) -> set[str]:
+    """The reasoning efforts an OpenAI reasoning model accepts.
+
+    GPT-6 takes none to max but not minimal, and its Sol and Astra models reject none.
+    """
+    if not _has_model_prefix(model, "gpt-6"):
+        return {"none", "minimal", "low", "medium", "high", "xhigh"}
+    if any("-sol" in name or "-astra" in name for name in _model_identifiers(model)):
+        return {"low", "medium", "high", "xhigh", "max"}
+    return {"none", "low", "medium", "high", "xhigh", "max"}
 
 
 def _is_claude_fixed_sampling_model(model: str) -> bool:

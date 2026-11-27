@@ -739,6 +739,37 @@ class TestProviderRequestShape:
         assert parameters._send(call) == "graded"
         assert seen == [{"max_completion_tokens": 1500, "reasoning_effort": "xhigh"}]
 
+    @pytest.mark.parametrize(
+        ("model", "effort", "sent"),
+        [
+            # every GPT-6 model rejects minimal and takes max
+            ("gpt-6-luna", "minimal", False),
+            ("gpt-6-luna", "max", True),
+            ("gpt-6-luna", "none", True),
+            ("gpt-6.1-terra", "none", True),
+            # Sol and Astra also reject none
+            ("gpt-6.2-sol", "none", False),
+            ("gpt-6.2-astra", "none", False),
+            ("gpt-6.2-sol", "low", True),
+            # GPT-5 keeps minimal
+            ("gpt-5.6-terra", "minimal", True),
+        ],
+    )
+    def test_openai_judges_send_only_the_efforts_the_model_takes(
+        self, model, effort, sent
+    ):
+        from hopsworks_agents.eval.judge_config import _ChatCompletionParameters
+
+        seen = []
+
+        def call(**extra):
+            seen.append(extra)
+            return "graded"
+
+        parameters = _ChatCompletionParameters("openai", model, 0.0, 1500, effort)
+        assert parameters._send(call) == "graded"
+        assert ("reasoning_effort" in seen[0]) is sent
+
     def test_anthropic_omits_effort_for_models_that_do_not_support_it(self):
         from hopsworks_agents.eval.judge_config import _AnthropicMessagesParameters
 

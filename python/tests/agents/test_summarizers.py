@@ -8,7 +8,7 @@ from unittest import mock
 import pytest
 
 
-def _fake_openai(monkeypatch, reply="folded"):
+def _fake_openai(monkeypatch, reply="folded", finish_reason="stop"):
     """A stand-in ``openai`` module recording how the client was built and called."""
     calls = {}
 
@@ -22,9 +22,8 @@ def _fake_openai(monkeypatch, reply="folded"):
         async def _create(self, **kwargs):
             calls["create"] = kwargs
             message = types.SimpleNamespace(content=reply)
-            return types.SimpleNamespace(
-                choices=[types.SimpleNamespace(message=message)]
-            )
+            choice = types.SimpleNamespace(message=message, finish_reason=finish_reason)
+            return types.SimpleNamespace(choices=[choice])
 
     module = types.ModuleType("openai")
     module.AsyncOpenAI = AsyncOpenAI
@@ -90,6 +89,23 @@ class TestOpenAISummarizer:
         assert calls["create"]["max_tokens"] == 1024
         assert "max_completion_tokens" not in calls["create"]
         assert "reasoning_effort" not in calls["create"]
+
+    def test_sol_and_astra_reason_at_low_as_they_reject_none(self, monkeypatch):
+        from hopsworks_agents.protocol.summarizers import openai_summarizer
+
+        for model in ("gpt-6.2-sol", "gpt-6.2-astra"):
+            calls = _fake_openai(monkeypatch)
+            monkeypatch.setenv("OPENAI_API_KEY", "sk-env")
+            asyncio.run(openai_summarizer(model)(None, TURNS))
+            assert calls["create"]["reasoning_effort"] == "low"
+
+    def test_a_summary_cut_off_at_the_limit_is_not_returned(self, monkeypatch):
+        from hopsworks_agents.protocol.summarizers import openai_summarizer
+
+        _fake_openai(monkeypatch, reply="half a sum", finish_reason="length")
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-env")
+        with pytest.raises(RuntimeError, match="ran out of output tokens at 1024"):
+            asyncio.run(openai_summarizer()(None, TURNS))
 
     def test_without_a_key_the_sdk_resolves_it(self, monkeypatch):
         from hopsworks_agents.protocol.summarizers import openai_summarizer
@@ -457,14 +473,8 @@ class TestAnthropicSummarizerOnAClaudeCodeLogin:
         assert "prompt" not in calls
 
 
-def test_the_anthropic_request_suits_the_default_haiku(monkeypatch):
-    # Haiku 5.5 answers sampling parameters, extended thinking and a prefilled
-    # assistant turn with a 400, so the request carries none of them
-    from hopsworks_agents.protocol.summarizers import (
-        SYSTEM_PROMPT,
-        anthropic_summarizer,
-    )
-
+def _fake_anthropic(monkeypatch, text=" folded ", stop_reason="end_turn"):
+    """A stand-in ``anthropic`` module recording the request it was sent."""
     sent = {}
 
     class AsyncAnthropic:
@@ -473,21 +483,52 @@ def test_the_anthropic_request_suits_the_default_haiku(monkeypatch):
 
         async def _create(self, **kwargs):
             sent.update(kwargs)
-            return types.SimpleNamespace(
-                content=[types.SimpleNamespace(type="text", text=" folded ")]
-            )
+            block = types.SimpleNamespace(type="text", text=text)
+            return types.SimpleNamespace(content=[block], stop_reason=stop_reason)
 
     module = types.ModuleType("anthropic")
     module.AsyncAnthropic = AsyncAnthropic
     monkeypatch.setitem(sys.modules, "anthropic", module)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-env")
+    return sent
+
+
+def test_the_anthropic_request_suits_the_default_haiku(monkeypatch):
+    # Haiku 5.5 answers sampling parameters, extended thinking and a prefilled
+    # assistant turn with a 400, so the request carries none of them. It thinks
+    # by default within max_tokens, so it is asked for low effort.
+    from hopsworks_agents.protocol.summarizers import (
+        SYSTEM_PROMPT,
+        anthropic_summarizer,
+    )
+
+    sent = _fake_anthropic(monkeypatch)
 
     assert asyncio.run(anthropic_summarizer()(None, TURNS)) == "folded"
     assert sent["model"] == "claude-haiku-5-5"
     assert sent["max_tokens"] == 1024
     assert sent["system"] == SYSTEM_PROMPT
     assert [m["role"] for m in sent["messages"]] == ["user"]
+    assert sent["output_config"] == {"effort": "low"}
     assert not {"temperature", "top_p", "top_k", "thinking"} & set(sent)
+
+
+def test_a_claude_that_thinks_only_when_asked_gets_no_effort(monkeypatch):
+    from hopsworks_agents.protocol.summarizers import anthropic_summarizer
+
+    sent = _fake_anthropic(monkeypatch)
+
+    asyncio.run(anthropic_summarizer("claude-haiku-4-5")(None, TURNS))
+    assert "output_config" not in sent
+
+
+def test_an_anthropic_summary_cut_off_at_the_limit_is_not_returned(monkeypatch):
+    from hopsworks_agents.protocol.summarizers import anthropic_summarizer
+
+    _fake_anthropic(monkeypatch, text="half a sum", stop_reason="max_tokens")
+
+    with pytest.raises(RuntimeError, match="ran out of output tokens at 1024"):
+        asyncio.run(anthropic_summarizer()(None, TURNS))
 
 
 def test_the_claude_code_summarizer_is_exported():

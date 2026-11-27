@@ -111,7 +111,10 @@ def _llm_settings() -> tuple[str, str, str] | None:
 
 
 def _chat(messages: list[dict[str, str]]) -> str:
-    """One reply of the OpenAI-compatible endpoint, at temperature 0."""
+    """One reply of the OpenAI-compatible endpoint.
+
+    No temperature: GPT-6 and the o-series fix their own sampling and reject it.
+    """
     url, model, key = _llm_settings()
     url = url.rstrip("/")
     if not url.endswith("/chat/completions"):
@@ -119,7 +122,7 @@ def _chat(messages: list[dict[str, str]]) -> str:
     reply = requests.post(
         url,
         headers={"Authorization": f"Bearer {key}"},
-        json={"model": model, "messages": messages, "temperature": 0},
+        json={"model": model, "messages": messages},
         timeout=LLM_TIMEOUT_S,
     )
     if reply.status_code >= 400:
