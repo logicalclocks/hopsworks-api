@@ -591,7 +591,8 @@ class FeatureGroupBase:
         Danger: Potentially dangerous operation
             This operation drops all metadata associated with **this version** of the feature group **and** all the feature data in offline and online storage associated with it.
             With `delete_data=False`, a feature group on an S3, GCS or Glue data source keeps its offline data: the objects under its path, and its Glue table.
-            Its online data, Kafka topic, commits, statistics and jobs are deleted either way.
+            Its online data, commits, statistics and jobs are deleted either way.
+            So is its Kafka topic, unless it is the project's shared topic, or another feature group or a model deployment uses it.
 
         Note: Recreating a feature group whose data was kept
             A feature group created later at the same table location, with the original table format, schema, primary key, event time and partition key, reads and writes the kept table; an upsert matches kept rows on those keys.
