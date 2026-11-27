@@ -174,7 +174,7 @@ class TestOpenSearchClientSingleton:
         refresh = mocker.patch.object(target, "_refresh_opensearch_connection")
         return target, opensearch_client, requests, refresh
 
-    def test_search_once_makes_one_request_with_its_options(self, mocker):
+    def test_search_once_makes_one_request_within_its_timeout(self, mocker):
         target, _, requests, _ = self._over_connection(
             mocker,
             lambda *args, **kwargs: (
@@ -184,11 +184,14 @@ class TestOpenSearchClientSingleton:
             ),
         )
 
-        assert target._search_once(index="index", body={}, options={"timeout": 3}) == {
+        assert target._search_once(index="index", body={}, request_timeout=3) == {
             "hits": {}
         }
         requests.assert_called_once()
         assert requests.call_args.args[1] == "/index/_search"
+        # the HTTP request's own timeout, not the server's search timeout
+        assert requests.call_args.kwargs["timeout"] == 3
+        assert "timeout" not in requests.call_args.args[2]
 
     @pytest.mark.parametrize(
         "error",
@@ -203,7 +206,7 @@ class TestOpenSearchClientSingleton:
         target, opensearch_client, requests, _ = self._over_connection(mocker, error)
 
         with pytest.raises(type(error)):
-            target._search_once(index="index", body={}, options={"timeout": 1})
+            target._search_once(index="index", body={}, request_timeout=1)
 
         requests.assert_called_once()
         # the shared client keeps its retries for everything else
@@ -234,7 +237,7 @@ class TestOpenSearchClientSingleton:
         )
 
         with pytest.raises(ConnectionTimeout):
-            target._search_once(index="index", body={}, options={"timeout": 1})
+            target._search_once(index="index", body={}, request_timeout=1)
 
         requests.assert_called_once()
         refresh.assert_not_called()

@@ -333,7 +333,7 @@ class TestOnlineIngestion:
         assert ingestion._count_logged_records(4, start + timedelta(seconds=2)) is None
         assert started == [0]
         # one request, bounded by the time left
-        assert search_once.call_args.kwargs["options"] == {"timeout": 2}
+        assert search_once.call_args.kwargs["request_timeout"] == 2
 
     def test_count_logged_records_drops_a_page_returned_after_the_deadline(
         self, mocker
@@ -359,7 +359,7 @@ class TestOnlineIngestion:
 
         # Act & Assert
         assert ingestion._count_logged_records(1, None) == (1, 0)
-        assert search.call_args.kwargs["options"] is None
+        assert "request_timeout" not in search.call_args.kwargs
         online_ingestion.OpenSearchClientSingleton.return_value._search_once.assert_not_called()
 
     def test_print_logs(self, mocker):

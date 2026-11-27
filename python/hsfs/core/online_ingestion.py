@@ -394,37 +394,29 @@ class OnlineIngestion:
         Returns:
             The search response: the matching log entries under `hits.hits`, how many matched under `hits.total`, and any aggregations under `aggregations`.
         """
-        open_search_client = OpenSearchClientSingleton()
-        search, options = (
-            (open_search_client._search, None)
-            if request_timeout is None
-            else (open_search_client._search_once, {"timeout": request_timeout})
-        )
-
-        return search(
-            options=options,
-            body={
-                "query": {
-                    "bool": {
-                        "must": [
-                            {
-                                "match": {
-                                    "log_arguments.feature_group_id": f"{self.feature_group.id}"
-                                }
-                            },
-                            {
-                                "match": {
-                                    "log_arguments.online_ingestion_id": f"{self.id}"
-                                }
-                            },
-                            *must,
-                        ]
-                    }
-                },
-                "size": size,
-                **body,
+        request = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {
+                            "match": {
+                                "log_arguments.feature_group_id": f"{self.feature_group.id}"
+                            }
+                        },
+                        {"match": {"log_arguments.online_ingestion_id": f"{self.id}"}},
+                        *must,
+                    ]
+                }
             },
-            index=f"onlinefs_{client._get_instance()._project_id}-*",
+            "size": size,
+            **body,
+        }
+        index = f"onlinefs_{client._get_instance()._project_id}-*"
+        open_search_client = OpenSearchClientSingleton()
+        if request_timeout is None:
+            return open_search_client._search(body=request, index=index)
+        return open_search_client._search_once(
+            body=request, index=index, request_timeout=request_timeout
         )
 
     @public

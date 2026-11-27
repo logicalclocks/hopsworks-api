@@ -206,8 +206,8 @@ class ProjectOpenSearchClient:
             body=body, index=index, params=OpensearchRequestOption.get_options(options)
         )
 
-    def _search_once(self, index=None, body=None, options=None):
-        """Search in one request, so that it takes no longer than the timeout in `options`.
+    def _search_once(self, index=None, body=None, request_timeout=None):
+        """Search in one request, so that it takes no longer than `request_timeout`.
 
         Unlike `_search`, neither this wrapper nor the OpenSearch transport retries it or backs off, and it raises what the OpenSearch client raises.
         A failed connection or authentication is refreshed for the next request; a timeout is not, as the caller set it.
@@ -215,7 +215,7 @@ class ProjectOpenSearchClient:
         Parameters:
             index: The indices to search.
             body: The search request.
-            options: The request options, such as `timeout`, as `OpensearchRequestOption.get_options` takes them.
+            request_timeout: Seconds the request may take, or `None` for the client's default.
 
         Returns:
             The search response.
@@ -230,7 +230,11 @@ class ProjectOpenSearchClient:
             return opensearch_client.search(
                 body=body,
                 index=index,
-                params=OpensearchRequestOption.get_options(options),
+                # The HTTP timeout in every opensearch-py version, whereas the timeout OpensearchRequestOption sets
+                # is the server's search timeout before 2.3.
+                params={}
+                if request_timeout is None
+                else {"request_timeout": request_timeout},
             )
         except ConnectionTimeout:
             raise
