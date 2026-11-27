@@ -434,22 +434,22 @@ class MonitoringWindowConfigEngine:
                 with_content=with_content,
                 **window,
             )
-            requests_extended_statistics = any(
+            requests_more_statistics = any(
                 (profile_flags or {}).get(flag)
-                for flag in self._EXTENDED_STATISTICS_KEYS
+                for flag in (*self._EXTENDED_STATISTICS_KEYS, "exact_uniqueness")
             )
             if (
                 with_content == "descriptive"
                 and registered_stats is not None
                 and (
                     not registered_stats.feature_descriptive_statistics
-                    or requests_extended_statistics
+                    or requests_more_statistics
                 )
             ):
                 # A backend older than the descriptive read returns feature statistics only with their content.
                 # Without them every feature would count as missing and the window would be profiled again.
-                # A profile asking for extended statistics needs them as well, to tell whether the stored
-                # statistics have them.
+                # A profile asking for more than the descriptive values needs them as well, to tell whether the
+                # stored statistics have what it asks for, and to keep what they hold when they are replaced.
                 registered_stats = self._statistics_engine._get_by_time_window(
                     metadata_instance=entity,
                     feature_names=feature_names,
@@ -462,8 +462,6 @@ class MonitoringWindowConfigEngine:
         # is shared by every configuration with the same window bounds, so it can lack
         # features another configuration never asked for. Those are computed and
         # appended to the same row; the ones already there are reused.
-        # Statistics computed before the profile asked for more, as when histograms are turned
-        # on in the statistics configuration, are computed again and replace the stored ones.
         reused_statistics = []
         missing_feature_names = feature_names
         if (
@@ -471,23 +469,35 @@ class MonitoringWindowConfigEngine:
             and monitoring_window_config.window_config_type
             != mwc.WindowConfigType.TRAINING_DATASET
         ):
-            stored_statistics = registered_stats.feature_descriptive_statistics or []
-            reused_statistics = [
+            stored_statistics = [
                 fds
-                for fds in stored_statistics
-                if not self._lacks_requested_statistics(fds, profile_flags)
+                for fds in registered_stats.feature_descriptive_statistics or []
+                if not feature_names or fds.feature_name in feature_names
             ]
-            if feature_names:
+            if any(
+                self._lacks_requested_statistics(fds, profile_flags)
+                for fds in stored_statistics
+            ):
+                # Statistics computed before the profile asked for more, as when histograms are
+                # turned on in the statistics configuration, are computed again and replace the
+                # stored ones.
+                # All requested features are profiled together, since correlations pair the
+                # profiled features, and with what the stored statistics hold, so the replacement
+                # keeps it.
+                profile_flags = self._with_stored_statistics(
+                    profile_flags, stored_statistics
+                )
+                registered_stats = None
+            else:
+                reused_statistics = (
+                    registered_stats.feature_descriptive_statistics or []
+                )
                 reused_names = {fds.feature_name for fds in reused_statistics}
                 missing_feature_names = [
                     name for name in feature_names if name not in reused_names
                 ]
                 if missing_feature_names:
                     registered_stats = None
-            elif len(reused_statistics) < len(stored_statistics):
-                # no names means all features, so they are all profiled again
-                reused_statistics = []
-                registered_stats = None
 
         if registered_stats is None:  # if statistics don't exist
             # TODO: What happens if window is TRAINING_DATASET and the TD statistics were not computed???
@@ -665,7 +675,7 @@ class MonitoringWindowConfigEngine:
             )
         return [name for name in feature_names if name not in skipped]
 
-    # profile flag -> key of the extended statistics it adds to numeric features
+    # profile flag -> key of the extended statistics it adds
     _EXTENDED_STATISTICS_KEYS = {
         "histograms": "histogram",
         "correlations": "correlations",
@@ -678,19 +688,44 @@ class MonitoringWindowConfigEngine:
     ) -> bool:
         """Whether stored statistics lack a statistic the profile asks for.
 
-        Histograms, correlations and KLL sketches are computed for numeric features only,
-        as `FeatureGroup._are_statistics_missing` checks them.
+        Every profiled feature gets a histogram, possibly empty.
+        Correlations are computed for numeric features, and KLL sketches for numeric features with values.
         """
         flags = profile_flags or {}
+        extended_statistics = fds.extended_statistics or {}
         if flags.get("exact_uniqueness") and fds.uniqueness is None:
+            return True
+        if flags.get("histograms") and "histogram" not in extended_statistics:
             return True
         if fds.feature_type not in ("Integral", "Fractional"):
             return False
-        extended_statistics = fds.extended_statistics or {}
-        return any(
-            flags.get(flag) and key not in extended_statistics
-            for flag, key in MonitoringWindowConfigEngine._EXTENDED_STATISTICS_KEYS.items()
+        if flags.get("correlations") and "correlations" not in extended_statistics:
+            return True
+        return bool(
+            flags.get("kll")
+            and fds.min is not None
+            and "kll" not in extended_statistics
         )
+
+    @staticmethod
+    def _with_stored_statistics(
+        profile_flags: dict | None,
+        stored_statistics: list[FeatureDescriptiveStatistics],
+    ) -> dict:
+        """The profile flags, extended with every statistic the stored statistics hold.
+
+        Recomputed statistics replace the stored ones, so they are computed with what those held.
+        """
+        flags = dict(profile_flags or {})
+        extended_keys = MonitoringWindowConfigEngine._EXTENDED_STATISTICS_KEYS
+        for fds in stored_statistics:
+            extended_statistics = fds.extended_statistics or {}
+            for flag, key in extended_keys.items():
+                if key in extended_statistics:
+                    flags[flag] = True
+            if fds.uniqueness is not None:
+                flags["exact_uniqueness"] = True
+        return flags
 
     @staticmethod
     def _select_feature_descriptive_statistics(

@@ -1878,12 +1878,16 @@ class TestReusedStatisticsMissingRequestedStatistics:
             extended_statistics=extended_statistics,
         )
 
-    def test_features_without_requested_histograms_are_computed_again(self, mocker):
+    def test_requested_features_are_computed_again_together(self, mocker):
+        """Correlations pair the profiled features, so a complete peer is profiled again as well."""
         stored = [
             self._numeric("amount"),
             self._numeric("score", {"histogram": [], "correlations": []}),
         ]
-        recomputed = [self._numeric("amount", {"histogram": [], "correlations": []})]
+        recomputed = [
+            self._numeric("amount", {"histogram": [], "correlations": []}),
+            self._numeric("score", {"histogram": [], "correlations": []}),
+        ]
         engine, stats_engine_mock, fetch_mock = self._engine(mocker, stored, recomputed)
 
         result = engine._run_single_window_monitoring(
@@ -1899,15 +1903,12 @@ class TestReusedStatisticsMissingRequestedStatistics:
             for c in stats_engine_mock._get_by_time_window.call_args_list
         ]
         assert lookups == ["descriptive", "content"]
-        assert fetch_mock.call_args.kwargs["feature_names"] == ["amount"]
+        assert fetch_mock.call_args.kwargs["feature_names"] == ["amount", "score"]
         compute = stats_engine_mock._compute_and_save_monitoring_statistics
-        assert compute.call_args.kwargs["feature_name"] == ["amount"]
+        assert compute.call_args.kwargs["feature_name"] == ["amount", "score"]
         assert compute.call_args.kwargs["histograms"] is True
         assert compute.call_args.kwargs["correlations"] is True
-        assert [(fds.feature_name, fds.extended_statistics) for fds in result] == [
-            ("amount", {"histogram": [], "correlations": []}),
-            ("score", {"histogram": [], "correlations": []}),
-        ]
+        assert [fds.feature_name for fds in result] == ["amount", "score"]
 
     def test_all_features_are_computed_again_when_the_configuration_lists_none(
         self, mocker
@@ -1959,12 +1960,12 @@ class TestReusedStatisticsMissingRequestedStatistics:
             profile_flags={"exact_uniqueness": True},
         )
 
-        # uniqueness is a descriptive value: the extended statistics are not read
+        # read with their content too, so that recomputing them keeps what they hold
         lookups = [
             c.kwargs["with_content"]
             for c in stats_engine_mock._get_by_time_window.call_args_list
         ]
-        assert lookups == ["descriptive"]
+        assert lookups == ["descriptive", "content"]
         stats_engine_mock._compute_and_save_monitoring_statistics.assert_called_once()
 
     def test_statistics_with_everything_requested_are_reused(self, mocker):
@@ -1974,12 +1975,13 @@ class TestReusedStatisticsMissingRequestedStatistics:
                 {"histogram": [], "correlations": [], "kll": {}},
                 uniqueness=1.0,
             ),
-            # histograms, correlations and KLL sketches are computed for numeric features only
+            # correlations and KLL sketches are computed for numeric features only
             FeatureDescriptiveStatistics(
                 feature_name="country",
                 feature_type="String",
                 count=10,
                 uniqueness=0.5,
+                extended_statistics={"histogram": []},
             ),
         ]
         engine, stats_engine_mock, fetch_mock = self._engine(mocker, stored)
@@ -1997,5 +1999,85 @@ class TestReusedStatisticsMissingRequestedStatistics:
         )
 
         assert [fds.feature_name for fds in result] == ["amount", "country"]
+        fetch_mock.assert_not_called()
+        stats_engine_mock._compute_and_save_monitoring_statistics.assert_not_called()
+
+    def test_missing_categorical_histograms_are_computed_again(self, mocker):
+        stored = [
+            FeatureDescriptiveStatistics(
+                feature_name="country", feature_type="String", count=10
+            )
+        ]
+        engine, stats_engine_mock, _ = self._engine(
+            mocker,
+            stored,
+            [
+                FeatureDescriptiveStatistics(
+                    feature_name="country",
+                    feature_type="String",
+                    count=10,
+                    extended_statistics={"histogram": []},
+                )
+            ],
+        )
+
+        engine._run_single_window_monitoring(
+            entity=_make_hudi_fg("DELTA"),
+            monitoring_window_config=_make_rolling_window_config(),
+            feature_names=["country"],
+            profile_flags={"histograms": True},
+        )
+
+        stats_engine_mock._compute_and_save_monitoring_statistics.assert_called_once()
+
+    def test_recomputed_statistics_keep_what_the_stored_ones_hold(self, mocker):
+        """Recomputed statistics replace the stored ones, which may hold more than the profile asks for."""
+        stored = [
+            FeatureDescriptiveStatistics(
+                feature_name="amount",
+                feature_type="Fractional",
+                count=10,
+                min=1.0,
+                uniqueness=1.0,
+                extended_statistics={"histogram": [], "correlations": []},
+            )
+        ]
+        engine, stats_engine_mock, _ = self._engine(
+            mocker,
+            stored,
+            [
+                self._numeric(
+                    "amount",
+                    {"histogram": [], "correlations": [], "kll": {}},
+                    uniqueness=1.0,
+                )
+            ],
+        )
+
+        engine._run_single_window_monitoring(
+            entity=_make_hudi_fg("DELTA"),
+            monitoring_window_config=_make_rolling_window_config(),
+            feature_names=["amount"],
+            profile_flags={"histograms": True, "kll": True},
+        )
+
+        compute = stats_engine_mock._compute_and_save_monitoring_statistics
+        assert compute.call_args.kwargs["kll"] is True
+        assert compute.call_args.kwargs["histograms"] is True
+        assert compute.call_args.kwargs["correlations"] is True
+        assert compute.call_args.kwargs["exact_uniqueness"] is True
+
+    def test_no_kll_sketch_is_expected_for_a_feature_without_values(self, mocker):
+        """The profiler sketches values only, so an empty feature is not profiled again on every run."""
+        stored = [self._numeric("amount", {"histogram": []})]
+        engine, stats_engine_mock, fetch_mock = self._engine(mocker, stored)
+
+        engine._run_single_window_monitoring(
+            entity=_make_hudi_fg("DELTA"),
+            monitoring_window_config=_make_rolling_window_config(),
+            feature_names=["amount"],
+            profile_flags={"histograms": True, "kll": True},
+        )
+
         fetch_mock.assert_not_called()
         stats_engine_mock._compute_and_save_monitoring_statistics.assert_not_called()
