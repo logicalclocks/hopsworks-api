@@ -170,32 +170,37 @@ def anthropic_summarizer(
         if through_claude_code is not None:
             return await through_claude_code(previous, turns)
 
-        response = await client.messages.create(
-            model=model,
-            max_tokens=max_tokens,
-            system=system_prompt,
-            messages=[{"role": "user", "content": _user_message(previous, turns)}],
-            **_anthropic_effort(model),
-        )
-        if getattr(response, "stop_reason", None) == "max_tokens":
-            raise _out_of_tokens(max_tokens)
-        return "".join(
-            block.text for block in response.content if block.type == "text"
-        ).strip()
+        messages = [{"role": "user", "content": _user_message(previous, turns)}]
+
+        async def ask(limit: int) -> tuple[str, bool]:
+            response = await client.messages.create(
+                model=model,
+                max_tokens=limit,
+                system=system_prompt,
+                messages=messages,
+                extra_body=_anthropic_effort(model),
+            )
+            text = "".join(
+                block.text for block in response.content if block.type == "text"
+            ).strip()
+            return text, getattr(response, "stop_reason", None) == "max_tokens"
+
+        return await _within_budget(ask, max_tokens)
 
     return summarize
 
 
-def _anthropic_effort(model: str) -> dict:
-    """The effort to ask of a Claude model, as request fields.
+def _anthropic_effort(model: str) -> dict | None:
+    """The effort to ask of a Claude model, as extra request fields; None for none.
 
     Claude 5 models think by default, and their thinking counts against ``max_tokens``, so a
     summary could be cut off. A rewrite needs little thought, so they get ``low``.
-    Earlier models think only when asked.
+    Earlier models think only when asked. The field goes in ``extra_body`` because the
+    Anthropic SDK takes ``output_config`` as an argument only from 0.77 onwards.
     """
     if _claude_major_version(model) >= 5:
         return {"output_config": {"effort": "low"}}
-    return {}
+    return None
 
 
 def _claude_major_version(model: str) -> int:
@@ -209,11 +214,30 @@ def _claude_major_version(model: str) -> int:
     return 0
 
 
-def _out_of_tokens(max_tokens: int) -> RuntimeError:
-    """The error for a summary cut off at the token limit, which must not replace the history."""
-    return RuntimeError(
-        f"the summary ran out of output tokens at {max_tokens} and is not saved"
-    )
+async def _within_budget(ask, max_tokens: int) -> str:
+    """The summary ``ask(limit)`` writes, with the budget doubled when it runs out.
+
+    ``ask`` returns the text and whether the model stopped at the limit. A thinking model
+    spends part of the budget before it writes, and a summary cut off there must not
+    replace the history. Failing at once would not help either: the next turn retries the
+    same batch, longer. So the budget doubles, as the judges' does, up to four times
+    ``max_tokens``, and only then the summary fails.
+    """
+    limit = max_tokens
+    while True:
+        text, cut_off = await ask(limit)
+        if not cut_off:
+            return text
+        if limit >= max_tokens * 4:
+            raise RuntimeError(
+                f"the summary ran out of output tokens at {limit} and is not saved"
+            )
+        log.info(
+            "the summary ran out of output tokens at %d; asking again with %d",
+            limit,
+            limit * 2,
+        )
+        limit *= 2
 
 
 @public
@@ -372,19 +396,20 @@ async def _chat_completion(
     reasoning_effort=None,
 ):
     extra = {} if reasoning_effort is None else {"reasoning_effort": reasoning_effort}
-    response = await client.chat.completions.create(
-        model=model,
-        **{token_limit: max_tokens},
-        **extra,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": _user_message(previous, turns)},
-        ],
-    )
-    choice = response.choices[0]
-    if getattr(choice, "finish_reason", None) == "length":
-        raise _out_of_tokens(max_tokens)
-    return (choice.message.content or "").strip()
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": _user_message(previous, turns)},
+    ]
+
+    async def ask(limit: int) -> tuple[str, bool]:
+        response = await client.chat.completions.create(
+            model=model, **{token_limit: limit}, **extra, messages=messages
+        )
+        choice = response.choices[0]
+        text = (choice.message.content or "").strip()
+        return text, getattr(choice, "finish_reason", None) == "length"
+
+    return await _within_budget(ask, max_tokens)
 
 
 def _resolve_hopsworks_deployment(deployment) -> tuple[str, str, str | bool]:

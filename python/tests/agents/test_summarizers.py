@@ -8,9 +8,13 @@ from unittest import mock
 import pytest
 
 
-def _fake_openai(monkeypatch, reply="folded", finish_reason="stop"):
-    """A stand-in ``openai`` module recording how the client was built and called."""
-    calls = {}
+def _fake_openai(monkeypatch, reply="folded", finish_reasons=("stop",)):
+    """A stand-in ``openai`` module recording how the client was built and called.
+
+    Each call stops for the next of ``finish_reasons``; the last one repeats.
+    """
+    calls = {"creates": []}
+    reasons = list(finish_reasons)
 
     class AsyncOpenAI:
         def __init__(self, **kwargs):
@@ -21,8 +25,10 @@ def _fake_openai(monkeypatch, reply="folded", finish_reason="stop"):
 
         async def _create(self, **kwargs):
             calls["create"] = kwargs
+            calls["creates"].append(kwargs)
+            reason = reasons.pop(0) if len(reasons) > 1 else reasons[0]
             message = types.SimpleNamespace(content=reply)
-            choice = types.SimpleNamespace(message=message, finish_reason=finish_reason)
+            choice = types.SimpleNamespace(message=message, finish_reason=reason)
             return types.SimpleNamespace(choices=[choice])
 
     module = types.ModuleType("openai")
@@ -99,13 +105,36 @@ class TestOpenAISummarizer:
             asyncio.run(openai_summarizer(model)(None, TURNS))
             assert calls["create"]["reasoning_effort"] == "low"
 
-    def test_a_summary_cut_off_at_the_limit_is_not_returned(self, monkeypatch):
+    def test_a_cut_off_summary_is_asked_again_with_double_the_budget(self, monkeypatch):
         from hopsworks_agents.protocol.summarizers import openai_summarizer
 
-        _fake_openai(monkeypatch, reply="half a sum", finish_reason="length")
+        calls = _fake_openai(monkeypatch, finish_reasons=("length", "stop"))
         monkeypatch.setenv("OPENAI_API_KEY", "sk-env")
-        with pytest.raises(RuntimeError, match="ran out of output tokens at 1024"):
+        assert asyncio.run(openai_summarizer()(None, TURNS)) == "folded"
+        limits = [c["max_completion_tokens"] for c in calls["creates"]]
+        assert limits == [1024, 2048]
+
+    def test_a_vllm_summary_doubles_max_tokens(self, monkeypatch):
+        from hopsworks_agents.protocol.summarizers import openai_summarizer
+
+        calls = _fake_openai(monkeypatch, finish_reasons=("length", "stop"))
+        summarize = openai_summarizer(
+            "llama-3.1-8b", base_url="http://vllm:8000/v1", api_key="k"
+        )
+        asyncio.run(summarize(None, TURNS))
+        assert [c["max_tokens"] for c in calls["creates"]] == [1024, 2048]
+
+    def test_a_summary_still_cut_off_at_four_times_the_budget_fails(self, monkeypatch):
+        from hopsworks_agents.protocol.summarizers import openai_summarizer
+
+        calls = _fake_openai(
+            monkeypatch, reply="half a sum", finish_reasons=("length",)
+        )
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-env")
+        with pytest.raises(RuntimeError, match="ran out of output tokens at 4096"):
             asyncio.run(openai_summarizer()(None, TURNS))
+        limits = [c["max_completion_tokens"] for c in calls["creates"]]
+        assert limits == [1024, 2048, 4096]
 
     def test_without_a_key_the_sdk_resolves_it(self, monkeypatch):
         from hopsworks_agents.protocol.summarizers import openai_summarizer
@@ -473,9 +502,14 @@ class TestAnthropicSummarizerOnAClaudeCodeLogin:
         assert "prompt" not in calls
 
 
-def _fake_anthropic(monkeypatch, text=" folded ", stop_reason="end_turn"):
-    """A stand-in ``anthropic`` module recording the request it was sent."""
-    sent = {}
+def _fake_anthropic(monkeypatch, text=" folded ", stop_reasons=("end_turn",)):
+    """A stand-in ``anthropic`` module recording the requests it was sent.
+
+    ``sent`` holds the last request and ``sent["all"]`` every one. Each call stops for
+    the next of ``stop_reasons``; the last one repeats.
+    """
+    sent = {"all": []}
+    reasons = list(stop_reasons)
 
     class AsyncAnthropic:
         def __init__(self, **kwargs):
@@ -483,8 +517,10 @@ def _fake_anthropic(monkeypatch, text=" folded ", stop_reason="end_turn"):
 
         async def _create(self, **kwargs):
             sent.update(kwargs)
+            sent["all"].append(kwargs)
+            reason = reasons.pop(0) if len(reasons) > 1 else reasons[0]
             block = types.SimpleNamespace(type="text", text=text)
-            return types.SimpleNamespace(content=[block], stop_reason=stop_reason)
+            return types.SimpleNamespace(content=[block], stop_reason=reason)
 
     module = types.ModuleType("anthropic")
     module.AsyncAnthropic = AsyncAnthropic
@@ -509,8 +545,11 @@ def test_the_anthropic_request_suits_the_default_haiku(monkeypatch):
     assert sent["max_tokens"] == 1024
     assert sent["system"] == SYSTEM_PROMPT
     assert [m["role"] for m in sent["messages"]] == ["user"]
-    assert sent["output_config"] == {"effort": "low"}
-    assert not {"temperature", "top_p", "top_k", "thinking"} & set(sent)
+    # in extra_body: the SDK takes output_config as an argument only from 0.77
+    assert sent["extra_body"] == {"output_config": {"effort": "low"}}
+    assert not {"temperature", "top_p", "top_k", "thinking", "output_config"} & set(
+        sent
+    )
 
 
 def test_a_claude_that_thinks_only_when_asked_gets_no_effort(monkeypatch):
@@ -519,16 +558,30 @@ def test_a_claude_that_thinks_only_when_asked_gets_no_effort(monkeypatch):
     sent = _fake_anthropic(monkeypatch)
 
     asyncio.run(anthropic_summarizer("claude-haiku-4-5")(None, TURNS))
-    assert "output_config" not in sent
+    assert sent["extra_body"] is None
 
 
-def test_an_anthropic_summary_cut_off_at_the_limit_is_not_returned(monkeypatch):
+def test_a_cut_off_anthropic_summary_is_asked_again_with_double_the_budget(
+    monkeypatch,
+):
     from hopsworks_agents.protocol.summarizers import anthropic_summarizer
 
-    _fake_anthropic(monkeypatch, text="half a sum", stop_reason="max_tokens")
+    sent = _fake_anthropic(monkeypatch, stop_reasons=("max_tokens", "end_turn"))
 
-    with pytest.raises(RuntimeError, match="ran out of output tokens at 1024"):
+    assert asyncio.run(anthropic_summarizer()(None, TURNS)) == "folded"
+    assert [r["max_tokens"] for r in sent["all"]] == [1024, 2048]
+
+
+def test_an_anthropic_summary_still_cut_off_at_four_times_the_budget_fails(
+    monkeypatch,
+):
+    from hopsworks_agents.protocol.summarizers import anthropic_summarizer
+
+    sent = _fake_anthropic(monkeypatch, text="half a sum", stop_reasons=("max_tokens",))
+
+    with pytest.raises(RuntimeError, match="ran out of output tokens at 4096"):
         asyncio.run(anthropic_summarizer()(None, TURNS))
+    assert [r["max_tokens"] for r in sent["all"]] == [1024, 2048, 4096]
 
 
 def test_the_claude_code_summarizer_is_exported():
