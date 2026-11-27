@@ -34,7 +34,7 @@ hops job logs <name> --stdout --tail 200    # the last execution's result (stdou
 
 ## Ask the user (only when state is ambiguous)
 - **The deliverable.** A report in `result.md`, rows written to a feature group, a Slack post? The prompt has to say where the result goes.
-- **Provider and model.** `claude` (default; model from the cluster's `agent_default_model`), `codex` (`gpt-*` models) or `copilot` (copilot's own ids such as `claude-sonnet-4.5`, or `auto`). Leave `model` empty for codex and copilot to take their own default.
+- **Provider and model.** `claude` (default; model from the cluster's `agent_default_model`), `codex` (`gpt-*` models) or `copilot` (copilot's own ids, or `auto`). Leave `model` empty for codex and copilot to take their own default.
 - **Permissions.** Start narrow: `READ_ONLY` for reporting, `OPERATOR` when it must run `hops`/`python` and write under `/hopsfs`. Custom lists only when a preset does not fit.
 - **Once or scheduled**, and the cron.
 - **Context.** Which feature groups, feature views, models, deployments or jobs it should know about (`refs`).
@@ -109,7 +109,7 @@ The UI form (**Agents → Agent Tasks → Create Agent Task**) has the same fiel
 |---|---|
 | `appName`, `prompt` | required; the prompt is the whole task specification |
 | `provider` | `claude` (default), `codex` or `copilot` |
-| `model` | `claude-*` for claude, `gpt-*` for codex, copilot's own ids (`claude-sonnet-4.5`, `auto`); the `agent_default_model` default applies to claude only |
+| `model` | `claude-*` for claude, `gpt-*` for codex, copilot's own ids or `auto`; the `agent_default_model` default applies to claude only |
 | `maxTurns` | claude only; default from `agent_default_max_turns` (50) |
 | `maxBudgetUsd` | claude only; max 100; the agent stops when spent |
 | `permissionPreset` / `permissions` | a preset name, or a custom list of `Bash(...)`, `Read(...)`, `Write(...)` patterns; a custom list overrides the preset |
