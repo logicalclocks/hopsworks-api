@@ -19,6 +19,7 @@ import logging
 import warnings
 
 from hopsworks_common import client
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import decorators, feature_group_commit, util
 from hsfs import feature_group as fg_mod
 from hsfs.core import (
@@ -333,6 +334,7 @@ class FeatureGroupApi:
         | fg_mod.SpineGroup,
         force: bool = False,
         delete_feature_views: bool = False,
+        delete_data: bool = True,
     ) -> None:
         """Drop a feature group from the feature store.
 
@@ -342,7 +344,19 @@ class FeatureGroupApi:
             feature_group_instance: Metadata object of feature group
             force: When True, delete the feature group even if feature views depend on it, leaving those feature views in place
             delete_feature_views: When True, also delete the feature views that depend on the feature group, along with their training data
+            delete_data: When False, keep the offline data the feature group stores on its S3, GCS or Glue data source
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If `delete_data` is False and the backend predates Hopsworks 5.3.
         """
+        if not delete_data:
+            backend_version = client._backend_before_5_3()
+            if backend_version:
+                # An older backend ignores the deleteData parameter, so it would delete the data.
+                raise FeatureStoreException(
+                    f"Hopsworks {backend_version} cannot keep the data of a deleted feature group; "
+                    "it needs Hopsworks 5.3 or later."
+                )
         _client = client._get_instance()
         path_params = [
             "project",
@@ -357,6 +371,8 @@ class FeatureGroupApi:
             query_params["force"] = True
         if delete_feature_views:
             query_params["deleteFeatureViews"] = True
+        if not delete_data:
+            query_params["deleteData"] = False
         _client._send_request("DELETE", path_params, query_params=query_params or None)
 
     def _update_metadata(

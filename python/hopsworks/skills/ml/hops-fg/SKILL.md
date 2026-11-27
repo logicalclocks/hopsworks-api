@@ -490,6 +490,7 @@ fg.remove_rows(rows_to_delete)
 
 **Confirm before deleting.** `fg.delete()` (CLI `hops fg delete <name> --version N --yes`) drops the feature group and all its data irreversibly; confirm the exact name and version with the user first.
 Never tear down a feature group you created as a side effect — temp or test ones included — unless the user asked; default to keeping resources.
+On an S3, GCS or Glue data source, `fg.delete(delete_data=False)` (CLI `--keep-data`, Hopsworks 5.3+) keeps the objects under its path and its Glue table; a feature group created later at the same location (the same name and version only with the default path) reads and writes that kept table, with its Hopsworks commit history, statistics and online data starting empty, and `insert(overwrite=True)` deletes it.
 
 ---
 

@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import importlib
+import re
 import sys
 from typing import Literal
 
@@ -184,6 +185,16 @@ def _get_connection():
 def _set_connection(connection):
     global _connection
     _connection = connection
+
+
+def _backend_before_5_3() -> str | None:
+    """The backend's version when it predates 5.3, else None, also when the version is unknown."""
+    connection = _get_connection()
+    backend_version = connection.backend_version if connection else None
+    match = re.match(r"(\d+)\.(\d+)", backend_version or "")
+    if match and (int(match.group(1)), int(match.group(2))) < (5, 3):
+        return backend_version
+    return None
 
 
 @also_available_as("hopsworks.client._is_external")

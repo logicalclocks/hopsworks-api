@@ -18,6 +18,8 @@ import copy
 import warnings
 from unittest.mock import Mock
 
+import pytest
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import feature_group as fg_mod
 from hsfs.core import feature_group_api
 
@@ -176,3 +178,54 @@ class TestFeatureGroupApi:
             ],
             timeout=60,
         )
+
+    @staticmethod
+    def _delete(mocker, backend_version="5.3.0", **kwargs):
+        client_mock = Mock()
+        client_mock._project_id = 119
+        mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
+        mocker.patch(
+            "hopsworks_common.client._get_connection",
+            return_value=mocker.Mock(backend_version=backend_version),
+        )
+        fg = Mock(feature_store_id=67, id=13)
+        feature_group_api.FeatureGroupApi()._delete(fg, **kwargs)
+        return client_mock._send_request
+
+    @pytest.mark.parametrize(
+        "kwargs, query_params",
+        [
+            ({}, None),
+            ({"delete_data": False}, {"deleteData": False}),
+            (
+                {"force": True, "delete_feature_views": True, "delete_data": False},
+                {"force": True, "deleteFeatureViews": True, "deleteData": False},
+            ),
+        ],
+    )
+    def test_delete_query_params(self, mocker, kwargs, query_params):
+        send_request = self._delete(mocker, **kwargs)
+
+        send_request.assert_called_once_with(
+            "DELETE",
+            ["project", 119, "featurestores", 67, "featuregroups", 13],
+            query_params=query_params,
+        )
+
+    def test_delete_keeping_data_refuses_a_backend_older_than_5_3(self, mocker):
+        client_mock = Mock()
+        mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
+        mocker.patch(
+            "hopsworks_common.client._get_connection",
+            return_value=mocker.Mock(backend_version="5.2.4"),
+        )
+
+        with pytest.raises(FeatureStoreException, match="5.2.4"):
+            feature_group_api.FeatureGroupApi()._delete(Mock(), delete_data=False)
+
+        client_mock._send_request.assert_not_called()
+
+    def test_delete_with_data_runs_against_an_older_backend(self, mocker):
+        send_request = self._delete(mocker, backend_version="5.2.4")
+
+        send_request.assert_called_once()

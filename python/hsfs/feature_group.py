@@ -562,7 +562,12 @@ class FeatureGroupBase:
             )
 
     @public
-    def delete(self, force: bool = False, delete_feature_views: bool = False) -> None:
+    def delete(
+        self,
+        force: bool = False,
+        delete_feature_views: bool = False,
+        delete_data: bool = True,
+    ) -> None:
         """Drop the entire feature group along with its feature data.
 
         Example:
@@ -578,18 +583,35 @@ class FeatureGroupBase:
 
             # delete the feature group
             fg.delete()
+
+            # or delete it and keep its offline data on its S3, GCS or Glue data source
+            fg.delete(delete_data=False)
             ```
 
         Danger: Potentially dangerous operation
             This operation drops all metadata associated with **this version** of the feature group **and** all the feature data in offline and online storage associated with it.
+            With `delete_data=False`, a feature group on an S3, GCS or Glue data source keeps its offline data: the objects under its path, and its Glue table.
+            Its online data, commits, statistics and jobs are deleted either way.
+            So is its Kafka topic, unless it is the project's shared topic, or another feature group or a model deployment uses it.
+
+        Note: Recreating a feature group whose data was kept
+            A feature group created later at the same table location, with the original table format, schema, primary key, event time and partition key, reads and writes the kept table; an upsert matches kept rows on those keys.
+            On S3 or GCS the same name and version reach that location only when the original feature group used the default path; otherwise pass the original `path`.
+            On Glue the location of an existing catalog table wins over the path, so the same database and table name reach it, and another table name starts empty.
+            Hopsworks commit history, statistics and online data are not restored: `commit_details()` starts empty, and `as_of` and incremental reads fail until an insert registers a commit.
+            `insert()` upserts into the kept table, and `insert(overwrite=True)` deletes it with its history.
 
         Parameters:
             force: When True, delete the feature group even if feature views depend on it, leaving those feature views in place (degraded) rather than failing.
                 When False, deletion fails if the feature group is used by a feature view.
             delete_feature_views: When True, also delete the feature views that depend on this feature group, along with their training data.
+            delete_data: When False, keep the offline data the feature group stores on its S3, GCS or Glue data source.
+                A feature group whose offline data is in Hopsworks cannot keep it, so the deletion fails.
+                Requires Hopsworks 5.3 or later.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, including `delete_data=False` on a feature group whose offline data is in Hopsworks.
+            hopsworks.client.exceptions.FeatureStoreException: If `delete_data` is False and the backend predates Hopsworks 5.3, which would delete the data.
         """
         warnings.warn(
             f"All jobs associated to feature group `{self._name}`, version `{self._version}` will be removed.",
@@ -597,7 +619,10 @@ class FeatureGroupBase:
             stacklevel=1,
         )
         self._feature_group_engine._delete(
-            self, force=force, delete_feature_views=delete_feature_views
+            self,
+            force=force,
+            delete_feature_views=delete_feature_views,
+            delete_data=delete_data,
         )
 
     @public

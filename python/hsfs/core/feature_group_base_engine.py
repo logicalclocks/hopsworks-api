@@ -47,9 +47,18 @@ class FeatureGroupBaseEngine:
         self._storage_connector_api = storage_connector_api.StorageConnectorApi()
         self._kafka_api = kafka_api.KafkaApi()
 
-    def _delete(self, feature_group, force=False, delete_feature_views=False):
+    def _delete(
+        self,
+        feature_group,
+        force: bool = False,
+        delete_feature_views: bool = False,
+        delete_data: bool = True,
+    ) -> None:
         self._feature_group_api._delete(
-            feature_group, force=force, delete_feature_views=delete_feature_views
+            feature_group,
+            force=force,
+            delete_feature_views=delete_feature_views,
+            delete_data=delete_data,
         )
 
     def _add_tag(self, feature_group: FeatureGroup, name: str, value: Any):
