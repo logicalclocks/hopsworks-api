@@ -19,12 +19,15 @@ import pytest
 from hopsworks_common.core.opensearch import ProjectOpenSearchClient
 from hsfs.client.exceptions import VectorDatabaseException
 from hsfs.core.opensearch import OpenSearchClientSingleton, OpensearchRequestOption
+from opensearchpy import OpenSearch
 from opensearchpy.exceptions import (
     AuthenticationException,
     AuthorizationException,
     ConnectionError,
+    ConnectionTimeout,
     NotFoundError,
     RequestError,
+    TransportError,
 )
 
 
@@ -156,6 +159,88 @@ class TestOpenSearchClientSingleton:
         mock_refresh.assert_called_once()
         assert e.value.reason == VectorDatabaseException.REQUESTED_K_TOO_LARGE
         assert isinstance(e.value.__cause__, RequestError)
+
+    @staticmethod
+    def _over_connection(mocker, perform_request):
+        """A wrapper over a real OpenSearch client and transport, with only the HTTP connection substituted."""
+        opensearch_client = OpenSearch(hosts=[{"host": "localhost", "port": 9200}])
+        connection = opensearch_client.transport.connection_pool.connections[0]
+        requests = mocker.patch.object(
+            connection, "perform_request", side_effect=perform_request
+        )
+        target = ProjectOpenSearchClient(
+            opensearch_client=opensearch_client, is_cluster_client=False
+        )
+        refresh = mocker.patch.object(target, "_refresh_opensearch_connection")
+        return target, opensearch_client, requests, refresh
+
+    def test_search_once_makes_one_request_within_its_timeout(self, mocker):
+        target, _, requests, _ = self._over_connection(
+            mocker,
+            lambda *args, **kwargs: (
+                200,
+                {"content-type": "application/json"},
+                '{"hits": {}}',
+            ),
+        )
+
+        assert target._search_once(index="index", body={}, request_timeout=3) == {
+            "hits": {}
+        }
+        requests.assert_called_once()
+        assert requests.call_args.args[1] == "/index/_search"
+        # the HTTP request's own timeout, not the server's search timeout
+        assert requests.call_args.kwargs["timeout"] == 3
+        assert "timeout" not in requests.call_args.args[2]
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            # the transport retries both of these itself
+            TransportError(503, "service_unavailable", {}),
+            ConnectionError("N/A", "connection refused", None),
+        ],
+        ids=["unavailable", "closed_connection"],
+    )
+    def test_search_once_is_not_retried_by_the_transport(self, mocker, error):
+        target, opensearch_client, requests, _ = self._over_connection(mocker, error)
+
+        with pytest.raises(type(error)):
+            target._search_once(index="index", body={}, request_timeout=1)
+
+        requests.assert_called_once()
+        # the shared client keeps its retries for everything else
+        assert opensearch_client.transport.max_retries == 3
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            AuthenticationException(401, "security_exception", {}),
+            ConnectionError("N/A", "connection refused", None),
+        ],
+        ids=["expired_token", "closed_connection"],
+    )
+    def test_search_once_refreshes_the_connection_for_the_next_request(
+        self, mocker, error
+    ):
+        target, _, requests, refresh = self._over_connection(mocker, error)
+
+        with pytest.raises(type(error)):
+            target._search_once(index="index", body={})
+
+        requests.assert_called_once()
+        refresh.assert_called_once()
+
+    def test_search_once_neither_retries_nor_refreshes_a_timeout(self, mocker):
+        target, _, requests, refresh = self._over_connection(
+            mocker, ConnectionTimeout("TIMEOUT", "Read timed out", None)
+        )
+
+        with pytest.raises(ConnectionTimeout):
+            target._search_once(index="index", body={}, request_timeout=1)
+
+        requests.assert_called_once()
+        refresh.assert_not_called()
 
     @pytest.mark.parametrize(
         "error",

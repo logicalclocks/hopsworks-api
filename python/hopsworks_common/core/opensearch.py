@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import contextlib
+import copy
 import logging
 import re
 import threading
@@ -204,6 +205,42 @@ class ProjectOpenSearchClient:
         return self._get_opensearch_client().search(
             body=body, index=index, params=OpensearchRequestOption.get_options(options)
         )
+
+    def _search_once(self, index=None, body=None, request_timeout=None):
+        """Search in one request, so that it takes no longer than `request_timeout`.
+
+        Unlike `_search`, neither this wrapper nor the OpenSearch transport retries it or backs off, and it raises what the OpenSearch client raises.
+        A failed connection or authentication is refreshed for the next request; a timeout is not, as the caller set it.
+
+        Parameters:
+            index: The indices to search.
+            body: The search request.
+            request_timeout: Seconds the request may take, or `None` for the client's default.
+
+        Returns:
+            The search response.
+        """
+        # The transport retries a failed connection or a 502, 503 or 504 itself, up to max_retries times.
+        # A copy of the client over a copy of its transport, sharing its connections, retries none and leaves the
+        # shared client's retries to everything else.
+        opensearch_client = copy.copy(self._get_opensearch_client())
+        opensearch_client.transport = copy.copy(opensearch_client.transport)
+        opensearch_client.transport.max_retries = 0
+        try:
+            return opensearch_client.search(
+                body=body,
+                index=index,
+                # The HTTP timeout in every opensearch-py version, whereas the timeout OpensearchRequestOption sets
+                # is the server's search timeout before 2.3.
+                params={}
+                if request_timeout is None
+                else {"request_timeout": request_timeout},
+            )
+        except ConnectionTimeout:
+            raise
+        except (ConnectionError, AuthenticationException):
+            self._refresh_opensearch_connection()
+            raise
 
     @retry(
         wait_exponential_multiplier=1000,
