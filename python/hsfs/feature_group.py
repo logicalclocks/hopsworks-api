@@ -594,7 +594,7 @@ class FeatureGroupBase:
             Its online data, Kafka topic, commits, statistics and jobs are deleted either way.
 
         Note: Recreating a feature group whose data was kept
-            A feature group created later at the same table location, with the original table format, schema and primary key, reads and writes the kept table.
+            A feature group created later at the same table location, with the original table format, schema, primary key, event time and partition key, reads and writes the kept table; an upsert matches kept rows on those keys.
             On S3 or GCS the same name and version reach that location only when the original feature group used the default path; otherwise pass the original `path`.
             On Glue the location of an existing catalog table wins over the path, so the same database and table name reach it, and another table name starts empty.
             Hopsworks commit history, statistics and online data are not restored: `commit_details()` starts empty, and `as_of` and incremental reads fail until an insert registers a commit.
