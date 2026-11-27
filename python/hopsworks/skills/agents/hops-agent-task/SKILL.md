@@ -116,7 +116,7 @@ The UI form (**Agents → Agent Tasks → Create Agent Task**) has the same fiel
 | `refs` | `[{"type": feature_group\|feature_view\|model\|deployment\|job, "name", "version"}]`; version required for FG/FV/model. Each becomes a JSON file under `/context/` (e.g. `/context/fg_transactions_v1.json`) and is listed in the agent's instructions |
 | `skillsRef` | project-relative `.md` (e.g. `Resources/agent-skills.md`) appended to the agent's instructions |
 | `hooks` | claude only: `[{"event": PreToolUse\|PostToolUse\|Stop, "matcher": "Bash(hops *)", "command": "..."}]` |
-| `cliArgs` | codex and copilot: extra flags appended after the provider's defaults (codex: `--search --model gpt-6.2-sol`; copilot: `--deny-tool=shell(rm:*)`, and a copilot `--deny-tool` beats every allow) |
+| `cliArgs` | codex and copilot: extra flags appended after the provider's defaults (codex: `-c web_search=live --model gpt-6.2-sol`; copilot: `--deny-tool=shell(rm:*)`, and a copilot `--deny-tool` beats every allow) |
 | `environmentName` | `agent-job` (default) or a clone of it; anything else is rejected with 400 |
 | `envVars` | `["KEY=VALUE", ...]`; names with the `HOPS_`, `HOPSWORKS_`, `HOPSFS_`, `AGENT_` prefixes are reserved (400) |
 | `resourceConfig` | `{"cores", "memory" (MB), "gpus"}` |
