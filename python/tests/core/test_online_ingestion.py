@@ -257,7 +257,7 @@ class TestOnlineIngestion:
         ]
 
         # Act & Assert
-        assert ingestion._count_logged_records(4) == (2, 1)
+        assert ingestion._count_logged_records(4, None) == (2, 1)
         bodies = [call.kwargs["body"] for call in search.call_args_list]
         assert {
             "bool": {"should": [online_ingestion._FAILED, online_ingestion._UNCOUNTED]}
@@ -286,8 +286,39 @@ class TestOnlineIngestion:
         search.return_value = self._records(3, ("1", 1), ("2", 1), ("3", 1))
 
         # Act & Assert
-        assert ingestion._count_logged_records(4) == (0, 0)
+        assert ingestion._count_logged_records(4, None) == (0, 0)
         assert search.call_count == 1
+
+    def _slow_searches(self, mocker, search, seconds):
+        """Run the module's clock from 0 by hand, each search taking the given seconds; return the start times."""
+        start = datetime(2026, 1, 1)
+        clock = [start]
+        mock_datetime = mocker.patch("hsfs.core.online_ingestion.datetime")
+        mock_datetime.now.side_effect = lambda: clock[0]
+        started = []
+
+        def slow_search(**kwargs):
+            started.append((clock[0] - start).total_seconds())
+            clock[0] += timedelta(seconds=seconds)
+            # a full page of records, so the scan would go on
+            return self._records(
+                100, *((str(i), 1) for i in range(online_ingestion._PAGE_SIZE))
+            )
+
+        search.side_effect = slow_search
+        return start, clock, started
+
+    def test_count_logged_records_starts_no_search_after_the_deadline(self, mocker):
+        # Arrange - pages of two, each search taking 6 seconds, 2 seconds before the deadline
+        ingestion, search = self._ingestion(mocker, [])
+        mocker.patch.object(online_ingestion, "_PAGE_SIZE", 2)
+        start, _, started = self._slow_searches(mocker, search, 6)
+
+        # Act & Assert - the scan is dropped rather than counted in part
+        assert ingestion._count_logged_records(4, start + timedelta(seconds=2)) is None
+        assert started == [0]
+        # bounded by the time left
+        assert search.call_args.kwargs["options"] == {"timeout": 2}
 
     def test_print_logs(self, mocker):
         # Arrange
@@ -453,8 +484,8 @@ class TestOnlineIngestion:
         assert messages[0].startswith(
             "Online ingestion 5 completed with 6 failed rows."
         )
-        # fewer log entries than the 6 missing rows could not complete the wait
-        count_logged.assert_called_once_with(6)
+        # fewer log entries than the 6 missing rows could not complete the wait, and a timeout of 0 has no deadline
+        count_logged.assert_called_once_with(6, None)
 
     def test_wait_for_completion_keeps_waiting_while_rows_are_missing(self, mocker):
         # Arrange - the logs account for only 5 of the 6 missing rows
@@ -647,7 +678,7 @@ class TestOnlineIngestion:
         )
 
         # Act
-        messages, ended = self._wait(ingestion, {"timeout": 120})
+        messages, ended = self._wait(ingestion, {"timeout": 600})
 
         # Assert - within its timeout, which the clock reaches only after the second refresh
         assert ended
@@ -655,6 +686,40 @@ class TestOnlineIngestion:
         assert messages[0].startswith(
             "The online ingestion service logs could not be read, so the wait for online ingestion 5 goes on with its counts alone:"
         )
+
+    def test_wait_for_completion_starts_no_log_search_after_its_timeout(self, mocker):
+        # Arrange - 4 of 10 rows counted, a 2 second timeout, and log searches of 6 seconds over many pages
+        mocker.patch("hopsworks_common.client._get_instance")
+        singleton = mocker.patch("hsfs.core.online_ingestion.OpenSearchClientSingleton")
+        mocker.patch.object(online_ingestion, "_PAGE_SIZE", 2)
+        _, clock, started = self._slow_searches(
+            mocker, singleton.return_value._search, 6
+        )
+        mock_time = mocker.patch("hsfs.core.online_ingestion.time")
+        mock_time.sleep.side_effect = lambda period: clock.__setitem__(
+            0, clock[0] + timedelta(seconds=period)
+        )
+        counted = [
+            OnlineIngestionResult(online_ingestion_id=5, status="UPSERTED", rows=4)
+        ]
+        mocker.patch.object(
+            online_ingestion.OnlineIngestion,
+            "refresh",
+            autospec=True,
+            side_effect=lambda self: setattr(self, "_results", counted),
+        )
+        ingestion = online_ingestion.OnlineIngestion(
+            id=5, num_entries=10, results=counted, feature_group=mocker.Mock(id=119)
+        )
+
+        # Act
+        messages, ended = self._wait(ingestion, {"timeout": 2})
+
+        # Assert - one page, started at 1 second, then the timeout with nothing counted from the partial scan
+        assert started == [1]
+        assert ended
+        assert len(messages) == 1
+        assert messages[0].startswith("Timeout of 0:00:02 was exceeded")
 
     def test_wait_for_completion_warns_once_while_the_logs_cannot_be_read(self, mocker):
         # Arrange

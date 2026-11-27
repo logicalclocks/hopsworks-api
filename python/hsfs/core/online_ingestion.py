@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import json
+import math
 import time
 import warnings
 from datetime import datetime, timedelta
@@ -257,19 +258,24 @@ class OnlineIngestion:
                     and (next_logs_check is None or datetime.now() >= next_logs_check)
                 ):
                     next_logs_check = datetime.now() + _LOGS_CHECK_INTERVAL
+                    deadline = None if timeout_delta == timedelta(0) else timeout_time
                     try:
-                        logged_failed, logged_applied = self._count_logged_records(
-                            self.num_entries - rows_processed
+                        logged = self._count_logged_records(
+                            self.num_entries - rows_processed, deadline
                         )
                     # The check only spares the wait its timeout, so a failed read leaves it to the counts.
+                    # A search the timeout cut short is reported as the timeout, below.
                     except Exception as e:
-                        if not logs_unreadable:
+                        if not logs_unreadable and (
+                            deadline is None or datetime.now() < deadline
+                        ):
                             logs_unreadable = True
                             warnings.warn(
                                 f"The online ingestion service logs could not be read, so the wait for online ingestion {self.id} goes on with its counts alone: {e}",
                                 stacklevel=1,
                             )
-                        logged_failed = logged_applied = 0
+                        logged = None
+                    logged_failed, logged_applied = logged or (0, 0)
                     # A failed row is counted as FAILED or IGNORED, logged as a record, or both, so max, not sum.
                     # Where some rows are only counted and others only logged, this falls short and the wait goes on.
                     ignored_rows = sum(
@@ -315,7 +321,9 @@ class OnlineIngestion:
                 stacklevel=1,
             )
 
-    def _count_logged_records(self, at_least: int) -> tuple[int, int]:
+    def _count_logged_records(
+        self, at_least: int, deadline: datetime | None
+    ) -> tuple[int, int] | None:
         """Count the distinct records the logs of this ingestion report as failed, and as applied but not counted.
 
         A record logged more than once, as when the online ingestion service processes it again, is counted once.
@@ -323,16 +331,24 @@ class OnlineIngestion:
 
         Parameters:
             at_least: The fewest log entries that could account for the rows the wait is missing; with fewer, the records are not counted.
+            deadline: When the wait times out; no search starts after it, and each is bounded by the time left.
 
         Returns:
-            The number of failed records and the number of applied records, or `(0, 0)` if fewer than `at_least` log entries report either.
+            The number of failed records and the number of applied records, `(0, 0)` if fewer than `at_least` log entries report either, or `None` if the deadline passed before every record was counted.
         """
         failed = applied = 0
         after = None
         while True:
+            request_timeout = None
+            if deadline is not None:
+                remaining = (deadline - datetime.now()).total_seconds()
+                if remaining <= 0:
+                    return None
+                request_timeout = math.ceil(remaining)
             response = self._search_logs(
                 [{"bool": {"should": [_FAILED, _UNCOUNTED]}}],
                 0,
+                request_timeout=request_timeout,
                 # beyond 10,000 hits OpenSearch reports a lower bound unless asked for the exact total
                 track_total_hits=True,
                 aggs={
@@ -359,13 +375,18 @@ class OnlineIngestion:
             after = records["after_key"]
 
     def _search_logs(
-        self, must: list[dict[str, Any]], size: int, **body
+        self,
+        must: list[dict[str, Any]],
+        size: int,
+        request_timeout: int | None = None,
+        **body,
     ) -> dict[str, Any]:
         """Search the onlinefs logs of this ingestion in OpenSearch.
 
         Parameters:
             must: Additional query clauses narrowing the search.
             size: Maximum number of log entries to retrieve.
+            request_timeout: Seconds the request may take, or `None` for the client's default.
             **body: Further fields of the search request, such as `sort` or `aggs`.
 
         Returns:
@@ -374,6 +395,7 @@ class OnlineIngestion:
         open_search_client = OpenSearchClientSingleton()
 
         return open_search_client._search(
+            options=None if request_timeout is None else {"timeout": request_timeout},
             body={
                 "query": {
                     "bool": {
