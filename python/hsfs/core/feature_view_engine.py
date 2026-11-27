@@ -696,26 +696,16 @@ class FeatureViewEngine:
                 feature_view_obj, td_updated, split_df
             )
 
-        # Getting transformed label names
-        transformed_labels = [
-            feature.name
-            for feature in self._get_training_dataset_schema(
-                feature_view=feature_view_obj,
-                training_dataset_version=td_updated.version,
-            )
-            if feature.label
-        ]
-
-        # Updating labels based if transformation functions are attached to the feature view.
-        labels = (
-            transformed_labels
-            if feature_view_obj.transformation_functions
-            else feature_view_obj.labels
-        )
-
         # Set training dataset schema after training dataset has been generated
         td_updated.schema = self._get_training_dataset_schema(
             feature_view=feature_view_obj, training_dataset_version=td_updated.version
+        )
+
+        # Updating labels based if transformation functions are attached to the feature view.
+        labels = (
+            [feature.name for feature in td_updated.schema if feature.label]
+            if feature_view_obj.transformation_functions
+            else feature_view_obj.labels
         )
 
         # split df into features and labels df

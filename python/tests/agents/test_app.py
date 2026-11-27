@@ -4159,7 +4159,12 @@ class TestMemoryRoutesCanBeWithheld:
 
         # the agent still remembers; it just does not answer for it
         client.post("/v1/chat", json=make_request("hello", conversation_id="c1"))
-        assert [turn["content"] for turn in memory.get("c1")] == ["hello", "ok"]
+        # under the caller, which off the platform is the anonymous one: such
+        # an agent keeps each caller's conversations apart (see test_a2a_durable)
+        assert [turn["content"] for turn in memory.get("anonymous/c1")] == [
+            "hello",
+            "ok",
+        ]
 
     def test_they_are_served_by_default(self, tmp_path):
         app, _ = self._app(tmp_path)

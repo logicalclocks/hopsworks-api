@@ -1,0 +1,733 @@
+{
+  "columns" : [ {
+    "column" : "c_int",
+    "dataType" : "Integral",
+    "isDataTypeInferred" : "false",
+    "completeness" : 0.9075,
+    "numRecordsNonNull" : 363,
+    "numRecordsNull" : 37,
+    "distinctness" : 0.13774104683195593,
+    "entropy" : 3.8359149489207063,
+    "uniqueness" : 0.0,
+    "approximateNumDistinctValues" : 50,
+    "exactNumDistinctValues" : 50,
+    "mean" : 24.677685950413224,
+    "maximum" : 49.0,
+    "minimum" : 0.0,
+    "sum" : 8958.0,
+    "stdDev" : 14.18349730310204,
+    "correlations" : [ {
+      "column" : "c_int",
+      "correlation" : 1.0
+    }, {
+      "column" : "c_long",
+      "correlation" : -0.15381568484383498
+    }, {
+      "column" : "c_double",
+      "correlation" : -0.12515629212078425
+    }, {
+      "column" : "c_nonfinite",
+      "correlation" : "NaN"
+    }, {
+      "column" : "c_decimal",
+      "correlation" : -0.16409436837348884
+    }, {
+      "column" : "c_const",
+      "correlation" : "NaN"
+    }, {
+      "column" : "c_all_null",
+      "correlation" : "NaN"
+    }, {
+      "column" : "count",
+      "correlation" : -0.007085161847157859
+    } ],
+    "histogram" : [ {
+      "count" : 34,
+      "value" : "0.00 to 4.90",
+      "ratio" : 0.09366391184573003
+    }, {
+      "count" : 39,
+      "value" : "4.90 to 9.80",
+      "ratio" : 0.10743801652892562
+    }, {
+      "count" : 31,
+      "value" : "9.80 to 14.70",
+      "ratio" : 0.08539944903581267
+    }, {
+      "count" : 34,
+      "value" : "14.70 to 19.60",
+      "ratio" : 0.09366391184573003
+    }, {
+      "count" : 38,
+      "value" : "19.60 to 24.50",
+      "ratio" : 0.1046831955922865
+    }, {
+      "count" : 42,
+      "value" : "24.50 to 29.40",
+      "ratio" : 0.11570247933884298
+    }, {
+      "count" : 37,
+      "value" : "29.40 to 34.30",
+      "ratio" : 0.10192837465564739
+    }, {
+      "count" : 41,
+      "value" : "34.30 to 39.20",
+      "ratio" : 0.11294765840220386
+    }, {
+      "count" : 33,
+      "value" : "39.20 to 44.10",
+      "ratio" : 0.09090909090909091
+    }, {
+      "count" : 34,
+      "value" : "44.10 to 49.00",
+      "ratio" : 0.09366391184573003
+    } ]
+  }, {
+    "column" : "c_long",
+    "dataType" : "Integral",
+    "isDataTypeInferred" : "false",
+    "completeness" : 0.9225,
+    "numRecordsNonNull" : 369,
+    "numRecordsNull" : 31,
+    "distinctness" : 1.0,
+    "entropy" : 5.910796644040524,
+    "uniqueness" : 1.0,
+    "approximateNumDistinctValues" : 341,
+    "exactNumDistinctValues" : 369,
+    "mean" : 2.5653665761517614E7,
+    "maximum" : 2.656742721E9,
+    "minimum" : -2.514319258E9,
+    "sum" : 9.466202666E9,
+    "stdDev" : 9.329814493809717E8,
+    "correlations" : [ {
+      "column" : "c_int",
+      "correlation" : -0.153815684843835
+    }, {
+      "column" : "c_long",
+      "correlation" : 1.0
+    }, {
+      "column" : "c_double",
+      "correlation" : 0.9347677735215668
+    }, {
+      "column" : "c_nonfinite",
+      "correlation" : "NaN"
+    }, {
+      "column" : "c_decimal",
+      "correlation" : 0.9426779667827382
+    }, {
+      "column" : "c_const",
+      "correlation" : "NaN"
+    }, {
+      "column" : "c_all_null",
+      "correlation" : "NaN"
+    }, {
+      "column" : "count",
+      "correlation" : -0.06899694188455403
+    } ],
+    "histogram" : [ {
+      "count" : 5,
+      "value" : "-2514319258.00 to -1997213060.10",
+      "ratio" : 0.013550135501355014
+    }, {
+      "count" : 12,
+      "value" : "-1997213060.10 to -1480106862.20",
+      "ratio" : 0.032520325203252036
+    }, {
+      "count" : 34,
+      "value" : "-1480106862.20 to -963000664.30",
+      "ratio" : 0.0921409214092141
+    }, {
+      "count" : 68,
+      "value" : "-963000664.30 to -445894466.40",
+      "ratio" : 0.1842818428184282
+    }, {
+      "count" : 70,
+      "value" : "-445894466.40 to 71211731.50",
+      "ratio" : 0.1897018970189702
+    }, {
+      "count" : 76,
+      "value" : "71211731.50 to 588317929.40",
+      "ratio" : 0.20596205962059622
+    }, {
+      "count" : 57,
+      "value" : "588317929.40 to 1105424127.30",
+      "ratio" : 0.15447154471544716
+    }, {
+      "count" : 32,
+      "value" : "1105424127.30 to 1622530325.20",
+      "ratio" : 0.08672086720867209
+    }, {
+      "count" : 10,
+      "value" : "1622530325.20 to 2139636523.10",
+      "ratio" : 0.02710027100271003
+    }, {
+      "count" : 5,
+      "value" : "2139636523.10 to 2656742721.00",
+      "ratio" : 0.013550135501355014
+    } ]
+  }, {
+    "column" : "c_double",
+    "dataType" : "Fractional",
+    "isDataTypeInferred" : "false",
+    "completeness" : 0.9075,
+    "numRecordsNonNull" : 363,
+    "numRecordsNull" : 37,
+    "distinctness" : 1.0,
+    "entropy" : 5.894402834264828,
+    "uniqueness" : 1.0,
+    "approximateNumDistinctValues" : 365,
+    "exactNumDistinctValues" : 363,
+    "mean" : 0.011022640064695397,
+    "maximum" : 2.6567427211376278,
+    "minimum" : -2.514319258780375,
+    "sum" : 4.001218343484429,
+    "stdDev" : 0.9406504660183326,
+    "correlations" : [ {
+      "column" : "c_int",
+      "correlation" : -0.1251562921207842
+    }, {
+      "column" : "c_long",
+      "correlation" : 0.9347677735215668
+    }, {
+      "column" : "c_double",
+      "correlation" : 1.0
+    }, {
+      "column" : "c_nonfinite",
+      "correlation" : "NaN"
+    }, {
+      "column" : "c_decimal",
+      "correlation" : 0.9480644345168272
+    }, {
+      "column" : "c_const",
+      "correlation" : "NaN"
+    }, {
+      "column" : "c_all_null",
+      "correlation" : "NaN"
+    }, {
+      "column" : "count",
+      "correlation" : -0.07330935578025125
+    } ],
+    "histogram" : [ {
+      "count" : 5,
+      "value" : "-2.51 to -2.00",
+      "ratio" : 0.013774104683195593
+    }, {
+      "count" : 12,
+      "value" : "-2.00 to -1.48",
+      "ratio" : 0.03305785123966942
+    }, {
+      "count" : 37,
+      "value" : "-1.48 to -0.96",
+      "ratio" : 0.10192837465564739
+    }, {
+      "count" : 67,
+      "value" : "-0.96 to -0.45",
+      "ratio" : 0.18457300275482094
+    }, {
+      "count" : 68,
+      "value" : "-0.45 to 0.07",
+      "ratio" : 0.18732782369146006
+    }, {
+      "count" : 72,
+      "value" : "0.07 to 0.59",
+      "ratio" : 0.19834710743801653
+    }, {
+      "count" : 57,
+      "value" : "0.59 to 1.11",
+      "ratio" : 0.15702479338842976
+    }, {
+      "count" : 31,
+      "value" : "1.11 to 1.62",
+      "ratio" : 0.08539944903581267
+    }, {
+      "count" : 9,
+      "value" : "1.62 to 2.14",
+      "ratio" : 0.024793388429752067
+    }, {
+      "count" : 5,
+      "value" : "2.14 to 2.66",
+      "ratio" : 0.013774104683195593
+    } ]
+  }, {
+    "column" : "c_nonfinite",
+    "dataType" : "Fractional",
+    "isDataTypeInferred" : "false",
+    "completeness" : 1.0,
+    "numRecordsNonNull" : 400,
+    "numRecordsNull" : 0,
+    "distinctness" : 0.865,
+    "entropy" : 5.596137110702798,
+    "uniqueness" : 0.855,
+    "approximateNumDistinctValues" : 331,
+    "exactNumDistinctValues" : 346,
+    "mean" : "NaN",
+    "maximum" : "NaN",
+    "minimum" : "-Infinity",
+    "sum" : "NaN",
+    "stdDev" : "NaN",
+    "correlations" : [ {
+      "column" : "c_int",
+      "correlation" : "NaN"
+    }, {
+      "column" : "c_long",
+      "correlation" : "NaN"
+    }, {
+      "column" : "c_double",
+      "correlation" : "NaN"
+    }, {
+      "column" : "c_nonfinite",
+      "correlation" : 1.0
+    }, {
+      "column" : "c_decimal",
+      "correlation" : "NaN"
+    }, {
+      "column" : "c_const",
+      "correlation" : "NaN"
+    }, {
+      "column" : "c_all_null",
+      "correlation" : "NaN"
+    }, {
+      "column" : "count",
+      "correlation" : "NaN"
+    } ],
+    "histogram" : [ {
+      "count" : 4,
+      "value" : "-7.54 to -5.99",
+      "ratio" : 0.010958904109589041
+    }, {
+      "count" : 12,
+      "value" : "-5.99 to -4.44",
+      "ratio" : 0.03287671232876712
+    }, {
+      "count" : 33,
+      "value" : "-4.44 to -2.89",
+      "ratio" : 0.09041095890410959
+    }, {
+      "count" : 62,
+      "value" : "-2.89 to -1.34",
+      "ratio" : 0.16986301369863013
+    }, {
+      "count" : 86,
+      "value" : "-1.34 to 0.21",
+      "ratio" : 0.2356164383561644
+    }, {
+      "count" : 70,
+      "value" : "0.21 to 1.76",
+      "ratio" : 0.1917808219178082
+    }, {
+      "count" : 55,
+      "value" : "1.76 to 3.32",
+      "ratio" : 0.1506849315068493
+    }, {
+      "count" : 28,
+      "value" : "3.32 to 4.87",
+      "ratio" : 0.07671232876712329
+    }, {
+      "count" : 10,
+      "value" : "4.87 to 6.42",
+      "ratio" : 0.0273972602739726
+    }, {
+      "count" : 5,
+      "value" : "6.42 to 7.97",
+      "ratio" : 0.0136986301369863
+    } ]
+  }, {
+    "column" : "c_decimal",
+    "dataType" : "Fractional",
+    "isDataTypeInferred" : "false",
+    "completeness" : 0.94,
+    "numRecordsNonNull" : 376,
+    "numRecordsNull" : 24,
+    "distinctness" : 0.9281914893617021,
+    "entropy" : 5.828649792608013,
+    "uniqueness" : 0.8590425531914894,
+    "approximateNumDistinctValues" : 353,
+    "exactNumDistinctValues" : 349,
+    "mean" : 0.03165425531914893,
+    "maximum" : 2.657,
+    "minimum" : -2.514,
+    "sum" : 11.901999999999997,
+    "stdDev" : 0.9319933924938014,
+    "correlations" : [ {
+      "column" : "c_int",
+      "correlation" : -0.16409436837348884
+    }, {
+      "column" : "c_long",
+      "correlation" : 0.9426779667827382
+    }, {
+      "column" : "c_double",
+      "correlation" : 0.9480644345168272
+    }, {
+      "column" : "c_nonfinite",
+      "correlation" : "NaN"
+    }, {
+      "column" : "c_decimal",
+      "correlation" : 1.0
+    }, {
+      "column" : "c_const",
+      "correlation" : "NaN"
+    }, {
+      "column" : "c_all_null",
+      "correlation" : "NaN"
+    }, {
+      "column" : "count",
+      "correlation" : -0.09413103163754172
+    } ],
+    "histogram" : [ {
+      "count" : 5,
+      "value" : "-2.51 to -2.00",
+      "ratio" : 0.013297872340425532
+    }, {
+      "count" : 12,
+      "value" : "-2.00 to -1.48",
+      "ratio" : 0.031914893617021274
+    }, {
+      "count" : 35,
+      "value" : "-1.48 to -0.96",
+      "ratio" : 0.09308510638297872
+    }, {
+      "count" : 67,
+      "value" : "-0.96 to -0.45",
+      "ratio" : 0.17819148936170212
+    }, {
+      "count" : 73,
+      "value" : "-0.45 to 0.07",
+      "ratio" : 0.19414893617021275
+    }, {
+      "count" : 76,
+      "value" : "0.07 to 0.59",
+      "ratio" : 0.20212765957446807
+    }, {
+      "count" : 61,
+      "value" : "0.59 to 1.11",
+      "ratio" : 0.1622340425531915
+    }, {
+      "count" : 32,
+      "value" : "1.11 to 1.62",
+      "ratio" : 0.0851063829787234
+    }, {
+      "count" : 10,
+      "value" : "1.62 to 2.14",
+      "ratio" : 0.026595744680851064
+    }, {
+      "count" : 5,
+      "value" : "2.14 to 2.66",
+      "ratio" : 0.013297872340425532
+    } ]
+  }, {
+    "column" : "c_const",
+    "dataType" : "Fractional",
+    "isDataTypeInferred" : "false",
+    "completeness" : 1.0,
+    "numRecordsNonNull" : 400,
+    "numRecordsNull" : 0,
+    "distinctness" : 0.0025,
+    "entropy" : 0.0,
+    "uniqueness" : 0.0,
+    "approximateNumDistinctValues" : 1,
+    "exactNumDistinctValues" : 1,
+    "mean" : 4.5,
+    "maximum" : 4.5,
+    "minimum" : 4.5,
+    "sum" : 1800.0,
+    "stdDev" : 0.0,
+    "correlations" : [ {
+      "column" : "c_int",
+      "correlation" : "NaN"
+    }, {
+      "column" : "c_long",
+      "correlation" : "NaN"
+    }, {
+      "column" : "c_double",
+      "correlation" : "NaN"
+    }, {
+      "column" : "c_nonfinite",
+      "correlation" : "NaN"
+    }, {
+      "column" : "c_decimal",
+      "correlation" : "NaN"
+    }, {
+      "column" : "c_const",
+      "correlation" : 1.0
+    }, {
+      "column" : "c_all_null",
+      "correlation" : "NaN"
+    }, {
+      "column" : "count",
+      "correlation" : "NaN"
+    } ],
+    "histogram" : [ {
+      "count" : 400,
+      "value" : "4.50 to 4.50",
+      "ratio" : 1.0
+    }, {
+      "count" : 0,
+      "value" : "4.50 to 4.50",
+      "ratio" : 0.0
+    }, {
+      "count" : 0,
+      "value" : "4.50 to 4.50",
+      "ratio" : 0.0
+    }, {
+      "count" : 0,
+      "value" : "4.50 to 4.50",
+      "ratio" : 0.0
+    }, {
+      "count" : 0,
+      "value" : "4.50 to 4.50",
+      "ratio" : 0.0
+    }, {
+      "count" : 0,
+      "value" : "4.50 to 4.50",
+      "ratio" : 0.0
+    }, {
+      "count" : 0,
+      "value" : "4.50 to 4.50",
+      "ratio" : 0.0
+    }, {
+      "count" : 0,
+      "value" : "4.50 to 4.50",
+      "ratio" : 0.0
+    }, {
+      "count" : 0,
+      "value" : "4.50 to 4.50",
+      "ratio" : 0.0
+    }, {
+      "count" : 0,
+      "value" : "4.50 to 4.50",
+      "ratio" : 0.0
+    } ]
+  }, {
+    "column" : "c_all_null",
+    "dataType" : "Fractional",
+    "isDataTypeInferred" : "false",
+    "completeness" : 0.0,
+    "numRecordsNonNull" : 0,
+    "numRecordsNull" : 400,
+    "distinctness" : 0.0,
+    "entropy" : 0.0,
+    "uniqueness" : 0.0,
+    "approximateNumDistinctValues" : 0,
+    "exactNumDistinctValues" : 0,
+    "correlations" : [ {
+      "column" : "c_int",
+      "correlation" : "NaN"
+    }, {
+      "column" : "c_long",
+      "correlation" : "NaN"
+    }, {
+      "column" : "c_double",
+      "correlation" : "NaN"
+    }, {
+      "column" : "c_nonfinite",
+      "correlation" : "NaN"
+    }, {
+      "column" : "c_decimal",
+      "correlation" : "NaN"
+    }, {
+      "column" : "c_const",
+      "correlation" : "NaN"
+    }, {
+      "column" : "c_all_null",
+      "correlation" : 1.0
+    }, {
+      "column" : "count",
+      "correlation" : "NaN"
+    } ],
+    "histogram" : [ ]
+  }, {
+    "column" : "c_bool",
+    "dataType" : "Boolean",
+    "isDataTypeInferred" : "false",
+    "completeness" : 0.8,
+    "numRecordsNonNull" : 320,
+    "numRecordsNull" : 80,
+    "distinctness" : 0.00625,
+    "entropy" : 0.6898427579669285,
+    "uniqueness" : 0.0,
+    "approximateNumDistinctValues" : 2,
+    "exactNumDistinctValues" : 2,
+    "histogram" : [ {
+      "count" : 173,
+      "value" : "true",
+      "ratio" : 0.540625
+    }, {
+      "count" : 147,
+      "value" : "false",
+      "ratio" : 0.459375
+    } ]
+  }, {
+    "column" : "c_string",
+    "dataType" : "String",
+    "isDataTypeInferred" : "false",
+    "completeness" : 0.8875,
+    "numRecordsNonNull" : 355,
+    "numRecordsNull" : 45,
+    "distinctness" : 0.016901408450704224,
+    "entropy" : 1.7826024880053664,
+    "uniqueness" : 0.0,
+    "approximateNumDistinctValues" : 6,
+    "exactNumDistinctValues" : 6,
+    "histogram" : [ {
+      "count" : 68,
+      "value" : "charlie",
+      "ratio" : 0.19154929577464788
+    }, {
+      "count" : 65,
+      "value" : "bravo",
+      "ratio" : 0.18309859154929578
+    }, {
+      "count" : 63,
+      "value" : "foxtrot",
+      "ratio" : 0.17746478873239438
+    }, {
+      "count" : 59,
+      "value" : "echo",
+      "ratio" : 0.16619718309859155
+    }, {
+      "count" : 56,
+      "value" : "delta",
+      "ratio" : 0.15774647887323945
+    }, {
+      "count" : 44,
+      "value" : "alpha",
+      "ratio" : 0.12394366197183099
+    } ]
+  }, {
+    "column" : "c_numeric_string",
+    "dataType" : "String",
+    "isDataTypeInferred" : "false",
+    "completeness" : 1.0,
+    "numRecordsNonNull" : 400,
+    "numRecordsNull" : 0,
+    "distinctness" : 0.0525,
+    "entropy" : 2.6145982710916362,
+    "uniqueness" : 0.0,
+    "approximateNumDistinctValues" : 21,
+    "exactNumDistinctValues" : 21,
+    "histogram" : [ {
+      "count" : 134,
+      "value" : "007",
+      "ratio" : 0.335
+    }, {
+      "count" : 20,
+      "value" : "16",
+      "ratio" : 0.05
+    }, {
+      "count" : 19,
+      "value" : "13",
+      "ratio" : 0.0475
+    }, {
+      "count" : 16,
+      "value" : "7",
+      "ratio" : 0.04
+    }, {
+      "count" : 15,
+      "value" : "15",
+      "ratio" : 0.0375
+    }, {
+      "count" : 15,
+      "value" : "6",
+      "ratio" : 0.0375
+    }, {
+      "count" : 15,
+      "value" : "10",
+      "ratio" : 0.0375
+    }, {
+      "count" : 14,
+      "value" : "11",
+      "ratio" : 0.035
+    }, {
+      "count" : 14,
+      "value" : "5",
+      "ratio" : 0.035
+    }, {
+      "count" : 14,
+      "value" : "18",
+      "ratio" : 0.035
+    } ]
+  }, {
+    "column" : "count",
+    "dataType" : "Integral",
+    "isDataTypeInferred" : "false",
+    "completeness" : 1.0,
+    "numRecordsNonNull" : 400,
+    "numRecordsNull" : 0,
+    "distinctness" : 0.125,
+    "entropy" : 2.1986050309319567,
+    "uniqueness" : 0.1125,
+    "approximateNumDistinctValues" : 50,
+    "exactNumDistinctValues" : 50,
+    "mean" : 4.82,
+    "maximum" : 49.0,
+    "minimum" : 0.0,
+    "sum" : 1928.0,
+    "stdDev" : 9.10728280004525,
+    "correlations" : [ {
+      "column" : "c_int",
+      "correlation" : -0.007085161847157863
+    }, {
+      "column" : "c_long",
+      "correlation" : -0.06899694188455403
+    }, {
+      "column" : "c_double",
+      "correlation" : -0.07330935578025126
+    }, {
+      "column" : "c_nonfinite",
+      "correlation" : "NaN"
+    }, {
+      "column" : "c_decimal",
+      "correlation" : -0.0941310316375417
+    }, {
+      "column" : "c_const",
+      "correlation" : "NaN"
+    }, {
+      "column" : "c_all_null",
+      "correlation" : "NaN"
+    }, {
+      "column" : "count",
+      "correlation" : 1.0
+    } ],
+    "histogram" : [ {
+      "count" : 355,
+      "value" : "0.00 to 4.90",
+      "ratio" : 0.8875
+    }, {
+      "count" : 5,
+      "value" : "4.90 to 9.80",
+      "ratio" : 0.0125
+    }, {
+      "count" : 5,
+      "value" : "9.80 to 14.70",
+      "ratio" : 0.0125
+    }, {
+      "count" : 5,
+      "value" : "14.70 to 19.60",
+      "ratio" : 0.0125
+    }, {
+      "count" : 5,
+      "value" : "19.60 to 24.50",
+      "ratio" : 0.0125
+    }, {
+      "count" : 5,
+      "value" : "24.50 to 29.40",
+      "ratio" : 0.0125
+    }, {
+      "count" : 5,
+      "value" : "29.40 to 34.30",
+      "ratio" : 0.0125
+    }, {
+      "count" : 5,
+      "value" : "34.30 to 39.20",
+      "ratio" : 0.0125
+    }, {
+      "count" : 5,
+      "value" : "39.20 to 44.10",
+      "ratio" : 0.0125
+    }, {
+      "count" : 5,
+      "value" : "44.10 to 49.00",
+      "ratio" : 0.0125
+    } ]
+  } ]
+}

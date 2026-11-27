@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime
+import json
 import logging
 import os
 import re
@@ -304,18 +305,18 @@ class DeltaEngine:
             delta_fg_alias.left_feature_group_end_timestamp is not None
             and delta_fg_alias.left_feature_group_start_timestamp is None
         ):
-            # snapshot query with end time; resolve the version against the Delta
-            # log's in-commit timestamps instead of passing timestampAsOf.
-            # Delta resolves timestamp bounds against commit-file modification
-            # times, while the backend-recorded commit_time carries the log's
-            # in-commit commitInfo timestamp, which is tens to hundreds of
-            # milliseconds earlier: enough for timestampAsOf to silently resolve
-            # to the previous version (or to be rejected outright when it
-            # predates the first commit, which happens when compute_statistics
-            # runs right after a fresh insert).
+            # Snapshot query with end time: the version is resolved from the Delta log instead of passing timestampAsOf.
+            # The clocks involved: _delta_version_at.
             end_ts = delta_fg_alias.left_feature_group_end_timestamp
-            commits = self._get_delta_commits(location) if location else None
-            if commits:
+            version = self._delta_version_at(location, end_ts) if location else None
+            commits = None
+            if version is None and location:
+                commits = self._get_delta_commits(location)
+            if version is not None:
+                delta_options = {
+                    self.DELTA_QUERY_TIME_TRAVEL_AS_OF_VERSION: version,
+                }
+            elif commits:
                 # Highest version committed at or before end_ts.
                 # commitInfo timestamps are not guaranteed monotonic in version
                 # (concurrent writers / commit retries), so stop at the first
@@ -368,6 +369,97 @@ class DeltaEngine:
 
         return delta_options
 
+    _DELTA_COMMIT_FILE = re.compile(r"^(\d{20})\.json$")
+    # A commit file lists one action per line and its commitInfo is normally the first one.
+    # A file whose commitInfo is not within this many lines is treated as having none.
+    _DELTA_COMMIT_INFO_MAX_LINES = 10000
+    # commit files read from the newest before the full scan takes over
+    _DELTA_LOG_TAIL_MAX_VERSIONS = 256
+    # The most two writers' clocks are taken to disagree by.
+    # Below the newest commit at or before the bound, the search for the commit recorded at the bound goes on this far.
+    _DELTA_CLOCK_SKEW_MS = 5 * 60 * 1000
+
+    def _delta_version_at(self, location: str, end_ts: int) -> int | None:
+        """The Delta version recorded at `end_ts`, or else the newest one committed before it, read from the log tail.
+
+        The backend records a commit's time from its writer.
+        delta-rs records the commitInfo timestamp, and Spark the commit file's modification time that `DeltaTable.history()` reports.
+        The modification time is tens to hundreds of milliseconds later than the commitInfo timestamp.
+        Delta resolves timestampAsOf against the modification times, so a commitInfo time resolves to the previous version, or is rejected before the first commit.
+        A version whose commitInfo timestamp or commit file time equals `end_ts` is returned, so either recorded time of a version resolves to that version.
+        Statistics runs resolve the latest commit, so the answer is almost always in the newest commit file.
+        The log directory is listed once and the commit files are read one at a time from the newest, at most `_DELTA_LOG_TAIL_MAX_VERSIONS` of them.
+        Reading every commit file with a Spark job, as `_get_delta_commits` does, grows with the age of the table.
+        On a log whose commitInfo timestamps are not monotonic (writers with skewed clocks), a newer version can be stamped before an older one.
+        The walk therefore goes on past the newest version stamped before `end_ts`, down to versions stamped `_DELTA_CLOCK_SKEW_MS` before it, looking for the one recorded at `end_ts`.
+        Without one, that newest version is returned.
+        For a bound that is not a recorded commit time, that version can include an older commit stamped after the bound, where the full scan stops at the first version past it; this needs commits from different clocks closer together than the clocks disagree, and is accepted.
+        When `end_ts` predates every commit the earliest version is returned, as the full scan does.
+        Returns None when the log cannot be read this way, and the caller falls back to the full scan.
+        That includes Spark Connect sessions, a bound further back than the versions read, and a commit file without a commitInfo timestamp.
+        """
+        jvm = getattr(self._spark_session, "_jvm", None)
+        jsc = getattr(self._spark_session, "_jsc", None)
+        if jvm is None or jsc is None:
+            return None
+        try:
+            log_path = jvm.org.apache.hadoop.fs.Path(
+                location.rstrip("/") + "/_delta_log"
+            )
+            fs = log_path.getFileSystem(jsc.hadoopConfiguration())
+            # the listing carries each commit file's modification time
+            file_times = {
+                int(match.group(1)): int(status.getModificationTime())
+                for status in fs.listStatus(log_path)
+                if (match := self._DELTA_COMMIT_FILE.match(status.getPath().getName()))
+            }
+            versions = sorted(file_times, reverse=True)
+            if not versions:
+                return None
+            before = None
+            for version in versions[: self._DELTA_LOG_TAIL_MAX_VERSIONS]:
+                commit_ts = self._delta_commit_timestamp(jvm, fs, log_path, version)
+                if commit_ts is None:
+                    return None
+                if end_ts in (commit_ts, file_times[version]):
+                    return version
+                if before is None and commit_ts < end_ts:
+                    before = version
+                if commit_ts < end_ts - self._DELTA_CLOCK_SKEW_MS:
+                    return before
+            if before is not None:
+                return before
+            if len(versions) > self._DELTA_LOG_TAIL_MAX_VERSIONS:
+                return None
+            return versions[-1]
+        except Exception as e:
+            _logger.debug("Could not read the Delta log tail at %s: %s", location, e)
+            return None
+
+    def _delta_commit_timestamp(self, jvm, fs, log_path, version: int) -> int | None:
+        """The commitInfo timestamp of one commit file, or None when it has none."""
+        path = jvm.org.apache.hadoop.fs.Path(log_path, f"{version:020d}.json")
+        reader = jvm.java.io.BufferedReader(
+            jvm.java.io.InputStreamReader(fs.open(path), "UTF-8")
+        )
+        try:
+            for _ in range(self._DELTA_COMMIT_INFO_MAX_LINES):
+                line = reader.readLine()
+                if line is None:
+                    return None
+                if '"commitInfo"' not in line:
+                    continue
+                timestamp = json.loads(line).get("commitInfo", {}).get("timestamp")
+                return int(timestamp) if timestamp is not None else None
+            return None
+        finally:
+            reader.close()
+
+    def _delta_commit_file_time(self, jvm, fs, log_path, version: int) -> int:
+        """The modification time of one commit file, the clock `DeltaTable.history()` reports."""
+        path = jvm.org.apache.hadoop.fs.Path(log_path, f"{version:020d}.json")
+        return int(fs.getFileStatus(path).getModificationTime())
+
     def _get_delta_commits(self, location: str):
         """Get all commits from the Delta log.
 
@@ -375,7 +467,7 @@ class DeltaEngine:
         ascending, or None if the log cannot be read or is empty.
 
         The timestamps are the log's in-commit ``commitInfo.timestamp`` values,
-        the same clock the backend-recorded commit times are derived from.
+        the clock `_delta_version_at` resolves recorded commit times against.
         ``DeltaTable.history()`` is deliberately NOT used here: its timestamp
         column carries the commit-file modification time, which lags the
         in-commit timestamp (tens to hundreds of milliseconds on HopsFS), so
@@ -1833,6 +1925,7 @@ class DeltaEngine:
         """
         data_ops = ["MERGE", "WRITE"]
         _logger.debug(f"Retrieving last commit metadata for Delta table at {base_path}")
+        table_size = None
 
         # --- Get commit history ---
         if spark_context is not None:
@@ -1904,6 +1997,9 @@ class DeltaEngine:
                 fg_source_table = DeltaTable.forPath(spark_context, base_path)
                 history = fg_source_table.history()
                 history_records = [r.asDict() for r in history.collect()]
+                table_size = DeltaEngine._table_size(
+                    lambda: fg_source_table.detail().select("sizeInBytes").first()[0]
+                )
             _logger.debug(f"history_records for {base_path}: {history_records}")
         else:
             try:
@@ -1919,6 +2015,13 @@ class DeltaEngine:
             )
             history_records = fg_source_table.history()
             _logger.debug(f"history_records for {base_path}: {history_records}")
+            table_size = DeltaEngine._table_size(
+                lambda: sum(
+                    fg_source_table.get_add_actions(flatten=True)
+                    .column("size_bytes")
+                    .to_pylist()
+                )
+            )
 
         if not history_records:
             return None
@@ -1939,10 +2042,25 @@ class DeltaEngine:
             f"Last commit: {last_commit['version']} at {last_commit['timestamp']}"
         )
 
-        return DeltaEngine._get_delta_feature_group_commit(last_commit, oldest_commit)
+        return DeltaEngine._get_delta_feature_group_commit(
+            last_commit, oldest_commit, table_size
+        )
 
     @staticmethod
-    def _get_delta_feature_group_commit(last_commit, oldest_commit):
+    def _table_size(read_size) -> int | None:
+        """Bytes of the table's live data files, which the backend sizes the statistics job from.
+
+        None when the size cannot be read: the commit is registered without one, as before.
+        """
+        try:
+            size = read_size()
+            return int(size) if size is not None else None
+        except Exception as e:
+            _logger.debug("Could not read the Delta table size: %s", e)
+            return None
+
+    @staticmethod
+    def _get_delta_feature_group_commit(last_commit, oldest_commit, table_size=None):
         _logger.debug(f"Extract info about the latest commit {last_commit}")
         operation = last_commit["operation"]
         commit_timestamp = util._convert_event_time_to_timestamp(
@@ -1997,4 +2115,5 @@ class DeltaEngine:
             rows_updated=rows_updated,
             rows_deleted=rows_deleted,
             last_active_commit_time=oldest_commit_timestamp,
+            table_size=table_size,
         )
