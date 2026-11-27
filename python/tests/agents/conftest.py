@@ -17,6 +17,7 @@ import pytest
 NEEDS_FASTAPI = [
     "test_a2a.py",
     "test_a2a_card_and_artifacts.py",
+    "test_a2a_discovery.py",
     "test_a2a_durable.py",
     "test_a2a_push.py",
     "test_app.py",
@@ -31,6 +32,15 @@ try:  # noqa: SIM105 -- the import is the check
     import fastapi  # noqa: F401
 except ImportError:
     collect_ignore = list(NEEDS_FASTAPI)
+
+# Serving A2A over gRPC needs grpcio, from a2a-sdk's `grpc` extra, which the
+# jobs without optional dependencies do not install either.
+NEEDS_GRPC = ["test_a2a_discovery.py"]
+
+try:  # noqa: SIM105 -- the import is the check
+    import grpc  # noqa: F401
+except ImportError:
+    collect_ignore = sorted(set(collect_ignore) | set(NEEDS_GRPC))
 
 
 @pytest.fixture

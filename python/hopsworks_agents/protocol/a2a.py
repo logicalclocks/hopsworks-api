@@ -608,6 +608,11 @@ class A2AServer:
             return None
         return parsed.hostname
 
+    def _hostname_url(self) -> str:
+        """``<scheme>://<host>[:<port>]`` of the agent's hostname, as the platform gave it."""
+        parsed = urlparse(self._public_url_env())
+        return urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
+
     def _endpoints(self) -> dict[str, str]:
         """What the Hopsworks manifest lists for A2A."""
         return {"agent_card": CARD_PATH, "a2a": RPC_PATH, "a2a_rest": REST_PREFIX}
@@ -622,13 +627,10 @@ class A2AServer:
             "grpc": self._grpc_url is not None,
             "hostname": hostname,
             # the agent's own URL on its hostname (scheme included: a cluster
-            # without a certificate serves it over http) and the gRPC address,
-            # as the card lists them, so a reader need not rebuild them
-            "url": urlunparse(
-                (urlparse(self._public_url_env()).scheme, hostname, "", "", "", "")
-            )
-            if hostname
-            else None,
+            # without a certificate serves it over http; and the port, where
+            # the platform advertises one) and the gRPC address, as the card
+            # lists them, so a reader need not rebuild them
+            "url": self._hostname_url() if hostname else None,
             "grpc_url": self._grpc_url,
             # whether the platform serves the card without a credential
             "public_card": _public_card(),

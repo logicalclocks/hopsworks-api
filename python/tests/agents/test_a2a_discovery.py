@@ -27,6 +27,9 @@ from hopsworks_agents.protocol.a2a import A2AConfig
 BASE = "http://agent.test"
 HOST = "advisor-42.agents.example.com"
 PRINCIPAL = "x-hopsworks-principal"
+#: How a call to a port nobody serves ends: refused at once on Linux and macOS;
+#: on Windows the connection is retried until the call's deadline.
+NOT_SERVED = (grpc.StatusCode.UNAVAILABLE, grpc.StatusCode.DEADLINE_EXCEEDED)
 
 
 def run(coro):
@@ -141,22 +144,26 @@ class TestCardInterfaces:
     def test_a_port_that_cannot_be_opened_drops_the_interface(
         self, monkeypatch, grpc_port
     ):
+        # The bind is refused by the server itself rather than by occupying the
+        # port: whether a second listener on a taken port fails depends on the
+        # platform (Windows lets it through).
+        real_server = grpc.aio.server
+
+        def refusing_server(*args, **kwargs):
+            server = real_server(*args, **kwargs)
+            server.add_insecure_port = lambda address: 0
+            return server
+
+        monkeypatch.setattr(grpc.aio, "server", refusing_server)
         app = echo_app()
-        blocker = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-        blocker.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
-        blocker.bind(("::", grpc_port))
-        blocker.listen()
-        try:
 
-            async def scenario():
-                async with _Serving(app):
-                    return a2a_view(app), TestClient(app).get(
-                        "/.well-known/agent-card.json"
-                    ).json()
+        async def scenario():
+            async with _Serving(app):
+                return a2a_view(app), TestClient(app).get(
+                    "/.well-known/agent-card.json"
+                ).json()
 
-            view, card = run(scenario())
-        finally:
-            blocker.close()
+        view, card = run(scenario())
         assert view["grpc"] is False
         assert "GRPC" not in view["bindings"]
         assert "GRPC" not in [b for b, _ in bindings(card)]
@@ -235,7 +242,7 @@ class TestGrpcRoundTrip:
                     await stub.GetTask(GetTaskRequest(id="t"), timeout=2)
                 return refused.value.code()
 
-        assert run(scenario()) == grpc.StatusCode.UNAVAILABLE
+        assert run(scenario()) in NOT_SERVED
 
     def test_the_drain_stops_taking_calls(self, grpc_port):
         app = echo_app()
@@ -250,7 +257,7 @@ class TestGrpcRoundTrip:
                         await stub.GetTask(GetTaskRequest(id="t"), timeout=2)
                     return refused.value.code()
 
-        assert run(scenario()) == grpc.StatusCode.UNAVAILABLE
+        assert run(scenario()) in NOT_SERVED
 
 
 class TestPrivateOverGrpc:
@@ -358,6 +365,13 @@ class TestHostnameAndPublicCard:
         view = a2a_view(echo_app())
         assert view["url"] == f"http://{HOST}"
         assert view["grpc_url"] is None
+
+    def test_the_manifest_keeps_an_advertised_port(self, monkeypatch):
+        # a gateway on its NodePorts, the wildcard DNS record at the nodes
+        monkeypatch.setenv("HOPSWORKS_AGENT_PUBLIC_URL", f"http://{HOST}:32090")
+        view = a2a_view(echo_app())
+        assert view["hostname"] == HOST
+        assert view["url"] == f"http://{HOST}:32090"
 
     def test_the_path_form_is_not_a_hostname(self, monkeypatch):
         monkeypatch.setenv(
