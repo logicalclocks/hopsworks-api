@@ -43,7 +43,7 @@ agent = agents.get_agent("refunds_agent")     # the deployment these are written
 suite = agents.suites.create(
     "Refunds",
     checks=[
-        check("llm_judge", "quality", provider="anthropic", model="claude-sonnet-5",
+        check("llm_judge", "quality", provider="anthropic", model="claude-sonnet-5-5",
               api_key_env="ANTHROPIC_API_KEY",
               criteria=["Answers the question", "Uses the customer key the user gave"]),
         check("tool_call"),                 # each task names the tool it expects
@@ -242,7 +242,7 @@ agent.give_feedback(trace_id, "negative", issue_category="wrong_tool",
 page = agent.feedback(verdict="negative"); page.count; page.feedback
 agent.feedback_summary(since=..., until=...)          # verdict counts, by window and issue category
 
-job = agents.jobs.ensure_review_job(agent.id, provider="anthropic", model="claude-sonnet-5",
+job = agents.jobs.ensure_review_job(agent.id, provider="anthropic", model="claude-sonnet-5-5",
                                     sources=["feedback", "errors", "judge"],   # + "anomalies"
                                     read_source_code=True)
 run = agent.analyse().wait()                          # since the last run; or analyse(since=, until=) / trace_id=

@@ -156,10 +156,10 @@ agents.deploy_agent(
 
 **Read the model out of the agent before you pick the numbers.** It is not always where you expect:
 
-- the model is usually a constant or an environment variable near the top of the entry script — `MODEL = os.environ.get("AGENT_MODEL", "claude-sonnet-4-5")`;
+- the model is usually a constant or an environment variable near the top of the entry script — `MODEL = os.environ.get("AGENT_MODEL", "claude-sonnet-5-5")`;
 - a framework default counts: an `Agent(...)` built with no `model=` runs the SDK's own default, which is a different price from the one in the README;
 - an agent with several models — a cheap router and an expensive writer, or a judge of its own — bills at whichever one runs, so price the one that does the volume and say so in a comment;
-- a provider-prefixed name (`anthropic/claude-sonnet-4-5`) is LiteLLM routing to that provider, and the price is that provider's.
+- a provider-prefixed name (`anthropic/claude-sonnet-5-5`) is LiteLLM routing to that provider, and the price is that provider's.
 
 **Then check against a real trace, because the source can be wrong.** The spans say which model actually answered, and a framework default beats anything the README claims:
 

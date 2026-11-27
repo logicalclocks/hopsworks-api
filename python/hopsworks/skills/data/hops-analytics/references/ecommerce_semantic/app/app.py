@@ -33,6 +33,7 @@ import decimal
 import json
 import logging
 import os
+import re
 import threading
 import time
 from functools import lru_cache
@@ -110,8 +111,20 @@ def _llm_settings() -> tuple[str, str, str] | None:
     return (url, model, key) if url and model and key else None
 
 
+def _temperature(model: str) -> dict[str, float]:
+    """Temperature 0 for repeatable answers, left out for OpenAI's reasoning models.
+
+    The o-series, GPT-5 and GPT-6 set their own sampling, so they are sent none. Only
+    their whole ids match (o3, o4-mini, gpt-5.1), so a deployment named o11y keeps 0.
+    """
+    name = model.strip().lower().rsplit("/", 1)[-1]
+    if re.match(r"(o[134]|gpt-[56])([.-]|$)", name):
+        return {}
+    return {"temperature": 0}
+
+
 def _chat(messages: list[dict[str, str]]) -> str:
-    """One reply of the OpenAI-compatible endpoint, at temperature 0."""
+    """One reply of the OpenAI-compatible endpoint, at temperature 0 where the model takes one."""
     url, model, key = _llm_settings()
     url = url.rstrip("/")
     if not url.endswith("/chat/completions"):
@@ -119,7 +132,7 @@ def _chat(messages: list[dict[str, str]]) -> str:
     reply = requests.post(
         url,
         headers={"Authorization": f"Bearer {key}"},
-        json={"model": model, "messages": messages, "temperature": 0},
+        json={"model": model, "messages": messages, **_temperature(model)},
         timeout=LLM_TIMEOUT_S,
     )
     if reply.status_code >= 400:

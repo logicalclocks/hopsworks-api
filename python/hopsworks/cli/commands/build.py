@@ -812,7 +812,7 @@ def _llm_env_vars(slug: str) -> dict:
         "project.get_model_serving().get_openai_url(), a Hopsworks API key and the deployment name as the model."
     )
     url = click.prompt("LLM endpoint URL", default="https://api.openai.com/v1").strip()
-    model = click.prompt("Model", default="gpt-4o-mini").strip()
+    model = click.prompt("Model", default="gpt-6-luna").strip()
     key = click.prompt("API key (not shown)", hide_input=True).strip()
     for name, value in (
         (LLM_VARS["url"], url),

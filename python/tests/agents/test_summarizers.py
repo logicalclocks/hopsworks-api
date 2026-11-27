@@ -8,9 +8,13 @@ from unittest import mock
 import pytest
 
 
-def _fake_openai(monkeypatch, reply="folded"):
-    """A stand-in ``openai`` module recording how the client was built and called."""
-    calls = {}
+def _fake_openai(monkeypatch, reply="folded", finish_reasons=("stop",)):
+    """A stand-in ``openai`` module recording how the client was built and called.
+
+    Each call stops for the next of ``finish_reasons``; the last one repeats.
+    """
+    calls = {"creates": []}
+    reasons = list(finish_reasons)
 
     class AsyncOpenAI:
         def __init__(self, **kwargs):
@@ -21,10 +25,11 @@ def _fake_openai(monkeypatch, reply="folded"):
 
         async def _create(self, **kwargs):
             calls["create"] = kwargs
+            calls["creates"].append(kwargs)
+            reason = reasons.pop(0) if len(reasons) > 1 else reasons[0]
             message = types.SimpleNamespace(content=reply)
-            return types.SimpleNamespace(
-                choices=[types.SimpleNamespace(message=message)]
-            )
+            choice = types.SimpleNamespace(message=message, finish_reason=reason)
+            return types.SimpleNamespace(choices=[choice])
 
     module = types.ModuleType("openai")
     module.AsyncOpenAI = AsyncOpenAI
@@ -52,7 +57,16 @@ class TestOpenAISummarizer:
         assert asyncio.run(summarize("older summary", TURNS)) == "folded"
         assert calls["client"] == {"api_key": "sk-env"}
         create = calls["create"]
-        assert create["model"] == "gpt-4o-mini"
+        assert create["model"] == "gpt-6-luna"
+        # a reasoning model rejects max_tokens with a 400, and its reasoning would
+        # spend the budget a summary needs; in extra_body, as openai before 1.45
+        # refuses max_completion_tokens and before 1.58 reasoning_effort
+        assert create["extra_body"] == {
+            "max_completion_tokens": 1024,
+            "reasoning_effort": "none",
+        }
+        assert "max_tokens" not in create
+        assert "max_completion_tokens" not in create
         assert create["messages"][0] == {"role": "system", "content": SYSTEM_PROMPT}
         user = create["messages"][1]["content"]
         assert "older summary" in user and "user: I live in Oslo" in user
@@ -82,6 +96,48 @@ class TestOpenAISummarizer:
             "default_headers": {"X-Team": "ml"},
         }
         assert calls["create"]["model"] == "llama-3.1-8b"
+        assert calls["create"]["extra_body"] == {"max_tokens": 1024}
+
+    def test_sol_and_astra_reason_at_low_as_they_reject_none(self, monkeypatch):
+        from hopsworks_agents.protocol.summarizers import openai_summarizer
+
+        for model in ("gpt-6.2-sol", "gpt-6.2-astra"):
+            calls = _fake_openai(monkeypatch)
+            monkeypatch.setenv("OPENAI_API_KEY", "sk-env")
+            asyncio.run(openai_summarizer(model)(None, TURNS))
+            assert calls["create"]["extra_body"]["reasoning_effort"] == "low"
+
+    def test_a_cut_off_summary_is_asked_again_with_double_the_budget(self, monkeypatch):
+        from hopsworks_agents.protocol.summarizers import openai_summarizer
+
+        calls = _fake_openai(monkeypatch, finish_reasons=("length", "stop"))
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-env")
+        assert asyncio.run(openai_summarizer()(None, TURNS)) == "folded"
+        limits = [c["extra_body"]["max_completion_tokens"] for c in calls["creates"]]
+        assert limits == [1024, 2048]
+
+    def test_a_vllm_summary_doubles_max_tokens(self, monkeypatch):
+        from hopsworks_agents.protocol.summarizers import openai_summarizer
+
+        calls = _fake_openai(monkeypatch, finish_reasons=("length", "stop"))
+        summarize = openai_summarizer(
+            "llama-3.1-8b", base_url="http://vllm:8000/v1", api_key="k"
+        )
+        asyncio.run(summarize(None, TURNS))
+        limits = [c["extra_body"]["max_tokens"] for c in calls["creates"]]
+        assert limits == [1024, 2048]
+
+    def test_a_summary_still_cut_off_at_four_times_the_budget_fails(self, monkeypatch):
+        from hopsworks_agents.protocol.summarizers import openai_summarizer
+
+        calls = _fake_openai(
+            monkeypatch, reply="half a sum", finish_reasons=("length",)
+        )
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-env")
+        with pytest.raises(RuntimeError, match="ran out of output tokens at 4096"):
+            asyncio.run(openai_summarizer()(None, TURNS))
+        limits = [c["extra_body"]["max_completion_tokens"] for c in calls["creates"]]
+        assert limits == [1024, 2048, 4096]
 
     def test_without_a_key_the_sdk_resolves_it(self, monkeypatch):
         from hopsworks_agents.protocol.summarizers import openai_summarizer
@@ -447,6 +503,88 @@ class TestAnthropicSummarizerOnAClaudeCodeLogin:
         assert asyncio.run(anthropic_summarizer()(None, TURNS)) == "api"
         assert built["api_key"] == "sk-env"
         assert "prompt" not in calls
+
+
+def _fake_anthropic(monkeypatch, text=" folded ", stop_reasons=("end_turn",)):
+    """A stand-in ``anthropic`` module recording the requests it was sent.
+
+    ``sent`` holds the last request and ``sent["all"]`` every one. Each call stops for
+    the next of ``stop_reasons``; the last one repeats.
+    """
+    sent = {"all": []}
+    reasons = list(stop_reasons)
+
+    class AsyncAnthropic:
+        def __init__(self, **kwargs):
+            self.messages = types.SimpleNamespace(create=self._create)
+
+        async def _create(self, **kwargs):
+            sent.update(kwargs)
+            sent["all"].append(kwargs)
+            reason = reasons.pop(0) if len(reasons) > 1 else reasons[0]
+            block = types.SimpleNamespace(type="text", text=text)
+            return types.SimpleNamespace(content=[block], stop_reason=reason)
+
+    module = types.ModuleType("anthropic")
+    module.AsyncAnthropic = AsyncAnthropic
+    monkeypatch.setitem(sys.modules, "anthropic", module)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-env")
+    return sent
+
+
+def test_the_anthropic_request_suits_the_default_haiku(monkeypatch):
+    # Haiku 5.5 answers sampling parameters, extended thinking and a prefilled
+    # assistant turn with a 400, so the request carries none of them. It thinks
+    # by default within max_tokens, so it is asked for low effort.
+    from hopsworks_agents.protocol.summarizers import (
+        SYSTEM_PROMPT,
+        anthropic_summarizer,
+    )
+
+    sent = _fake_anthropic(monkeypatch)
+
+    assert asyncio.run(anthropic_summarizer()(None, TURNS)) == "folded"
+    assert sent["model"] == "claude-haiku-5-5"
+    assert sent["max_tokens"] == 1024
+    assert sent["system"] == SYSTEM_PROMPT
+    assert [m["role"] for m in sent["messages"]] == ["user"]
+    # in extra_body: the SDK takes output_config as an argument only from 0.77
+    assert sent["extra_body"] == {"output_config": {"effort": "low"}}
+    assert not {"temperature", "top_p", "top_k", "thinking", "output_config"} & set(
+        sent
+    )
+
+
+def test_a_claude_that_thinks_only_when_asked_gets_no_effort(monkeypatch):
+    from hopsworks_agents.protocol.summarizers import anthropic_summarizer
+
+    sent = _fake_anthropic(monkeypatch)
+
+    asyncio.run(anthropic_summarizer("claude-haiku-4-5")(None, TURNS))
+    assert sent["extra_body"] is None
+
+
+def test_a_cut_off_anthropic_summary_is_asked_again_with_double_the_budget(
+    monkeypatch,
+):
+    from hopsworks_agents.protocol.summarizers import anthropic_summarizer
+
+    sent = _fake_anthropic(monkeypatch, stop_reasons=("max_tokens", "end_turn"))
+
+    assert asyncio.run(anthropic_summarizer()(None, TURNS)) == "folded"
+    assert [r["max_tokens"] for r in sent["all"]] == [1024, 2048]
+
+
+def test_an_anthropic_summary_still_cut_off_at_four_times_the_budget_fails(
+    monkeypatch,
+):
+    from hopsworks_agents.protocol.summarizers import anthropic_summarizer
+
+    sent = _fake_anthropic(monkeypatch, text="half a sum", stop_reasons=("max_tokens",))
+
+    with pytest.raises(RuntimeError, match="ran out of output tokens at 4096"):
+        asyncio.run(anthropic_summarizer()(None, TURNS))
+    assert [r["max_tokens"] for r in sent["all"]] == [1024, 2048, 4096]
 
 
 def test_the_claude_code_summarizer_is_exported():

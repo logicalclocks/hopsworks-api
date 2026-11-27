@@ -29,7 +29,7 @@ from .. import _claude_code
 
 log = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "claude-haiku-4-5"
+DEFAULT_MODEL = "claude-haiku-5-5"
 #: The model :func:`claude_agents_summarizer` runs on: an alias the bundled Claude Code
 #: resolves to its current Haiku, rather than an id a build may predate.
 CLAUDE_CODE_DEFAULT_MODEL = "haiku"
@@ -124,7 +124,7 @@ def anthropic_summarizer(
     the same secret the agent already uses for its own model, instead of
     provisioning a second one for summarization.
 
-    Defaults to Haiku 4.5: this is a bounded rewrite of text the agent already
+    Defaults to Haiku 5.5: this is a bounded rewrite of text the agent already
     produced, and the cost lands on every Nth turn of every conversation. Pass
     ``model=`` for anything else. Not on Claude? See :func:`openai_summarizer`.
 
@@ -170,17 +170,74 @@ def anthropic_summarizer(
         if through_claude_code is not None:
             return await through_claude_code(previous, turns)
 
-        response = await client.messages.create(
-            model=model,
-            max_tokens=max_tokens,
-            system=system_prompt,
-            messages=[{"role": "user", "content": _user_message(previous, turns)}],
-        )
-        return "".join(
-            block.text for block in response.content if block.type == "text"
-        ).strip()
+        messages = [{"role": "user", "content": _user_message(previous, turns)}]
+
+        async def ask(limit: int) -> tuple[str, bool]:
+            response = await client.messages.create(
+                model=model,
+                max_tokens=limit,
+                system=system_prompt,
+                messages=messages,
+                extra_body=_anthropic_effort(model),
+            )
+            text = "".join(
+                block.text for block in response.content if block.type == "text"
+            ).strip()
+            return text, getattr(response, "stop_reason", None) == "max_tokens"
+
+        return await _within_budget(ask, max_tokens)
 
     return summarize
+
+
+def _anthropic_effort(model: str) -> dict | None:
+    """The effort to ask of a Claude model, as extra request fields; None for none.
+
+    Claude 5 models think by default, and their thinking counts against ``max_tokens``, so a
+    summary could be cut off. A rewrite needs little thought, so they get ``low``.
+    Earlier models think only when asked. The field goes in ``extra_body`` because the
+    Anthropic SDK takes ``output_config`` as an argument only from 0.77 onwards.
+    """
+    if _claude_major_version(model) >= 5:
+        return {"output_config": {"effort": "low"}}
+    return None
+
+
+def _claude_major_version(model: str) -> int:
+    """The major version in a Claude model id, 5 for claude-haiku-5-5; 0 when it names none."""
+    name = model.strip().lower().rsplit("/", 1)[-1]
+    if "claude-" not in name:
+        return 0
+    for part in name.split("claude-", 1)[1].split("-"):
+        if part.isdigit():
+            return int(part)
+    return 0
+
+
+async def _within_budget(ask, max_tokens: int) -> str:
+    """The summary ``ask(limit)`` writes, with the budget doubled when it runs out.
+
+    ``ask`` returns the text and whether the model stopped at the limit. A thinking model
+    spends part of the budget before it writes, and a summary cut off there must not
+    replace the history. Failing at once would not help either: the next turn retries the
+    same batch, longer. So the budget doubles, as the judges' does, up to four times
+    ``max_tokens``, and only then the summary fails.
+    """
+    limit = max_tokens
+    while True:
+        text, cut_off = await ask(limit)
+        if not cut_off:
+            return text
+        if limit >= max_tokens * 4:
+            raise RuntimeError(
+                f"the summary ran out of output tokens at {limit} and is not saved"
+            )
+        log.info(
+            "the summary ran out of output tokens at %d; asking again with %d",
+            limit,
+            limit * 2,
+        )
+        limit *= 2
 
 
 @public
@@ -228,7 +285,7 @@ def claude_agents_summarizer(
     return summarize
 
 
-OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
+OPENAI_DEFAULT_MODEL = "gpt-6-luna"
 
 
 @public
@@ -261,7 +318,7 @@ def openai_summarizer(
     reuse the secret its agent already holds. ``OPENAI_BASE_URL`` is honoured
     by the SDK itself when ``base_url`` is not given.
 
-    Defaults to gpt-4o-mini for the same reason the Claude one defaults to
+    Defaults to gpt-6-luna for the same reason the Claude one defaults to
     Haiku: a bounded rewrite that lands on every Nth turn of every conversation.
     """
     try:
@@ -288,22 +345,75 @@ def openai_summarizer(
             client = openai.AsyncOpenAI(**kwargs)
 
         return await _chat_completion(
-            client, model, max_tokens, system_prompt, previous, turns
+            client,
+            model,
+            max_tokens,
+            system_prompt,
+            previous,
+            turns,
+            token_limit=_openai_token_limit(model),
+            reasoning_effort=_openai_reasoning_effort(model),
         )
 
     return summarize
 
 
-async def _chat_completion(client, model, max_tokens, system_prompt, previous, turns):
-    response = await client.chat.completions.create(
-        model=model,
-        max_tokens=max_tokens,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": _user_message(previous, turns)},
-        ],
-    )
-    return (response.choices[0].message.content or "").strip()
+def _openai_token_limit(model: str) -> str:
+    """The token-limit parameter an OpenAI model accepts.
+
+    The reasoning models (the o-series and GPT-5 onwards) reject ``max_tokens`` with a 400 and take ``max_completion_tokens`` instead.
+    """
+    name = model.strip().lower().rsplit("/", 1)[-1]
+    if name.startswith(("o1", "o3", "o4", "gpt-5", "gpt-6")):
+        return "max_completion_tokens"
+    return "max_tokens"
+
+
+def _openai_reasoning_effort(model: str) -> str | None:
+    """The reasoning effort to ask of an OpenAI model, or None to leave its default.
+
+    GPT-6 models reason at ``medium`` by default, and their reasoning counts against the
+    completion budget, so a summary could run out of tokens before it is written. A
+    rewrite needs no reasoning: Luna and Terra take ``none``, while Sol and Astra reject it
+    and get ``low``, their lowest. Earlier models keep their default.
+    """
+    name = model.strip().lower().rsplit("/", 1)[-1]
+    if not name.startswith("gpt-6"):
+        return None
+    if "-sol" in name or "-astra" in name:
+        return "low"
+    return "none"
+
+
+async def _chat_completion(
+    client,
+    model,
+    max_tokens,
+    system_prompt,
+    previous,
+    turns,
+    token_limit="max_tokens",
+    reasoning_effort=None,
+):
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": _user_message(previous, turns)},
+    ]
+
+    async def ask(limit: int) -> tuple[str, bool]:
+        # In extra_body: the OpenAI SDK takes max_completion_tokens as an argument only
+        # from 1.45, and reasoning_effort only from 1.58.
+        body = {token_limit: limit}
+        if reasoning_effort is not None:
+            body["reasoning_effort"] = reasoning_effort
+        response = await client.chat.completions.create(
+            model=model, messages=messages, extra_body=body
+        )
+        choice = response.choices[0]
+        text = (choice.message.content or "").strip()
+        return text, getattr(choice, "finish_reason", None) == "length"
+
+    return await _within_budget(ask, max_tokens)
 
 
 def _resolve_hopsworks_deployment(deployment) -> tuple[str, str, str | bool]:

@@ -132,7 +132,7 @@ def test_the_helpdesk_example_keeps_its_llm_in_account_env_vars(
     assert done.exit_code == 0, done.output
     assert saved == {
         "LLM_URL": ("https://llm.example/v1", "PRIVATE"),
-        "LLM_MODEL": ("gpt-4o-mini", "PRIVATE"),
+        "LLM_MODEL": ("gpt-6-luna", "PRIVATE"),
         "LLM_API_KEY": (key, "PRIVATE"),
     }
     assert key not in done.output

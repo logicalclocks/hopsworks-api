@@ -741,7 +741,7 @@ page = agent.feedback(verdict="negative")
 print(page.count, [f.reviewer for f in page.feedback])
 
 # failure analysis: the job, the proposals, the clusters
-job = agents.jobs.ensure_review_job(agent.id, provider="anthropic", model="claude-sonnet-5",
+job = agents.jobs.ensure_review_job(agent.id, provider="anthropic", model="claude-sonnet-5-5",
                                     sources=["feedback", "errors", "judge"], read_source_code=True)
 run = job.analyse().wait()                       # or job.analyse(since=..., until=...) / trace_id=...
 for triage in agent.triage(page.feedback):

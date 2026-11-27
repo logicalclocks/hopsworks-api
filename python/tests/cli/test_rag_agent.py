@@ -217,6 +217,24 @@ def test_without_an_llm_the_agent_says_so_and_still_returns_the_context():
     assert len(state["sources"]) == 2 and len(state["events"]) == 2
 
 
+@pytest.mark.parametrize(
+    ("model", "temperature"),
+    [
+        # OpenAI's reasoning models set their own sampling
+        ("o3", None),
+        ("o4-mini", None),
+        ("openai/gpt-5.1", None),
+        ("gpt-6-luna", None),
+        # a deployment whose name only starts like one keeps temperature 0
+        ("o11y", 0),
+        ("gpt-oss-20b", 0),
+        ("llama-3.1-8b", 0),
+    ],
+)
+def test_temperature_zero_except_for_openai_reasoning_models(model, temperature):
+    assert agent._temperature(model).get("temperature") == temperature
+
+
 def test_a_small_corpus_answers_at_the_default_k():
     predict = _predict()
     calls = []

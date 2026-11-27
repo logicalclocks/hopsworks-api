@@ -477,6 +477,18 @@ class TestProviders:
                 entry["base_url"] = "https://x/v1"
             assert _parse_judge_config(entry).provider == key
 
+    def test_the_major_providers_default_to_their_current_models(self):
+        # the front offers the same defaults, so a judge saved there and one
+        # parsed here name the same model
+        assert PROVIDERS["anthropic"]["default_model"] == "claude-sonnet-5-5"
+        assert PROVIDERS["openai"]["default_model"] == "gpt-6.1-terra"
+        assert PROVIDERS["google"]["default_model"] == "gemini-3.8-flash"
+
+    def test_the_pairwise_judge_defaults_to_the_anthropic_default(self):
+        from hopsworks_agents.eval.judges import DEFAULT_MODEL
+
+        assert PROVIDERS["anthropic"]["default_model"] == DEFAULT_MODEL
+
 
 class TestWhereAJudgesKeyComesFrom:
     """Every provider's own SDK reads a conventional variable, so a key already.
@@ -598,12 +610,17 @@ class TestProviderRequestShape:
     @pytest.mark.parametrize(
         ("provider", "model"),
         [
+            ("anthropic", "claude-sonnet-5-5"),
+            ("anthropic", "claude-haiku-5-5"),
             ("anthropic", "claude-sonnet-5"),
             ("anthropic", "claude-opus-5"),
             ("anthropic", "claude-opus-4-8"),
             ("anthropic", "claude-mythos-preview"),
+            ("openai", "gpt-6.1-terra"),
+            ("openai", "gpt-6-luna"),
             ("openai", "gpt-5.6-terra"),
             ("custom", "openrouter/openai/o3-mini"),
+            ("google", "gemini-3.8-flash"),
             ("google", "gemini-3.6-flash"),
             ("google", "gemini-3.5-flash-lite"),
             ("deepseek", "deepseek-v4-pro"),
@@ -650,7 +667,7 @@ class TestProviderRequestShape:
 
     @pytest.mark.parametrize(
         "model",
-        ["gpt-5.6-terra", "openrouter/openai/o4-mini", "o3-mini"],
+        ["gpt-6.1-terra", "gpt-5.6-terra", "openrouter/openai/o4-mini", "o3-mini"],
     )
     def test_openai_reasoning_chat_uses_completion_token_limit(self, model):
         from hopsworks_agents.eval.judge_config import _ChatCompletionParameters
@@ -689,7 +706,110 @@ class TestProviderRequestShape:
 
         parameters = _AnthropicMessagesParameters("claude-sonnet-5", 0.0, 1500, "high")
         assert parameters._send(call) == "graded"
-        assert seen == [{"max_tokens": 1500, "output_config": {"effort": "high"}}]
+        assert seen == [
+            {"max_tokens": 1500, "extra_body": {"output_config": {"effort": "high"}}}
+        ]
+
+    @pytest.mark.parametrize("model", ["claude-sonnet-5-5", "claude-haiku-5-5"])
+    @pytest.mark.parametrize("effort", ["low", "medium", "high", "xhigh", "max"])
+    def test_the_current_anthropic_judges_take_every_effort_level(self, model, effort):
+        # The UI offers these levels for the models it lists (judgeProviders.ts).
+        from hopsworks_agents.eval.judge_config import _AnthropicMessagesParameters
+
+        seen = []
+
+        def call(**extra):
+            seen.append(extra)
+            return "graded"
+
+        parameters = _AnthropicMessagesParameters(model, 0.0, 1500, effort)
+        assert parameters._send(call) == "graded"
+        assert seen == [
+            {"max_tokens": 1500, "extra_body": {"output_config": {"effort": effort}}}
+        ]
+
+    def test_the_default_openai_judge_sends_reasoning_effort(self):
+        from hopsworks_agents.eval.judge_config import _ChatCompletionParameters
+
+        seen = []
+
+        def call(**extra):
+            seen.append(extra)
+            return "graded"
+
+        parameters = _ChatCompletionParameters(
+            "openai", "gpt-6.1-terra", 0.0, 1500, "xhigh"
+        )
+        assert parameters._send(call) == "graded"
+        assert seen == [
+            {
+                "max_completion_tokens": 1500,
+                "extra_body": {"reasoning_effort": "xhigh"},
+            }
+        ]
+
+    @pytest.mark.parametrize(
+        ("model", "effort", "sent"),
+        [
+            # every GPT-6 model rejects minimal and takes max
+            ("gpt-6-luna", "minimal", False),
+            ("gpt-6-luna", "max", True),
+            ("gpt-6-luna", "none", True),
+            ("gpt-6.1-terra", "none", True),
+            # Sol and Astra also reject none
+            ("gpt-6.2-sol", "none", False),
+            ("gpt-6.2-astra", "none", False),
+            ("gpt-6.2-sol", "low", True),
+            # GPT-5 keeps minimal
+            ("gpt-5.6-terra", "minimal", True),
+        ],
+    )
+    def test_openai_judges_send_only_the_efforts_the_model_takes(
+        self, model, effort, sent
+    ):
+        from hopsworks_agents.eval.judge_config import _ChatCompletionParameters
+
+        seen = []
+
+        def call(**extra):
+            seen.append(extra)
+            return "graded"
+
+        parameters = _ChatCompletionParameters("openai", model, 0.0, 1500, effort)
+        assert parameters._send(call) == "graded"
+        assert ("reasoning_effort" in seen[0].get("extra_body", {})) is sent
+
+    @pytest.mark.parametrize(
+        ("model", "effort", "sent"),
+        [
+            # Google lists minimal as unsupported on 3.8 Flash, and Gemini 3 thinking
+            # cannot be turned off
+            ("gemini-3.8-flash", "minimal", False),
+            ("gemini-3.8-flash", "none", False),
+            ("gemini-3.8-flash", "low", True),
+            ("gemini-3.8-flash", "high", True),
+            # Google's OpenAI-compatible endpoint runs minimal on Gemini 4 at low
+            ("gemini-4-neon", "minimal", True),
+            ("gemini-4-neon", "none", False),
+            ("gemini-4-carbon", "low", True),
+            # 3.6 Flash keeps minimal
+            ("gemini-3.6-flash", "minimal", True),
+        ],
+    )
+    def test_gemini_judges_send_only_the_efforts_the_model_takes(
+        self, model, effort, sent
+    ):
+        from hopsworks_agents.eval.judge_config import _ChatCompletionParameters
+
+        seen = []
+
+        def call(**extra):
+            seen.append(extra)
+            return "graded"
+
+        parameters = _ChatCompletionParameters("google", model, 0.0, 1500, effort)
+        assert parameters._send(call) == "graded"
+        assert ("reasoning_effort" in seen[0].get("extra_body", {})) is sent
 
     def test_anthropic_omits_effort_for_models_that_do_not_support_it(self):
         from hopsworks_agents.eval.judge_config import _AnthropicMessagesParameters
@@ -781,7 +901,8 @@ class TestProviderRequestShape:
         assert complete("grade this") == '{"passed": true}'
         assert budgets == [1500, 3000]
 
-    def test_openai_reasoning_effort_is_top_level(self):
+    def test_openai_reasoning_effort_goes_in_the_body(self):
+        # extra_body, not an argument: openai before 1.58 refuses the argument
         from hopsworks_agents.eval.judge_config import _ChatCompletionParameters
 
         seen = []
@@ -794,7 +915,12 @@ class TestProviderRequestShape:
             "openai", "gpt-5.6-terra", 0.0, 1500, "high"
         )
         assert parameters._send(call) == "graded"
-        assert seen == [{"max_completion_tokens": 1500, "reasoning_effort": "high"}]
+        assert seen == [
+            {
+                "max_completion_tokens": 1500,
+                "extra_body": {"reasoning_effort": "high"},
+            }
+        ]
 
     def test_non_reasoning_chat_omits_reasoning_effort(self):
         from hopsworks_agents.eval.judge_config import _ChatCompletionParameters
@@ -825,8 +951,10 @@ class TestProviderRequestShape:
         assert seen == [
             {
                 "max_tokens": 1500,
-                "reasoning_effort": "max",
-                "extra_body": {"thinking": {"type": "enabled"}},
+                "extra_body": {
+                    "thinking": {"type": "enabled"},
+                    "reasoning_effort": "max",
+                },
             }
         ]
 
@@ -857,7 +985,7 @@ class TestProviderRequestShape:
 
         def call(**extra):
             seen.append(extra)
-            if "reasoning_effort" in extra:
+            if "reasoning_effort" in extra.get("extra_body", {}):
                 raise RuntimeError(
                     "Error code: 400 - unsupported parameter reasoning_effort"
                 )
@@ -869,7 +997,11 @@ class TestProviderRequestShape:
         assert parameters._send(call) == "graded"
         assert parameters._send(call) == "graded"
         assert seen == [
-            {"max_tokens": 1500, "temperature": 0.0, "reasoning_effort": "high"},
+            {
+                "max_tokens": 1500,
+                "temperature": 0.0,
+                "extra_body": {"reasoning_effort": "high"},
+            },
             {"max_tokens": 1500, "temperature": 0.0},
             {"max_tokens": 1500, "temperature": 0.0},
         ]

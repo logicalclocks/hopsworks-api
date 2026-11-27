@@ -34,7 +34,7 @@ hops job logs <name> --stdout --tail 200    # the last execution's result (stdou
 
 ## Ask the user (only when state is ambiguous)
 - **The deliverable.** A report in `result.md`, rows written to a feature group, a Slack post? The prompt has to say where the result goes.
-- **Provider and model.** `claude` (default; model from the cluster's `agent_default_model`), `codex` (`gpt-*` models) or `copilot` (copilot's own ids such as `claude-sonnet-4.5`, or `auto`). Leave `model` empty for codex and copilot to take their own default.
+- **Provider and model.** `claude` (default; model from the cluster's `agent_default_model`), `codex` (`gpt-*` models) or `copilot` (copilot's own ids, or `auto`). Leave `model` empty for codex and copilot to take their own default.
 - **Permissions.** Start narrow: `READ_ONLY` for reporting, `OPERATOR` when it must run `hops`/`python` and write under `/hopsfs`. Custom lists only when a preset does not fit.
 - **Once or scheduled**, and the cron.
 - **Context.** Which feature groups, feature views, models, deployments or jobs it should know about (`refs`).
@@ -109,14 +109,14 @@ The UI form (**Agents → Agent Tasks → Create Agent Task**) has the same fiel
 |---|---|
 | `appName`, `prompt` | required; the prompt is the whole task specification |
 | `provider` | `claude` (default), `codex` or `copilot` |
-| `model` | `claude-*` for claude, `gpt-*` for codex, copilot's own ids (`claude-sonnet-4.5`, `auto`); the `agent_default_model` default applies to claude only |
+| `model` | `claude-*` for claude, `gpt-*` for codex, copilot's own ids or `auto`; the `agent_default_model` default applies to claude only |
 | `maxTurns` | claude only; default from `agent_default_max_turns` (50) |
 | `maxBudgetUsd` | claude only; max 100; the agent stops when spent |
 | `permissionPreset` / `permissions` | a preset name, or a custom list of `Bash(...)`, `Read(...)`, `Write(...)` patterns; a custom list overrides the preset |
 | `refs` | `[{"type": feature_group\|feature_view\|model\|deployment\|job, "name", "version"}]`; version required for FG/FV/model. Each becomes a JSON file under `/context/` (e.g. `/context/fg_transactions_v1.json`) and is listed in the agent's instructions |
 | `skillsRef` | project-relative `.md` (e.g. `Resources/agent-skills.md`) appended to the agent's instructions |
 | `hooks` | claude only: `[{"event": PreToolUse\|PostToolUse\|Stop, "matcher": "Bash(hops *)", "command": "..."}]` |
-| `cliArgs` | codex and copilot: extra flags appended after the provider's defaults (codex: `--search --model gpt-5`; copilot: `--deny-tool=shell(rm:*)`, and a copilot `--deny-tool` beats every allow) |
+| `cliArgs` | codex and copilot: extra flags appended after the provider's defaults (codex: `-c web_search=live --model gpt-6.2-sol`; copilot: `--deny-tool=shell(rm:*)`, and a copilot `--deny-tool` beats every allow) |
 | `environmentName` | `agent-job` (default) or a clone of it; anything else is rejected with 400 |
 | `envVars` | `["KEY=VALUE", ...]`; names with the `HOPS_`, `HOPSWORKS_`, `HOPSFS_`, `AGENT_` prefixes are reserved (400) |
 | `resourceConfig` | `{"cores", "memory" (MB), "gpus"}` |

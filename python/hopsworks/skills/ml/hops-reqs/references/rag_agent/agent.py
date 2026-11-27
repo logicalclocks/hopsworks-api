@@ -35,6 +35,7 @@ import contextlib
 import json
 import logging
 import os
+import re
 from typing import Any, TypedDict
 
 _logger = logging.getLogger("helpdesk_agent")
@@ -144,6 +145,18 @@ def context_prompt(state: State) -> str:
     )
 
 
+def _temperature(model: str) -> dict[str, float]:
+    """Temperature 0 for repeatable answers, left out for OpenAI's reasoning models.
+
+    The o-series, GPT-5 and GPT-6 set their own sampling, so they are sent none. Only
+    their whole ids match (o3, o4-mini, gpt-5.1), so a deployment named o11y keeps 0.
+    """
+    name = model.strip().lower().rsplit("/", 1)[-1]
+    if re.match(r"(o[134]|gpt-[56])([.-]|$)", name):
+        return {}
+    return {"temperature": 0}
+
+
 class Agent:
     """Loads the feature groups, the embedder and the LLM once; answers each request."""
 
@@ -168,12 +181,8 @@ class Agent:
             return None
         from langchain_openai import ChatOpenAI
 
-        return ChatOpenAI(
-            base_url=url,
-            api_key=key,
-            model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
-            temperature=0,
-        )
+        model = os.environ.get("LLM_MODEL", "gpt-6-luna")
+        return ChatOpenAI(base_url=url, api_key=key, model=model, **_temperature(model))
 
     def _graph(self):
         from langgraph.graph import END, START, StateGraph

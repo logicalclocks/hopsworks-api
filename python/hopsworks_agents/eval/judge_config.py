@@ -58,7 +58,8 @@ if TYPE_CHECKING:
 # contact with time — model names change faster than this file will. The UI asks
 # each provider what it currently offers rather than trusting these; they are
 # what the runner falls back to when a spec names no model at all.
-# Verified against provider documentation on 31 July 2026.
+# Verified against provider documentation on 31 July 2026; the OpenAI, Anthropic and Google defaults on
+# 27 November 2026.
 log = logging.getLogger(__name__)
 
 PROVIDERS: dict[str, dict[str, str]] = {
@@ -67,14 +68,14 @@ PROVIDERS: dict[str, dict[str, str]] = {
         "adapter": "openai",
         "env_var": "OPENAI_API_KEY",
         "base_url": "",
-        "default_model": "gpt-5.6-terra",
+        "default_model": "gpt-6.1-terra",
     },
     "anthropic": {
         "label": "Anthropic",
         "adapter": "anthropic",
         "env_var": "ANTHROPIC_API_KEY",
         "base_url": "",
-        "default_model": "claude-sonnet-5",
+        "default_model": "claude-sonnet-5-5",
     },
     "google": {
         "label": "Google Gemini",
@@ -82,7 +83,7 @@ PROVIDERS: dict[str, dict[str, str]] = {
         "env_var": "GEMINI_API_KEY",
         # Gemini's OpenAI-compatible surface, so it needs no separate client
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
-        "default_model": "gemini-3.6-flash",
+        "default_model": "gemini-3.8-flash",
     },
     "mistral": {
         "label": "Mistral AI",
@@ -658,7 +659,7 @@ def _completer_for(config: JudgeConfig, api_key: str) -> Callable[[str], str]:
 
             def call(**extra: Any) -> str:
                 response = client.chat.completions.create(
-                    model=model or "gpt-5.6-terra",
+                    model=model or "gpt-6.1-terra",
                     messages=[{"role": "user", "content": prompt}],
                     **extra,
                 )
@@ -685,7 +686,7 @@ def _completer_for(config: JudgeConfig, api_key: str) -> Callable[[str], str]:
                 "honour, so it cannot run on the Claude Code login; set "
                 f"{registry['env_var']} for it, or drop the route"
             )
-        chosen = model or "claude-sonnet-5"
+        chosen = model or "claude-sonnet-5-5"
         effort = config.reasoning_effort
 
         def complete_claude_code(prompt: str) -> str:
@@ -704,7 +705,7 @@ def _completer_for(config: JudgeConfig, api_key: str) -> Callable[[str], str]:
 
         def call(**extra: Any) -> str:
             response = client.messages.create(
-                model=model or "claude-sonnet-5",
+                model=model or "claude-sonnet-5-5",
                 messages=[{"role": "user", "content": prompt}],
                 **extra,
             )
@@ -808,7 +809,12 @@ class _TemperatureParameter:
 
 
 class _ReasoningEffortParameter:
-    """Provider-specific kwargs for reasoning effort, with one rejection retry."""
+    """Provider-specific kwargs for reasoning effort, with one rejection retry.
+
+    The fields go in ``extra_body``: the SDKs take them as arguments only from anthropic
+    0.77 (``output_config``) and openai 1.58 (``reasoning_effort``), and the eval extra
+    allows anthropic 0.40 and openai 1.0, which would refuse them before sending.
+    """
 
     def __init__(self, extra: dict[str, Any]):
         self._extra = extra
@@ -817,7 +823,7 @@ class _ReasoningEffortParameter:
     def _for_anthropic(cls, model: str, effort: str) -> _ReasoningEffortParameter:
         if not _supports_anthropic_reasoning_effort(model, effort):
             return cls({})
-        return cls({"output_config": {"effort": effort}})
+        return cls({"extra_body": {"output_config": {"effort": effort}}})
 
     @classmethod
     def _for_chat_completion(
@@ -1084,13 +1090,11 @@ def _chat_completion_reasoning_effort_extra(
         return {}
     if provider == "deepseek":
         thinking_type = "disabled" if effort == "none" else "enabled"
-        extra: dict[str, Any] = {
-            "extra_body": {"thinking": {"type": thinking_type}},
-        }
+        body: dict[str, Any] = {"thinking": {"type": thinking_type}}
         if effort != "none":
-            extra["reasoning_effort"] = effort
-        return extra
-    return {"reasoning_effort": effort}
+            body["reasoning_effort"] = effort
+        return {"extra_body": body}
+    return {"extra_body": {"reasoning_effort": effort}}
 
 
 def _supports_chat_completion_reasoning_effort(
@@ -1101,22 +1105,13 @@ def _supports_chat_completion_reasoning_effort(
     if not effort:
         return False
     if provider == "openai":
-        return effort in {
-            "none",
-            "minimal",
-            "low",
-            "medium",
-            "high",
-            "xhigh",
-        } and _is_openai_reasoning_model(model)
+        if not _is_openai_reasoning_model(model):
+            return False
+        return effort in _openai_reasoning_efforts(model)
     if provider == "google":
-        return effort in {
-            "none",
-            "minimal",
-            "low",
-            "medium",
-            "high",
-        } and _has_model_prefix(model, "gemini-")
+        if not _has_model_prefix(model, "gemini-"):
+            return False
+        return effort in _gemini_reasoning_efforts(model)
     if provider == "deepseek":
         return effort in {
             "none",
@@ -1159,9 +1154,9 @@ def _supports_chat_completion_reasoning_effort(
 
 def _supports_inferred_chat_reasoning_effort(model: str, effort: str) -> bool:
     if _is_openai_reasoning_model(model):
-        return effort in {"none", "minimal", "low", "medium", "high", "xhigh"}
+        return effort in _openai_reasoning_efforts(model)
     if _has_model_prefix(model, "gemini-"):
-        return effort in {"none", "minimal", "low", "medium", "high"}
+        return effort in _gemini_reasoning_efforts(model)
     if _is_deepseek_thinking_model(model):
         return effort in {"none", "low", "medium", "high", "xhigh", "max"}
     if _has_model_prefix(model, "kimi-", "qwen", "glm", "minimax", "gpt-oss"):
@@ -1188,6 +1183,7 @@ def _supports_anthropic_reasoning_effort(model: str, effort: str) -> bool:
         return _has_model_prefix(
             model,
             "claude-fable-5",
+            "claude-haiku-5",
             "claude-mythos-5",
             "claude-opus-5",
             "claude-opus-4-8",
@@ -1197,6 +1193,7 @@ def _supports_anthropic_reasoning_effort(model: str, effort: str) -> bool:
     return _has_model_prefix(
         model,
         "claude-fable-5",
+        "claude-haiku-5",
         "claude-mythos-5",
         "claude-mythos-preview",
         "claude-opus-5",
@@ -1227,7 +1224,33 @@ def _omits_temperature(provider: str, model: str) -> bool:
 
 
 def _is_openai_reasoning_model(model: str) -> bool:
-    return _has_model_prefix(model, "o1", "o3", "o4", "gpt-5")
+    return _has_model_prefix(model, "o1", "o3", "o4", "gpt-5", "gpt-6")
+
+
+def _openai_reasoning_efforts(model: str) -> set[str]:
+    """The reasoning efforts an OpenAI reasoning model accepts.
+
+    GPT-6 takes none to max but not minimal, and its Sol and Astra models reject none.
+    """
+    if not _has_model_prefix(model, "gpt-6"):
+        return {"none", "minimal", "low", "medium", "high", "xhigh"}
+    if any("-sol" in name or "-astra" in name for name in _model_identifiers(model)):
+        return {"low", "medium", "high", "xhigh", "max"}
+    return {"none", "low", "medium", "high", "xhigh", "max"}
+
+
+def _gemini_reasoning_efforts(model: str) -> set[str]:
+    """The reasoning efforts a Gemini model accepts.
+
+    Gemini 3.8 Flash and Gemini 4 think at low to high and cannot turn thinking off.
+    Google lists minimal as unsupported on 3.8 Flash, while its OpenAI-compatible
+    endpoint runs minimal on Gemini 4 at low, so a judge saved with minimal keeps it.
+    """
+    if _has_model_prefix(model, "gemini-3.8"):
+        return {"low", "medium", "high"}
+    if _has_model_prefix(model, "gemini-4"):
+        return {"minimal", "low", "medium", "high"}
+    return {"none", "minimal", "low", "medium", "high"}
 
 
 def _is_claude_fixed_sampling_model(model: str) -> bool:
