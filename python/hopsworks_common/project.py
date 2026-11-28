@@ -535,6 +535,60 @@ class Project:
         self._owner = email
 
     @public
+    def invite_member(self, email: str, role: str) -> dict:
+        """Invite an email address with no Hopsworks account to the project.
+
+        Once an account with that address is activated and its email is proven, it becomes a member with `role`.
+        See [`ProjectMembersApi.invite_member`][hopsworks_common.core.project_members_api.ProjectMembersApi.invite_member].
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            project.invite_member("dana@example.com", "Data scientist")
+            ```
+
+        Parameters:
+            email: Email address to invite.
+            role: The project role it gets, one of `Data owner`, `Data scientist`, `Observer`,
+                `Feature store restricted`. Matched regardless of case.
+
+        Returns:
+            The pending invite: `email`, `role`, `inviter`, `created` and `expires`.
+
+        Raises:
+            ValueError: If `role` is not a built-in project role.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if a user with that email exists (add them instead).
+        """
+        return self._project_members_api.invite_member(email, role)
+
+    @public
+    def get_invites(self) -> list[dict]:
+        """Get the pending invites of the project.
+
+        Returns:
+            One dict per pending invite: `email`, `role`, `inviter`, `created` and `expires`.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._project_members_api.get_invites()
+
+    @public
+    def cancel_invite(self, email: str) -> None:
+        """Cancel the pending invite of an email address.
+
+        Parameters:
+            email: The invited email address.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the project has no pending invite for `email`.
+        """
+        self._project_members_api.cancel_invite(email)
+
+    @public
     def get_search_api(self) -> search_api.SearchApi:
         """Get the search api for the project.
 
