@@ -1,4 +1,4 @@
-"""``hops project`` — list available projects, switch the active one, and show its cost."""
+"""``hops project``: list available projects, switch the active one, show its cost, and leave one."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ def project_list(ctx: click.Context) -> None:
         ctx: Click context carrying the resolved ``HopsConfig``.
     """
     cfg = _require_auth(ctx)
-    auth.login(host=cfg.host or "", api_key_value=cfg.api_key, project=cfg.project)
+    session.get_project(ctx)
     from hopsworks_common.core import project_api  # noqa: PLC0415
 
     # One request: the team list already carries each project's id and name,
@@ -58,7 +58,11 @@ def project_use(ctx: click.Context, name: str) -> None:
     cfg = _require_auth(ctx)
     try:
         project = auth.login(
-            host=cfg.host or "", api_key_value=cfg.api_key, project=name
+            host=cfg.host or "",
+            api_key_value=cfg.api_key,
+            project=name,
+            internal=cfg.internal,
+            hostname_verification=cfg.hostname_verification,
         )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(
@@ -105,17 +109,73 @@ def project_info(ctx: click.Context) -> None:
         ctx: Click context carrying the resolved ``HopsConfig``.
     """
     cfg = _require_auth(ctx)
-    project = auth.login(
-        host=cfg.host or "", api_key_value=cfg.api_key, project=cfg.project
-    )
+    if not cfg.project and not cfg.internal:
+        # The SDK would prompt for a project and wait on stdin.
+        raise click.ClickException("No active project. Run `hops project use <name>`.")
+    project = session.get_project(ctx)
+    team = _team(getattr(project, "id", cfg.project_id))
     rows = [
         ["Host", cfg.host or "?"],
         ["Project", getattr(project, "name", cfg.project or "?")],
         ["Project ID", str(getattr(project, "id", cfg.project_id or "?"))],
+        ["Owner", _owner_name(team) or "?"],
+        ["Role", (team or {}).get("teamRole") or "?"],
         ["Feature store ID", str(cfg.feature_store_id or "?")],
         ["Mode", cfg.mode()],
     ]
     output.print_table(["FIELD", "VALUE"], rows)
+
+
+@project_group.command("leave")
+@click.option("--yes", is_flag=True, help="Leave without asking to confirm.")
+@click.pass_context
+def project_leave(ctx: click.Context, yes: bool) -> None:
+    """Leave the active project, as a member who does not own it.
+
+    The owner cannot leave: Hopsworks refuses it. What you made in the project
+    stays, and your home directory there goes to a data owner.
+
+    Args:
+        ctx: Click context carrying the resolved ``HopsConfig``.
+        yes: Skip the confirmation prompt.
+    """
+    cfg = _require_auth(ctx)
+    if not cfg.project and not cfg.internal:
+        # The SDK would prompt for a project and wait on stdin.
+        raise click.ClickException("No active project. Run `hops project use <name>`.")
+    project = session.get_project(ctx)
+    name = getattr(project, "name", cfg.project or "?")
+    from hopsworks_common import client  # noqa: PLC0415
+
+    email = (
+        client._get_instance()._send_request("GET", ["users", "profile"]).get("email")
+    )
+    if not email:
+        raise click.ClickException("Could not read your user profile.")
+    if not yes:
+        click.confirm(f"Leave {name}?", abort=True)
+    try:
+        project.remove_member(email)
+    except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
+        raise click.ClickException(f"Could not leave {name}: {exc}") from exc
+    config.forget_project(cfg.host, name)
+    output.success("Left %s", name)
+
+
+def _team(project_id: Any) -> dict | None:
+    """The user's team row for the project: their role and the project's owner."""
+    from hopsworks_common.core import project_api  # noqa: PLC0415
+
+    for team in project_api.ProjectApi()._get_project_teams() or []:
+        if team.get("project", {}).get("id") == project_id:
+            return team
+    return None
+
+
+def _owner_name(team: dict | None) -> str | None:
+    owner = (team or {}).get("project", {}).get("owner") or {}
+    name = " ".join(p for p in (owner.get("fname"), owner.get("lname")) if p)
+    return name or owner.get("username")
 
 
 @project_group.command("costs")
