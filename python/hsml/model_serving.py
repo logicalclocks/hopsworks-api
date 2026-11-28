@@ -710,6 +710,7 @@ class ModelServing:
         memory: DeploymentMemoryConfig | dict | None = None,
         framework: str | None = None,
         chat_config: dict[str, Any] | str | None = None,
+        public_card: bool | None = None,
     ) -> Deployment:
         """Deploy a Python script or package as an agent.
 
@@ -781,6 +782,11 @@ class ModelServing:
                 Chat contract of the agent, telling the chat panel and chat clients how to talk to it.
                 A protocol name (`"hopsworks"`, `"openai"`) or a dict with `protocol` and, for a custom endpoint (`simple`/`generic`), `path`, `message_field_in` and `message_field_name`.
                 When omitted, a new agent whose local entry builds an `AgentApp` gets `"hopsworks"`, and an existing agent keeps its contract.
+            public_card:
+                Whether anyone may read the agent's A2A Agent Card at its hostname without a credential, so other agents and A2A clients can discover it; every other request still needs an API key.
+                The cluster administrator must allow public cards, or the backend refuses `True`.
+                When omitted, a new agent's card needs a credential and an existing agent keeps its setting.
+                See [`Predictor.a2a_public_card`][hsml.predictor.Predictor.a2a_public_card].
 
         Returns:
             The deployment metadata object.
@@ -910,6 +916,7 @@ class ModelServing:
             chat_config = {"protocol": "hopsworks"}
         predictor._agent_framework = framework
         predictor._chat_config = chat_config
+        predictor._a2a_public_card = public_card
         if existing is not None:
             # Preserve identity and server-assigned version so save() updates the
             # existing record instead of creating a new one.
@@ -926,6 +933,9 @@ class ModelServing:
             # already preserved by the backend.
             if framework is None:
                 predictor._agent_framework = existing.predictor.agent_framework
+            # And the public card switch, which the backend stores as sent.
+            if public_card is None:
+                predictor._a2a_public_card = existing.predictor.a2a_public_card
             existing.predictor = predictor
             existing.description = description
             existing.save()

@@ -1256,6 +1256,66 @@ class TestDeployAgentFrameworkAndChatConfig:
         assert predictor._chat_config is None
         existing.save.assert_called_once()
 
+    def test_public_card_is_sent(self, ms, mocker, stub_apis, tmp_path):
+        # Arrange
+        script = tmp_path / "agent.py"
+        script.write_text("print('hi')")
+
+        # Act
+        predictor = self._deploy(ms, mocker, script, public_card=True)
+
+        # Assert
+        assert predictor._a2a_public_card is True
+
+    def test_a_new_agent_without_public_card_says_nothing(
+        self, ms, mocker, stub_apis, tmp_path
+    ):
+        # Arrange
+        script = tmp_path / "agent.py"
+        script.write_text("print('hi')")
+
+        # Act
+        predictor = self._deploy(ms, mocker, script)
+
+        # Assert
+        assert predictor._a2a_public_card is None
+
+    def test_redeploy_keeps_the_stored_public_card(
+        self, ms, mocker, stub_apis, tmp_path
+    ):
+        # The backend stores the switch as sent, so omitting it on a redeploy
+        # must not turn a public card off.
+        # Arrange
+        script = tmp_path / "agent.py"
+        script.write_text("print('hi')")
+        existing = mocker.MagicMock()
+        existing.predictor.memory = None
+        existing.predictor.a2a_public_card = True
+
+        # Act
+        predictor = self._deploy(ms, mocker, script, existing=existing)
+
+        # Assert
+        assert predictor._a2a_public_card is True
+
+    def test_redeploy_can_turn_the_public_card_off(
+        self, ms, mocker, stub_apis, tmp_path
+    ):
+        # Arrange
+        script = tmp_path / "agent.py"
+        script.write_text("print('hi')")
+        existing = mocker.MagicMock()
+        existing.predictor.memory = None
+        existing.predictor.a2a_public_card = True
+
+        # Act
+        predictor = self._deploy(
+            ms, mocker, script, existing=existing, public_card=False
+        )
+
+        # Assert
+        assert predictor._a2a_public_card is False
+
     def test_git_source_is_not_read(self, ms, mocker, stub_apis):
         # Act
         predictor = self._deploy(

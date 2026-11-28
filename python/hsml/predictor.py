@@ -120,6 +120,7 @@ class Predictor(DeployableComponent):
         agent_framework: str | None = None,
         chat_config: dict[str, Any] | None = None,
         loading_strategy: str | None = None,
+        a2a_public_card: bool | None = None,
         **kwargs,
     ):
         self._missing_mandatory_tags = missing_mandatory_tags or []
@@ -188,6 +189,7 @@ class Predictor(DeployableComponent):
         self._memory = util._get_obj_from_json(memory, DeploymentMemoryConfig)
         self._agent_framework = agent_framework
         self._chat_config = chat_config
+        self._a2a_public_card = a2a_public_card
         self._feature_logging = util._get_obj_from_json(
             feature_logging, DeploymentLoggingConfig
         )
@@ -582,6 +584,10 @@ class Predictor(DeployableComponent):
         kwargs["chat_config"] = util._extract_field_from_json(
             json_decamelized, "chat_config"
         )
+        # humps splits the digit off: a2aPublicCard decamelizes to a_2a_public_card
+        kwargs["a2a_public_card"] = util._extract_field_from_json(
+            json_decamelized, ["a2a_public_card", "a_2a_public_card"]
+        )
         kwargs["feature_logging"] = util._extract_field_from_json(
             json_decamelized,
             ["feature_logging", "feature_logging_config"],
@@ -729,6 +735,8 @@ class Predictor(DeployableComponent):
             }
         if self._agent_framework is not None:
             predictor_dict = {**predictor_dict, "agentFramework": self._agent_framework}
+        if self._a2a_public_card is not None:
+            predictor_dict = {**predictor_dict, "a2aPublicCard": self._a2a_public_card}
         if self._chat_config is not None:
             # Only the contract's own field names are camelized; the keys inside extraQuery and
             # extraBody are the agent's and go out as given.
@@ -983,6 +991,22 @@ class Predictor(DeployableComponent):
     @chat_config.setter
     def chat_config(self, chat_config: dict[str, Any] | None):
         self._chat_config = chat_config
+
+    @public
+    @property
+    def a2a_public_card(self) -> bool | None:
+        """Whether anyone may read the agent's A2A Agent Card without a credential.
+
+        When `True`, the agent's hostname answers `GET /.well-known/agent-card.json` without authentication, so a client can discover the agent before it holds an API key; every other request still needs one, and the card served anonymously is the public card, never the extended one.
+        A cluster administrator decides whether deployments may opt in (`agents.publicCards.allowed`); the backend refuses `True` otherwise.
+        It takes effect on a cluster that serves agent hostnames.
+        `None` means the deployment does not say, which the backend stores as `False`; it is only meaningful for agent deployments.
+        """
+        return self._a2a_public_card
+
+    @a2a_public_card.setter
+    def a2a_public_card(self, a2a_public_card: bool | None):
+        self._a2a_public_card = a2a_public_card
 
     @public
     @property

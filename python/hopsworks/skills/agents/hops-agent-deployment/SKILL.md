@@ -240,6 +240,12 @@ On a redeploy that omits them, the framework is the code's literal when it has o
 So a framework changed in the UI is replaced on the next bare redeploy when the code names a different one: change it in the code, or pass `framework=`.
 Check with `hops agent info my_agent` (the **Framework** and **Chat contract** rows) or `agent.deployment.predictor.agent_framework` / `.chat_config`.
 
+### A2A discovery: hostname, public card, gRPC
+
+Where the administrator set up agent hostnames, an agent is reached at `https://<deployment>-<serving id>.<domain>` and its card at `/.well-known/agent-card.json` there; the manifest's `a2a.hostname` names it, or `a2a.hostname_off` says why there is none.
+`deploy_agent(..., public_card=True)` (CLI `--public-card`) lets anyone read that card without a credential, when the cluster allows public cards; every other request still needs the API key, and a redeploy that omits it keeps the setting.
+A Standard-mode agent on such a cluster also serves A2A over gRPC at `<host>:443`, listed on the card; nothing to do in the agent code.
+
 `deploy_agent` here is model serving's call (`project.get_model_serving().deploy_agent(...)` takes the same arguments) returning an `Agent`. `agent.deployment` is the `hsml` deployment for resources, scaling and describe.
 
 An agent scales like a model deployment: pass `scaling_configuration=PredictorScalingConfig(...)` to `deploy_agent` (instances, the metric and its target; `min_instances=0` rests at zero when idle and wakes on the first request, the SDK's default minimum being 1). The choices and their rules are in [hops-autoscaling](../../scaling/hops-autoscaling/SKILL.md).

@@ -131,6 +131,13 @@ def agent_info(ctx: click.Context, name: str) -> None:
     help="How the chat panel talks to the agent; a new AgentApp agent gets "
     "'hopsworks' when omitted, an existing agent keeps its contract.",
 )
+@click.option(
+    "--public-card/--no-public-card",
+    default=None,
+    help="Whether anyone may read the agent's A2A Agent Card without a credential "
+    "(the cluster must allow it); a new agent's card needs one when omitted, an "
+    "existing agent keeps its setting.",
+)
 @click.pass_context
 def agent_create(
     ctx: click.Context,
@@ -143,6 +150,7 @@ def agent_create(
     memory: int | None,
     framework: str | None,
     chat_contract: str | None,
+    public_card: bool | None,
 ) -> None:
     """Create (or update) an agent from a local script or package.
 
@@ -162,6 +170,7 @@ def agent_create(
         memory: Memory limit in MB.
         framework: Agent framework.
         chat_contract: Chat contract protocol.
+        public_card: Whether the Agent Card is readable without a credential.
     """
     ms = _get_model_serving(ctx)
     try:
@@ -175,6 +184,7 @@ def agent_create(
             resources=_memory_limit(memory),
             framework=framework,
             chat_config=chat_contract,
+            public_card=public_card,
         )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Agent create failed: {exc}") from exc
@@ -554,6 +564,7 @@ def _agent_to_dict(d: Any) -> dict[str, Any]:
         "api_protocol": getattr(d, "api_protocol", None),
         "agent_framework": _predictor_attr(d, "agent_framework", None),
         "chat_config": _predictor_attr(d, "chat_config", None),
+        "a2a_public_card": _predictor_attr(d, "a2a_public_card", None),
         "description": getattr(d, "description", None),
         "status": _deployment_status(d),
     }

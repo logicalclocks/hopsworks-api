@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from unittest import mock
 
+import pytest
 from click.testing import CliRunner
 from hopsworks.cli.main import cli
 
@@ -331,6 +332,21 @@ def test_agent_create_leaves_framework_and_chat_contract_to_the_sdk(
     assert result.exit_code == 0, result.output
     assert ms.deploy_agent.call_args.kwargs["framework"] is None
     assert ms.deploy_agent.call_args.kwargs["chat_config"] is None
+    assert ms.deploy_agent.call_args.kwargs["public_card"] is None
+
+
+@pytest.mark.parametrize(
+    ("flag", "value"), [("--public-card", True), ("--no-public-card", False)]
+)
+def test_agent_create_passes_public_card(mock_project, tmp_path, flag, value):
+    ms = mock.MagicMock()
+    ms.deploy_agent.return_value = _agent_mock("entry")
+    mock_project.get_model_serving.return_value = ms
+    entry = tmp_path / "entry.py"
+    entry.write_text("")
+    result = CliRunner().invoke(cli, ["agent", "create", str(entry), flag])
+    assert result.exit_code == 0, result.output
+    assert ms.deploy_agent.call_args.kwargs["public_card"] is value
 
 
 def test_agent_create_rejects_an_unknown_framework(mock_project, tmp_path):

@@ -135,6 +135,58 @@ class TestPredictor:
             "user_tag": "x",
         }
 
+    @pytest.mark.parametrize("value", [True, False])
+    def test_a2a_public_card_round_trip(self, mocker, backend_fixtures, value):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        json = copy.deepcopy(
+            backend_fixtures["predictor"]["get_deployments_singleton"]["response"]
+        )
+        # camelCase as the backend sends it; humps decamelizes it to a_2a_public_card
+        json["items"][0]["a2aPublicCard"] = value
+
+        # Act
+        pred = predictor.Predictor.from_response_json(json)[0]
+        d = pred.to_dict()
+
+        # Assert
+        assert pred.a2a_public_card is value
+        assert d["a2aPublicCard"] is value
+
+    def test_a2a_public_card_unset_is_not_sent(self, mocker, backend_fixtures):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        json = copy.deepcopy(
+            backend_fixtures["predictor"]["get_deployments_singleton"]["response"]
+        )
+        # a model deployment: the backend sends null
+        json["items"][0]["a2aPublicCard"] = None
+
+        # Act
+        pred = predictor.Predictor.from_response_json(json)[0]
+
+        # Assert
+        assert pred.a2a_public_card is None
+        assert "a2aPublicCard" not in pred.to_dict()
+
+    def test_a2a_public_card_survives_update_from_response(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        json = copy.deepcopy(
+            backend_fixtures["predictor"]["get_deployments_singleton"]["response"]
+        )
+        item = json["items"][0]
+        pred = predictor.Predictor.from_response_json(copy.deepcopy(item))
+        item["a2aPublicCard"] = True
+
+        # Act
+        pred.update_from_response_json(item)
+
+        # Assert
+        assert pred.a2a_public_card is True
+
     def test_agent_fields_come_after_the_existing_arguments(self):
         # Callers that pass the constructor's arguments by position must keep their bindings.
         import inspect
@@ -142,6 +194,7 @@ class TestPredictor:
         params = list(inspect.signature(predictor.Predictor.__init__).parameters)
         assert params.index("agent_framework") > params.index("llm_gateway")
         assert params.index("chat_config") > params.index("llm_gateway")
+        assert params.index("a2a_public_card") > params.index("loading_strategy")
 
     def test_to_dict_omits_unset_agent_fields(self, mocker):
         # Arrange

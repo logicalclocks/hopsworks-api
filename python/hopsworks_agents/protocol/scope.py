@@ -14,6 +14,16 @@ A private agent refuses a request that arrives without it, rather than taking
 the caller for an anonymous one, so a misconfigured gateway cannot merge every
 caller into one.
 
+The header alone is not proof: a workload that reaches the pod directly,
+around the gateway, can send one. So the authenticator also signs it, with
+a key of this deployment's that the platform gives only to its pods
+(``HOPSWORKS_AGENT_PRINCIPAL_KEY``): HMAC-SHA256 over the principal, the
+auth kind and the time, in ``x-hopsworks-principal-signature`` and
+``x-hopsworks-principal-time``. Where the platform gave the key, a principal
+without a valid signature from the last five minutes is no principal, and a
+private agent refuses the request. Without the key (an older platform, a
+local run) the header is taken as it comes.
+
 The separation is made at the storage boundary, in one place: every
 conversation id and subject is namespaced by the caller on its way into the
 memory store and the pending-questions store, and the namespace is taken off
@@ -23,7 +33,11 @@ The handler and the wire keep seeing the plain ids, so no agent code changes.
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import os
+import time
 from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
@@ -39,6 +53,15 @@ if TYPE_CHECKING:
 
 #: Who the gateway verified the caller to be.
 PRINCIPAL_HEADER = "x-hopsworks-principal"
+#: How the gateway verified the caller (apikey, jwt), signed with the principal.
+AUTH_KIND_HEADER = "x-hopsworks-auth-kind"
+#: The authenticator's signature over the principal headers, and when it made it.
+SIGNATURE_HEADER = "x-hopsworks-principal-signature"
+TIME_HEADER = "x-hopsworks-principal-time"
+#: This deployment's key for that signature, set by the platform.
+PRINCIPAL_KEY_ENV = "HOPSWORKS_AGENT_PRINCIPAL_KEY"
+#: How old a signature may be, either way, in seconds.
+SIGNATURE_MAX_AGE_S = 300
 #: The caller of a local run, which has no gateway to say who it is.
 ANONYMOUS = "anonymous"
 #: What separates the caller from the id it namespaces.
@@ -61,8 +84,40 @@ def _on_platform() -> bool:
     return bool(os.environ.get("DEPLOYMENT_ID"))
 
 
+def _principal_key() -> bytes | None:
+    """This deployment's key for the gateway's signature, or None where the platform gave none."""
+    raw = os.environ.get(PRINCIPAL_KEY_ENV) or ""
+    if not raw:
+        return None
+    try:
+        return base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4))
+    except (ValueError, TypeError):
+        return None
+
+
+def _signed(headers: Any, principal: str, key: bytes) -> bool:
+    """Whether the gateway signed this principal with this deployment's key, recently."""
+    try:
+        signature = str(headers.get(SIGNATURE_HEADER) or "")
+        stamp = str(headers.get(TIME_HEADER) or "")
+        kind = str(headers.get(AUTH_KIND_HEADER) or "")
+        at = int(stamp)
+    except (AttributeError, ValueError):
+        return False
+    if not signature or abs(time.time() - at) > SIGNATURE_MAX_AGE_S:
+        return False
+    expected = base64.urlsafe_b64encode(
+        hmac.new(key, f"{principal}\n{kind}\n{stamp}".encode(), hashlib.sha256).digest()
+    ).rstrip(b"=")
+    return hmac.compare_digest(expected, signature.encode())
+
+
 def _header_principal(headers: Any) -> str | None:
-    """The verified caller a request names, or None when the gateway said nothing."""
+    """The verified caller a request names, or None when the gateway said nothing.
+
+    Where the platform gave this deployment its key, a principal the gateway
+    did not sign is None too: another workload made it up.
+    """
     if not headers:
         return None
     try:
@@ -70,7 +125,12 @@ def _header_principal(headers: Any) -> str | None:
     except AttributeError:
         return None
     value = str(value).strip() if value else ""
-    return value or None
+    if not value:
+        return None
+    key = _principal_key()
+    if key is not None and not _signed(headers, value, key):
+        return None
+    return value
 
 
 def _principal_of(headers: Any) -> str:
@@ -376,6 +436,14 @@ class _PrincipalGate:
     Sets the caller for the stores below it.
     The routes anyone may read without being someone, the card, the manifest
     and the probes, pass through unscoped.
+    The Agent Card in particular is served to a request that names no caller:
+    when the deployment opted into a public card
+    (``HOPSWORKS_AGENT_PUBLIC_CARD=true``) the gateway sends anonymous requests
+    for it, and the platform's agent directory reads it in-cluster. It is the
+    public card; the extended one is asked for under ``/a2a`` and stays gated.
+    A principal header that is present but empty (how the gateway blanks a
+    client's copy on an unauthenticated route) names no caller either.
+    gRPC calls are gated the same way, from their metadata (``a2a_grpc``).
     """
 
     #: Path prefixes that open or read a caller's conversations and tasks.

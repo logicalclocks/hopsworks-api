@@ -15,6 +15,8 @@ Served, under the app's base URL:
 - ``POST /a2a``: the JSON-RPC binding.
 - ``/a2a/rest/...``: the HTTP+JSON binding (``/message:send``, ``/tasks/{id}``
   and the rest), generated from the same handler.
+- gRPC, on its own port, when the platform routes it to the deployment
+  (``HOPSWORKS_AGENT_GRPC_URL``); see ``a2a_grpc``.
 
 What Hopsworks adds rides in ``metadata.hopsworks`` on messages, status updates
 and tasks, declared as a non-required extension on the card, so a client that
@@ -146,6 +148,16 @@ FETCH_OPERATION_TIMEOUT_S = 10.0
 #: addresses: comma-separated hostnames or CIDRs, set by the platform. The same
 #: list the push sender honours.
 INTERNAL_ALLOW_ENV = "HOPSWORKS_AGENT_PUSH_INTERNAL_ALLOW"
+#: The PEM of the CA that signed the agent hostnames' certificate, set by the
+#: platform when the cluster holds one (a private or self-signed issuer).
+GATEWAY_CA_ENV = "HOPSWORKS_AGENT_GATEWAY_CA"
+#: Where the platform says a client reaches the agent over gRPC (``host:port``).
+GRPC_URL_ENV = "HOPSWORKS_AGENT_GRPC_URL"
+#: ``true`` when the platform serves the Agent Card at the agent's hostname
+#: without a credential.
+PUBLIC_CARD_ENV = "HOPSWORKS_AGENT_PUBLIC_CARD"
+#: Why the deployment has no hostname of its own, when it has none.
+HOSTNAME_OFF_ENV = "HOPSWORKS_AGENT_HOSTNAME_OFF_REASON"
 #: How many finished tasks the in-memory store keeps, oldest dropped first.
 DEFAULT_MAX_TASKS = 1000
 #: How much the kept tasks may hold together, artifacts included.
@@ -413,6 +425,11 @@ class A2AServer:
         # the platform's signature over the card at the public URL, once asked for
         self._signature: dict[str, str] | None = None
         self.executor = HopsworksAgentExecutor(app, self.config)
+        # gRPC: asked for by the platform, served when grpcio is installed;
+        # the card names it from here on, and drops it again if the server
+        # cannot start
+        self._grpc: Any = None
+        self._grpc_url = _grpc_url()
         if self.mode == "database":
             # In the project's online database: any replica reads, cancels,
             # answers or follows a task, and a task outlives the pod that ran it.
@@ -510,6 +527,12 @@ class A2AServer:
             ),
             extended_card_modifier=self._current_extended_card,
         )
+        if self._grpc_url is not None:
+            from .a2a_grpc import _grpc_port, _GrpcServer  # noqa: PLC0415
+
+            self._grpc = _GrpcServer(
+                self.handler, private=self.ownership.private, port=_grpc_port()
+            )
 
         # A part moved out of a task's row is served to whoever may read the
         # task: the lookup goes through the task, under the caller's owner.
@@ -570,15 +593,58 @@ class A2AServer:
             os.environ.get("HOPSWORKS_AGENT_PUBLIC_URL") or self._app._public_url
         ) or None
 
+    @staticmethod
+    def _public_url_env() -> str:
+        return os.environ.get("HOPSWORKS_AGENT_PUBLIC_URL") or ""
+
+    def _hostname(self) -> str | None:
+        """The agent's own hostname, when the platform gave it one.
+
+        The public URL is then ``https://<host>``; the path form of a
+        deployment without one (``/v1/<namespace>/<name>``) is not a hostname.
+        """
+        if os.environ.get(HOSTNAME_OFF_ENV):
+            return None
+        public = os.environ.get("HOPSWORKS_AGENT_PUBLIC_URL") or ""
+        parsed = urlparse(public)
+        if not parsed.hostname or parsed.path.strip("/"):
+            return None
+        return parsed.hostname
+
+    def _hostname_url(self) -> str:
+        """``<scheme>://<host>[:<port>]`` of the agent's hostname, as the platform gave it."""
+        parsed = urlparse(self._public_url_env())
+        return urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
+
     def _endpoints(self) -> dict[str, str]:
         """What the Hopsworks manifest lists for A2A."""
         return {"agent_card": CARD_PATH, "a2a": RPC_PATH, "a2a_rest": REST_PREFIX}
 
     def _capabilities(self) -> dict[str, Any]:
         """What the manifest says about this agent's A2A face."""
+        bindings = [TransportProtocol.JSONRPC, TransportProtocol.HTTP_JSON]
+        if self._grpc_url is not None:
+            bindings.append(TransportProtocol.GRPC)
+        hostname = self._hostname()
+        discovery: dict[str, Any] = {
+            "grpc": self._grpc_url is not None,
+            "hostname": hostname,
+            # the agent's own URL on its hostname (scheme included: a cluster
+            # without a certificate serves it over http; and the port, where
+            # the platform advertises one) and the gRPC address, as the card
+            # lists them, so a reader need not rebuild them
+            "url": self._hostname_url() if hostname else None,
+            "grpc_url": self._grpc_url,
+            # whether the platform serves the card without a credential
+            "public_card": _public_card(),
+        }
+        if hostname is None:
+            # the platform's reason; an older platform or a local run gives none
+            discovery["hostname_off"] = os.environ.get(HOSTNAME_OFF_ENV) or "not_set"
         return {
             "enabled": True,
-            "bindings": [TransportProtocol.JSONRPC, TransportProtocol.HTTP_JSON],
+            "bindings": bindings,
+            **discovery,
             "push_notifications": self.push,
             "extended_card": True,
             "signed": self._signature is not None,
@@ -592,7 +658,12 @@ class A2AServer:
         }
 
     async def _start(self) -> None:
-        """At startup: the sweep for tasks whose replica was lost, when tasks are shared."""
+        """At startup: the gRPC server, and the sweep for tasks whose replica was lost, when tasks are shared.
+
+        Startup ends before the HTTP server accepts its first request, so the
+        gRPC port is open by the time the pod reports ready.
+        """
+        await self._start_grpc()
         if self.stores is not None and self._sweeper is None:
             if not await self.stores._tables_exist():
                 # the tables are the platform's to create; without them every
@@ -606,6 +677,26 @@ class A2AServer:
                 )
             self._sweeper = asyncio.create_task(self._sweep())
         await self._sign()
+
+    async def _start_grpc(self) -> None:
+        """Open the gRPC port; a port that cannot be opened leaves gRPC off, said in the log."""
+        if self._grpc is None:
+            return
+        try:
+            await self._grpc._start()
+        except Exception as err:  # noqa: BLE001 -- the HTTP bindings still serve
+            _logger.error(
+                "A2A over gRPC is not served, so the Agent Card names only the "
+                "HTTP bindings: %s",
+                err,
+            )
+            self._grpc = None
+            self._grpc_url = None
+
+    def _stop_accepting(self, grace: float) -> None:
+        """The pod was told to stop: the gRPC server takes no new calls, the open ones get ``grace`` seconds."""
+        if self._grpc is not None:
+            self._grpc._stop_accepting(grace)
 
     async def _sign(self) -> None:
         """Ask the platform to sign the card this deployment serves at its public URL.
@@ -641,7 +732,7 @@ class A2AServer:
             _logger.warning("the Agent Card is served unsigned: %s", err)
 
     async def _stop(self) -> None:
-        """At shutdown, after the drain: the sweep ends and the database connections close."""
+        """At shutdown, after the drain: the sweep ends, the gRPC port and the database connections close."""
         if self._sweeper is not None:
             self._sweeper.cancel()
             await asyncio.gather(self._sweeper, return_exceptions=True)
@@ -649,6 +740,8 @@ class A2AServer:
         # the notifications of the turns the drain just ended are still queued
         if self.push_sender is not None:
             await self.push_sender._drain(PUSH_DRAIN_SECONDS)
+        if self._grpc is not None:
+            await self._grpc._stop()
         if self.stores is not None:
             await self.stores._close()
 
@@ -994,6 +1087,7 @@ class A2AServer:
                     "protocolBinding": TransportProtocol.HTTP_JSON,
                     "protocolVersion": A2A_PROTOCOL_VERSION,
                 },
+                *self._grpc_interfaces(A2A_PROTOCOL_VERSION),
                 {
                     "url": base + RPC_PATH,
                     "protocolBinding": TransportProtocol.JSONRPC,
@@ -1004,6 +1098,7 @@ class A2AServer:
                     "protocolBinding": TransportProtocol.HTTP_JSON,
                     "protocolVersion": PROTOCOL_VERSION_0_3,
                 },
+                *self._grpc_interfaces(PROTOCOL_VERSION_0_3),
             ],
             "provider": {
                 "organization": "Hopsworks",
@@ -1057,6 +1152,22 @@ class A2AServer:
             ],
         }
         return ParseDict(card, AgentCard())
+
+    def _grpc_interfaces(self, version: str) -> list[dict[str, Any]]:
+        """The card's gRPC interface of one protocol version: at the platform's address, never the request's.
+
+        A gRPC address is a host and a port the gateway routes; the base URL a
+        request came in at says nothing about it.
+        """
+        if self._grpc_url is None:
+            return []
+        return [
+            {
+                "url": self._grpc_url,
+                "protocolBinding": TransportProtocol.GRPC,
+                "protocolVersion": version,
+            }
+        ]
 
     def _card_dict(self, base_url: str) -> dict[str, Any]:
         """The card as served: every 1.0 field, present even when false, plus the 0.3 fields.
@@ -1119,6 +1230,32 @@ class A2AServer:
         proto = headers.get("x-forwarded-proto") or "http"
         prefix = (headers.get("x-forwarded-prefix") or "").rstrip("/")
         return self._extended_card(f"{proto}://{host}{prefix}")
+
+
+def _grpc_url() -> str | None:
+    """Where the card says a client reaches the agent over gRPC, or None when it is not served.
+
+    The platform sets it when it routes gRPC to the deployment; without
+    ``grpcio`` (or the a2a-sdk's gRPC handler) the agent serves HTTP alone.
+    """
+    url = (os.environ.get(GRPC_URL_ENV) or "").strip()
+    if not url:
+        return None
+    try:
+        from .a2a_grpc import _GrpcServer  # noqa: F401, PLC0415
+    except ImportError as err:
+        _logger.warning(
+            "the platform routes gRPC to this agent but it cannot serve it (%s); "
+            "install a2a-sdk[grpc] to serve A2A over gRPC",
+            err,
+        )
+        return None
+    return url
+
+
+def _public_card() -> bool:
+    """Whether the platform serves the Agent Card without a credential."""
+    return (os.environ.get(PUBLIC_CARD_ENV) or "").strip().lower() == "true"
 
 
 def _merge_missing(into: dict[str, Any], extra: dict[str, Any]) -> None:
@@ -2283,6 +2420,57 @@ class _Pinned:
     host_header: str
 
 
+def _internal_host(host: str, allowed_hosts: set[str]) -> bool:
+    """Whether the platform listed a host: by name, or under an entry that starts with a dot (``.agents.example.com``)."""
+    if host in allowed_hosts:
+        return True
+    return any(
+        entry.startswith(".") and len(entry) > 1 and host.endswith(entry)
+        for entry in allowed_hosts
+    )
+
+
+_tls_cache: dict[tuple[str | None, str | None], Any] = {}
+
+
+def _tls_verify() -> Any:
+    """What an outbound fetch or push verifies the server with.
+
+    The public roots httpx uses, plus the cluster's CA chain and the CA of the
+    agent hostnames' certificate when the platform gives them: an agent host is
+    the platform's own gateway, and a certificate from a private or self-signed
+    issuer would otherwise fail every notification to another agent.
+    Hostname verification is never relaxed.
+    Built once per pair of inputs.
+    """
+    import ssl  # noqa: PLC0415
+
+    import certifi  # noqa: PLC0415
+
+    from .evaluation import _ca_chain  # noqa: PLC0415
+
+    gateway_ca = (os.environ.get(GATEWAY_CA_ENV) or "").strip() or None
+    chain = _ca_chain() if _on_platform() else None
+    key = (chain, gateway_ca)
+    cached = _tls_cache.get(key)
+    if cached is not None:
+        return cached
+    context = ssl.create_default_context(cafile=certifi.where())
+    extra = [("the cluster's CA chain", {"cafile": chain})] if chain else []
+    if gateway_ca:
+        extra.append(("the agent gateway's CA", {"cadata": gateway_ca}))
+    for name, source in extra:
+        try:
+            context.load_verify_locations(**source)
+        except (OSError, ssl.SSLError, ValueError):
+            _logger.warning(
+                "%s could not be loaded; it is not trusted", name, exc_info=True
+            )
+    _tls_cache.clear()
+    _tls_cache[key] = context
+    return context
+
+
 def _internal_allowed() -> tuple[set[str], list[Any]]:
     """The internal hosts and networks the platform allowed, from the environment."""
     hosts: set[str] = set()
@@ -2391,7 +2579,7 @@ def _pin(url: str, what: str = "The URL part") -> _Pinned:
                 "unsupported_content",
                 422,
             )
-        internal = host in allowed_hosts or any(
+        internal = _internal_host(host, allowed_hosts) or any(
             address in network for network in allowed_networks
         )
         if _address_blocked(address) and not internal and not local_loopback:
@@ -2443,7 +2631,9 @@ def _fetch(
     target = _pin(url)
     with (
         httpx.Client(
-            follow_redirects=False, timeout=FETCH_OPERATION_TIMEOUT_S
+            follow_redirects=False,
+            timeout=FETCH_OPERATION_TIMEOUT_S,
+            verify=_tls_verify(),
         ) as client,
         client.stream(
             "GET",
