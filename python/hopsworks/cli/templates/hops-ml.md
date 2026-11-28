@@ -107,7 +107,8 @@ data** (when there is no data yet). Record one `requirements.data_sources+=` ent
 `hops-reqs/references/data-sources.md` describes:
 
 - existing feature group: `{name, kind: feature_group, version, status: present}`;
-- file: ask the path; upload it with `hops files upload <path> Resources/<slug>/data/`; record
+- file: ask the path; put it in `Resources/<slug>/data/` as the **hops** skill's *Project files* rule (in a Hopsable sandbox, `$HOPS_TEMPLATES/SKILL.md`) says
+  (a copy in the mount, else `hops files upload <path> Resources/<slug>/data/`); record
   `{name, kind: file, location, status: present}`;
 - synthetic: ask the shape (batch tables or a stream of events) and the story in one sentence;
   record `{name, kind: synthetic, shape, status: needs_generation}`, then
