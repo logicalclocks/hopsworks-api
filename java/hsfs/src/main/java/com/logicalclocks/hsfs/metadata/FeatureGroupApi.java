@@ -144,7 +144,9 @@ public class FeatureGroupApi {
 
     LOGGER.info("Sending metadata request: " + uri);
     HttpPost postRequest = new HttpPost(uri);
-    hopsworksClient.handleRequest(postRequest);
+    // Hopsworks clears a feature group by recreating it: carry on with the id it has now.
+    FeatureGroupBase apiFG = hopsworksClient.handleRequest(postRequest, featureGroup.getClass());
+    featureGroup.setId(apiFG.getId());
   }
 
   public <T extends FeatureGroupBase> T updateMetadata(FeatureGroupBase featureGroup, String queryParameter,
