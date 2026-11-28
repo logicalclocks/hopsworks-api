@@ -240,7 +240,7 @@ Record `app: {status: met, name: <slug>, url: /hopsworks-api/pythonapp/<project>
 
 ## ingest
 
-Create the five jobs, each a PYTHON job in `$ENV` with 2 cores, 4096 MB and no GPU, whose default arguments name `ontology.yaml` by its project-relative path:
+Create the six jobs, each a PYTHON job in `$ENV` with 2 cores, 4096 MB and no GPU, whose default arguments name `ontology.yaml` by its project-relative path:
 
 ```python
 import hopsworks
@@ -248,7 +248,7 @@ import hopsworks
 SLUG, SYSTEM_DIR, ENV = "<slug>", "<SYSTEM_DIR>", "<ENV>"
 project = hopsworks.login()
 api = project.get_job_api()
-for name, launcher in [("ingest", "ingest"), ("compile", "compile"), ("embed", "embed"), ("reset", "reset"), ("import", "import_model")]:
+for name, launcher in [("ingest", "ingest"), ("compile", "compile"), ("embed", "embed"), ("reset", "reset"), ("import", "import_model"), ("graph", "graph")]:
     job_name = f"{SLUG}-{name}"
     if api.get_job(job_name) is None:
         config = api.get_configuration("PYTHON")
@@ -295,6 +295,7 @@ features:
     - {name: embed,   job: {name: <slug>-embed}}
     - {name: reset,   job: {name: <slug>-reset}}
     - {name: import,  job: {name: <slug>-import}}
+    - {name: graph,   job: {name: <slug>-graph}}
   writes:
     - {feature_group: <slug_>_data_objects, version: 1}
     - {feature_group: <slug_>_semantic, version: 1}
@@ -341,8 +342,19 @@ print("semantic rows:", fs.get_feature_group(f"{SLUG_}_semantic", 1).read(online
 - **Vector work.** Run `hops job run $SLUG-embed --wait` once: it reconciles every ontology row whose text is not embedded, or embedded from older text, and fails when a row stays unreconciled.
 - **Rows.** The semantic feature group's row count equals the `vector_row` count of its collection.
 
+Then publish the ontology graph and read it back.
+The compile run starts `<slug>-graph` when it ends; running it once more here waits for that run and publishes the same graph again:
+
+```bash
+hops job run $SLUG-graph --wait
+relate --read-only -d /hopsfs/$SYSTEM_DIR/relate.db "MATCH (o:Ontology) RETURN o.published_at AS published_at, o.graph_model AS graph_model"
+relate --read-only -d /hopsfs/$SYSTEM_DIR/relate.db "MATCH (t:Table)-[:REPRESENTS]->(term:Term) RETURN count(term) AS terms"
+```
+
+- **Graph.** The run ends `SUCCEEDED`, the first query prints today's `published_at`, and the second the number of Terms.
+
 A condition that fails after one more compile and embed: set `compile` `unmet` with the numbers.
-Record `compile: {status: met, terms: <n>, semantic_rows: <n>, tables_without_term: []}`.
+Record `compile: {status: met, terms: <n>, semantic_rows: <n>, tables_without_term: [], graph: {path: <SYSTEM_DIR>/relate.db, published_at: <UTC>}}`.
 
 ## verify
 

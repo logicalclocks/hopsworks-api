@@ -13,7 +13,8 @@ Each system of the `ontology` factory is one ontology, named by its slug:
 | Python environment, shared by the project's ontology systems | `ontology-<commit>`, a clone of `python-feature-pipeline` with Auto-Ontology installed from the pinned fork commit |
 | Python app (API, UI, chat) | `<slug>`, a custom app in that environment |
 | App tables (catalog, ontology, chats) | `<app table_prefix><table>` in the project's online database |
-| Jobs | `<slug>-ingest`, `<slug>-compile` (both scheduled), `<slug>-embed`, `<slug>-reset`, `<slug>-import` |
+| Jobs | `<slug>-ingest`, `<slug>-compile` (both scheduled), `<slug>-embed`, `<slug>-reset`, `<slug>-import`, `<slug>-graph` |
+| Ontology graph (relate, read-only) | `relate.db` beside `ontology.yaml` in the system's directory |
 | Feature groups with vector indexes | `<slug_>_data_objects`, `<slug_>_semantic` (`<slug_>` is the slug with underscores) |
 | Models and vLLM deployments, shared by the project's ontology systems | `Nemotron_3_5_Embed_1B_BF16` as `nemotronembed`, `NVIDIA_Nemotron_3_5_Lightning_30B_A3B_FP8` as `nemotronllm` |
 
@@ -49,6 +50,32 @@ Prefer a term's SQL attributes to inventing arithmetic, and check readiness when
 
 The CLI and the tools reach the app through the Hopsworks app proxy with a proxy token minted for the caller, so the app sees the caller's name and applies the caller's project role.
 
+## Query the ontology graph
+
+The ontology is also a [relate](https://github.com/relatedb/relate) graph, queried with Cypher from any job, app, agent or terminal that can read the system's directory, without the app.
+`<slug>-graph` is its only writer: it rebuilds the graph from the app's tables and publishes one checkpoint, with an empty write-ahead log, at `/hopsfs/<SYSTEM_DIR>/relate.db`.
+It runs after every compile, reset and import, after an ingest when compilation is off, and on `hops job run <slug>-graph`.
+The `relate` CLI and the `relate-db` package are in `python-feature-pipeline`, `python-app-pipeline`, `python-agent-pipeline` and the terminal images; the terminals also carry relate's own skill for its CLI and Cypher dialect.
+
+```bash
+G=/hopsfs/<SYSTEM_DIR>/relate.db
+relate --read-only -d $G "MATCH (o:Ontology) RETURN o.published_at AS published_at"
+relate --read-only -d $G --json "MATCH (t:Table)-[:REPRESENTS]->(term:Term) RETURN t.name AS table, term.name AS term, term.synonyms AS synonyms"
+```
+
+```python
+import relate
+
+db = relate.connect("/hopsfs/<SYSTEM_DIR>/relate.db", read_only=True)  # loads the graph into memory once
+for row in db.execute("MATCH (c:Column)-[:FOREIGN_KEY]->(k:Column)<-[:CONTAINS]-(t:Table) RETURN c.name AS column, t.name AS references"):
+    print(row)
+db.close()
+```
+
+- **Always `--read-only` / `read_only=True`.** A writable open would write a log next to the checkpoint on HopsFS and become a second writer; the graph job's next run replaces whatever it wrote.
+- **A read-only handle keeps the graph it loaded.** Open again to see a newer publish.
+- The labels, properties and relationships, and more queries: [references/graph.md](references/graph.md).
+
 ## Roles
 
 | Project role | In the app |
@@ -66,6 +93,7 @@ Only Data owners and Data scientists can mint the proxy token, so only they can 
 - **No database ingested:** `hops job run <slug>-ingest --wait`; its log says which source failed.
 - **App not serving:** `hops app logs <slug>`, then `hops app start <slug>`.
 - **An answer from stale terms:** an edit in the app reaches the vectors after `<slug>-embed` runs.
+- **A stale or missing graph:** an edit in the app reaches the graph after `<slug>-graph` runs; `hops job logs <slug>-graph` says why a run failed.
 
 ## Delete
 

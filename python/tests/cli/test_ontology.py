@@ -175,6 +175,7 @@ def test_the_launchers_are_the_contracts_guarded_calls():
         ("embed", "embed"),
         ("reset", "reset"),
         ("import_model", "import"),
+        ("graph", "graph"),
     ]:
         assert code(REF / "jobs" / f"{launcher}.py") == [
             "from auto_ontology.hopsworks.launch import job",
@@ -211,7 +212,14 @@ def test_the_template_has_the_contracts_keys():
         "pii_detection",
         "distinct_value_probing",
     ]
-    assert list(template["jobs"]) == ["ingest", "compile", "embed", "reset", "import"]
+    assert list(template["jobs"]) == [
+        "ingest",
+        "compile",
+        "embed",
+        "reset",
+        "import",
+        "graph",
+    ]
 
 
 @pytest.fixture
