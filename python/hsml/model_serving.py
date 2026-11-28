@@ -776,7 +776,8 @@ class ModelServing:
             framework:
                 Framework the agent is built with: `langgraph`, `llamaindex`, `openai_agents`, `claude_agents` or `custom`.
                 It picks the tracing instrumentation, the model provider of the agent's failure analysis, and whether the agent may receive the Claude login.
-                When omitted, it is read from the `framework=` literal of the `AgentApp(...)` in a local entry, a name outside those five being recorded as `custom`, and otherwise kept from the existing deployment.
+                When omitted, it is read from the `framework=` literal of the `AgentApp(...)` in a local entry, a name outside those five being recorded as `custom`, and otherwise kept from the existing deployment, or `custom` when it has none.
+                Every agent has one: it is how the platform tells an agent from a plain Python endpoint.
             chat_config:
                 Chat contract of the agent, telling the chat panel and chat clients how to talk to it.
                 A protocol name (`"hopsworks"`, `"openai"`) or a dict with `protocol` and, for a custom endpoint (`simple`/`generic`), `path`, `message_field_in` and `message_field_name`.
@@ -926,6 +927,12 @@ class ModelServing:
             # already preserved by the backend.
             if framework is None:
                 predictor._agent_framework = existing.predictor.agent_framework
+        # Always set, `custom` when nothing names one: the framework is what tells the platform this
+        # deployment is an agent rather than a plain Python endpoint (it leaves the inference logger
+        # sidecar out of an agent's pods, and a plain endpoint needs it for fv.log()).
+        if predictor._agent_framework is None:
+            predictor._agent_framework = "custom"
+        if existing is not None:
             existing.predictor = predictor
             existing.description = description
             existing.save()

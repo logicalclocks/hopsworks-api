@@ -1224,7 +1224,9 @@ class TestDeployAgentFrameworkAndChatConfig:
         assert predictor._agent_framework == "claude_agents"
         assert predictor._chat_config == {"protocol": "hopsworks"}
 
-    def test_plain_script_gets_neither(self, ms, mocker, stub_apis, tmp_path):
+    def test_plain_script_gets_custom_framework_and_no_contract(
+        self, ms, mocker, stub_apis, tmp_path
+    ):
         # Arrange
         script = tmp_path / "agent.py"
         script.write_text("class Predict:\n    pass\n")
@@ -1233,7 +1235,7 @@ class TestDeployAgentFrameworkAndChatConfig:
         predictor = self._deploy(ms, mocker, script)
 
         # Assert
-        assert predictor._agent_framework is None
+        assert predictor._agent_framework == "custom"
         assert predictor._chat_config is None
 
     def test_redeploy_keeps_stored_framework_and_contract(
@@ -1256,6 +1258,25 @@ class TestDeployAgentFrameworkAndChatConfig:
         assert predictor._chat_config is None
         existing.save.assert_called_once()
 
+    def test_redeploy_of_an_agent_without_a_framework_records_custom(
+        self, ms, mocker, stub_apis, tmp_path
+    ):
+        # The framework is what tells an agent from a plain Python endpoint, so an agent
+        # deployed before it was always set gets one on its next deploy_agent.
+        # Arrange
+        script = tmp_path / "agent.py"
+        script.write_text("from x import AgentApp\napp = AgentApp(name='a')\n")
+        existing = mocker.MagicMock()
+        existing.predictor.memory = None
+        existing.predictor.agent_framework = None
+
+        # Act
+        predictor = self._deploy(ms, mocker, script, existing=existing)
+
+        # Assert
+        assert predictor._agent_framework == "custom"
+        existing.save.assert_called_once()
+
     def test_git_source_is_not_read(self, ms, mocker, stub_apis):
         # Act
         predictor = self._deploy(
@@ -1267,7 +1288,7 @@ class TestDeployAgentFrameworkAndChatConfig:
         )
 
         # Assert
-        assert predictor._agent_framework is None
+        assert predictor._agent_framework == "custom"
         assert predictor._chat_config is None
 
     @pytest.mark.parametrize(
@@ -1349,5 +1370,5 @@ class TestDeployAgentFrameworkAndChatConfig:
         predictor = self._deploy(ms, mocker, tmp_path)
 
         # Assert
-        assert predictor._agent_framework is None
+        assert predictor._agent_framework == "custom"
         assert predictor._chat_config == {"protocol": "hopsworks"}
