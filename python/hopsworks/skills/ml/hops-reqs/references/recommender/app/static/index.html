@@ -13,7 +13,6 @@
 </head>
 <body>
   <header class="band">
-    <div class="mark" aria-hidden="true">H</div>
     <div>
       <h1>Storefront</h1>
       <div class="sub">Personalized H&amp;M recommendations: two-tower retrieval, then a CatBoost ranking, per request</div>
@@ -30,12 +29,12 @@
         <button type="button" class="secondary" id="refresh" disabled>New recommendations</button>
       </form>
     </section>
-    <section class="grid" aria-label="Session">
-      <div class="card stat"><div class="label">Shown</div><div class="value" id="shown">0</div></div>
-      <div class="card stat"><div class="label">Clicked</div><div class="value accent" id="clicked">0</div></div>
-      <div class="card stat"><div class="label">Bought</div><div class="value accent" id="bought">0</div></div>
-      <div class="card stat"><div class="label">Ignored</div><div class="value" id="ignored">0</div></div>
-      <div class="card stat"><div class="label">Last lookup</div><div class="value" id="latency">–</div><div class="muted" id="roundtrip"></div></div>
+    <section class="stats" aria-label="Session">
+      <div class="stat"><div class="label">Shown</div><div class="value" id="shown">0</div></div>
+      <div class="stat"><div class="label">Clicked</div><div class="value accent" id="clicked">0</div></div>
+      <div class="stat"><div class="label">Bought</div><div class="value accent" id="bought">0</div></div>
+      <div class="stat"><div class="label">Ignored</div><div class="value" id="ignored">0</div></div>
+      <div class="stat"><div class="label">Last lookup</div><div class="value" id="latency">–</div><div class="muted" id="roundtrip"></div></div>
     </section>
     <div class="split">
       <section class="card">

@@ -10,7 +10,8 @@ You build what the `/hops` menu decided. The prompt gives `action`, `name`, `des
 ambiguity ends the run with one line saying what is missing.
 
 Load **hops-app** (`.claude/skills/hops-app/` in the repository, else `~/.claude/skills/hops-app/`):
-its "Apps built by `/hops app`" and "Fix loop" sections and `references/app_skeleton/`.
+its "Apps built by `/hops app`" and "Fix loop" sections and `references/app_skeleton/`. Load
+**hops-design** the same way and follow it for the UI.
 
 ## Actions
 
