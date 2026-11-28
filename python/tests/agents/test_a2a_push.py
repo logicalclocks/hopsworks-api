@@ -374,6 +374,19 @@ class TestWhereAWebhookMayBe:
         monkeypatch.setenv("HOPSWORKS_AGENT_PUSH_INTERNAL_ALLOW", "10.1.0.0/16")
         assert run(_valid_webhook("https://gateway.internal/x")) is True
 
+    def test_a_dotted_entry_lets_every_agent_host_through(self, monkeypatch):
+        # the platform lists ".<agent domain>": agent hostnames resolve to its own gateway
+        monkeypatch.setenv("DEPLOYMENT_ID", "42")
+        monkeypatch.setattr(a2a_module, "_resolve", lambda host, port: ["10.1.2.3"])
+        monkeypatch.setenv(
+            "HOPSWORKS_AGENT_PUSH_INTERNAL_ALLOW", ".agents.example.test"
+        )
+        assert run(_valid_webhook("https://mnist-7.agents.example.test/x")) is True
+        assert run(_valid_webhook("https://agents.example.test/x")) is False
+        assert run(_valid_webhook("https://evilagents.example.test/x")) is False
+        monkeypatch.setenv("HOPSWORKS_AGENT_PUSH_INTERNAL_ALLOW", ".")
+        assert run(_valid_webhook("https://mnist-7.agents.example.test/x")) is False
+
     def test_an_administrators_host_list_narrows_it(self, monkeypatch):
         monkeypatch.setenv("DEPLOYMENT_ID", "42")
         monkeypatch.setattr(
@@ -560,3 +573,61 @@ class TestPushNeedsTheDeploymentsKey:
             await app._a2a.push_sender._drain(0.05)
 
         run(scenario())
+
+
+#: A self-signed certificate made for these tests only, as cert-manager's
+#: selfsigned issuer writes the agent hostnames' one.
+_SELF_SIGNED = """-----BEGIN CERTIFICATE-----
+MIIBiDCCAS+gAwIBAgIUChBY6LO136X0BX08MtonmiN58SwwCgYIKoZIzj0EAwIw
+GTEXMBUGA1UEAwwOYWdlbnRzIHRlc3QgY2EwIBcNMjYxMTI4MTMwNTIwWhgPMjEy
+NjExMDQxMzA1MjBaMBkxFzAVBgNVBAMMDmFnZW50cyB0ZXN0IGNhMFkwEwYHKoZI
+zj0CAQYIKoZIzj0DAQcDQgAEjG2I+MldpifhtkeyvgM6eEVEyH0p/5NlKRRIzJl3
+s0cZl4NPngI67wTAPapj3Ac3oUZMFKxkxyrpQPKiboMxB6NTMFEwHQYDVR0OBBYE
+FMhLH5bg1P06bKegm7ueF/lZIS8XMB8GA1UdIwQYMBaAFMhLH5bg1P06bKegm7ue
+F/lZIS8XMA8GA1UdEwEB/wQFMAMBAf8wCgYIKoZIzj0EAwIDRwAwRAIgJClIC920
+S8Vh6eryA6BCDl2n1WcCu7457tbwUotoBo0CICb+u9E4ZEhWcB5s6Ko9Ua+6qO3j
+TPuJ33Yc+pCviW7A
+-----END CERTIFICATE-----
+"""
+
+
+class TestTrust:
+    """What a push or a fetched URL part verifies the server with."""
+
+    @pytest.fixture(autouse=True)
+    def _fresh(self, monkeypatch):
+        monkeypatch.setattr(a2a_module, "_tls_cache", {})
+        monkeypatch.delenv(a2a_module.GATEWAY_CA_ENV, raising=False)
+        monkeypatch.delenv("DEPLOYMENT_ID", raising=False)
+
+    @staticmethod
+    def _subjects(context):
+        return [
+            dict(part for rdn in cert["subject"] for part in rdn).get("commonName")
+            for cert in context.get_ca_certs()
+        ]
+
+    def test_the_public_roots_and_the_agent_gateways_ca_are_trusted(self, monkeypatch):
+        import ssl
+
+        plain = a2a_module._tls_verify()
+        assert plain.verify_mode == ssl.CERT_REQUIRED
+        assert plain.check_hostname
+        assert "agents test ca" not in self._subjects(plain)
+
+        monkeypatch.setenv(a2a_module.GATEWAY_CA_ENV, _SELF_SIGNED)
+        context = a2a_module._tls_verify()
+        assert "agents test ca" in self._subjects(context)
+        # the public roots are still there, and the name is still checked
+        assert len(context.get_ca_certs()) > 1
+        assert context.check_hostname
+        assert a2a_module._tls_verify() is context
+
+    def test_a_ca_that_cannot_be_read_is_left_out_not_fatal(self, monkeypatch):
+        monkeypatch.setenv(
+            a2a_module.GATEWAY_CA_ENV,
+            "-----BEGIN CERTIFICATE-----\nnot base64\n-----END CERTIFICATE-----\n",
+        )
+        context = a2a_module._tls_verify()
+        assert context.check_hostname
+        assert "agents test ca" not in self._subjects(context)

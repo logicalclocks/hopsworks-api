@@ -148,6 +148,9 @@ FETCH_OPERATION_TIMEOUT_S = 10.0
 #: addresses: comma-separated hostnames or CIDRs, set by the platform. The same
 #: list the push sender honours.
 INTERNAL_ALLOW_ENV = "HOPSWORKS_AGENT_PUSH_INTERNAL_ALLOW"
+#: The PEM of the CA that signed the agent hostnames' certificate, set by the
+#: platform when the cluster holds one (a private or self-signed issuer).
+GATEWAY_CA_ENV = "HOPSWORKS_AGENT_GATEWAY_CA"
 #: Where the platform says a client reaches the agent over gRPC (``host:port``).
 GRPC_URL_ENV = "HOPSWORKS_AGENT_GRPC_URL"
 #: ``true`` when the platform serves the Agent Card at the agent's hostname
@@ -2417,6 +2420,57 @@ class _Pinned:
     host_header: str
 
 
+def _internal_host(host: str, allowed_hosts: set[str]) -> bool:
+    """Whether the platform listed a host: by name, or under an entry that starts with a dot (``.agents.example.com``)."""
+    if host in allowed_hosts:
+        return True
+    return any(
+        entry.startswith(".") and len(entry) > 1 and host.endswith(entry)
+        for entry in allowed_hosts
+    )
+
+
+_tls_cache: dict[tuple[str | None, str | None], Any] = {}
+
+
+def _tls_verify() -> Any:
+    """What an outbound fetch or push verifies the server with.
+
+    The public roots httpx uses, plus the cluster's CA chain and the CA of the
+    agent hostnames' certificate when the platform gives them: an agent host is
+    the platform's own gateway, and a certificate from a private or self-signed
+    issuer would otherwise fail every notification to another agent.
+    Hostname verification is never relaxed.
+    Built once per pair of inputs.
+    """
+    import ssl  # noqa: PLC0415
+
+    import certifi  # noqa: PLC0415
+
+    from .evaluation import _ca_chain  # noqa: PLC0415
+
+    gateway_ca = (os.environ.get(GATEWAY_CA_ENV) or "").strip() or None
+    chain = _ca_chain() if _on_platform() else None
+    key = (chain, gateway_ca)
+    cached = _tls_cache.get(key)
+    if cached is not None:
+        return cached
+    context = ssl.create_default_context(cafile=certifi.where())
+    extra = [("the cluster's CA chain", {"cafile": chain})] if chain else []
+    if gateway_ca:
+        extra.append(("the agent gateway's CA", {"cadata": gateway_ca}))
+    for name, source in extra:
+        try:
+            context.load_verify_locations(**source)
+        except (OSError, ssl.SSLError, ValueError):
+            _logger.warning(
+                "%s could not be loaded; it is not trusted", name, exc_info=True
+            )
+    _tls_cache.clear()
+    _tls_cache[key] = context
+    return context
+
+
 def _internal_allowed() -> tuple[set[str], list[Any]]:
     """The internal hosts and networks the platform allowed, from the environment."""
     hosts: set[str] = set()
@@ -2525,7 +2579,7 @@ def _pin(url: str, what: str = "The URL part") -> _Pinned:
                 "unsupported_content",
                 422,
             )
-        internal = host in allowed_hosts or any(
+        internal = _internal_host(host, allowed_hosts) or any(
             address in network for network in allowed_networks
         )
         if _address_blocked(address) and not internal and not local_loopback:
@@ -2577,7 +2631,9 @@ def _fetch(
     target = _pin(url)
     with (
         httpx.Client(
-            follow_redirects=False, timeout=FETCH_OPERATION_TIMEOUT_S
+            follow_redirects=False,
+            timeout=FETCH_OPERATION_TIMEOUT_S,
+            verify=_tls_verify(),
         ) as client,
         client.stream(
             "GET",

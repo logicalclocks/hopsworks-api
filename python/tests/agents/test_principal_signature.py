@@ -52,26 +52,31 @@ def test_a_signed_principal_is_the_caller(keyed):
     assert scope._header_principal(headers()) == "user:alice"
 
 
+# built when the case runs, not when it is collected: a time taken at collection
+# drifts back into the window while the rest of the suite runs
 @pytest.mark.parametrize(
     "forged",
     [
         # no signature at all: a workload that reached the pod around the gateway
-        {scope.PRINCIPAL_HEADER: "user:alice"},
+        lambda: {scope.PRINCIPAL_HEADER: "user:alice"},
         # another caller's signature, replayed for a different principal
-        {**headers(principal="user:bob"), scope.PRINCIPAL_HEADER: "user:alice"},
+        lambda: {**headers(principal="user:bob"), scope.PRINCIPAL_HEADER: "user:alice"},
         # the auth kind changed after signing
-        {**headers(), scope.AUTH_KIND_HEADER: "jwt"},
+        lambda: {**headers(), scope.AUTH_KIND_HEADER: "jwt"},
         # signed with another deployment's key
-        headers(signature=sign("user:alice", "apikey", int(time.time()), "A" * 43)),
+        lambda: headers(
+            signature=sign("user:alice", "apikey", int(time.time()), "A" * 43)
+        ),
         # too old, or from the future
-        headers(at=int(time.time()) - scope.SIGNATURE_MAX_AGE_S - 5),
-        headers(at=int(time.time()) + scope.SIGNATURE_MAX_AGE_S + 5),
+        lambda: headers(at=int(time.time()) - scope.SIGNATURE_MAX_AGE_S - 5),
+        lambda: headers(at=int(time.time()) + scope.SIGNATURE_MAX_AGE_S + 5),
         # garbage in the time
-        {**headers(), scope.TIME_HEADER: "soon"},
+        lambda: {**headers(), scope.TIME_HEADER: "soon"},
     ],
+    ids=["unsigned", "replayed", "kind", "other_key", "old", "future", "garbage"],
 )
 def test_an_unsigned_or_forged_principal_is_no_caller(keyed, forged):
-    assert scope._header_principal(forged) is None
+    assert scope._header_principal(forged()) is None
 
 
 def test_on_a_deployment_a_forged_principal_is_refused(keyed, monkeypatch):

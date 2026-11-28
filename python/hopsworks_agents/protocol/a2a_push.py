@@ -256,6 +256,8 @@ class _PushSender(BasePushNotificationSender):
         """One webhook, with its attempts: again on a connection error or a 5xx, never on a 3xx or 4xx."""
         import httpx  # noqa: PLC0415
 
+        from .a2a import _tls_verify  # noqa: PLC0415
+
         record = self._record(task_id)
         headers = self._build_headers(config, task_id)
         for attempt in range(len(BACKOFF_S) + 1):
@@ -274,7 +276,9 @@ class _PushSender(BasePushNotificationSender):
                 return False
             try:
                 async with httpx.AsyncClient(
-                    follow_redirects=False, timeout=ATTEMPT_TIMEOUT_S
+                    follow_redirects=False,
+                    timeout=ATTEMPT_TIMEOUT_S,
+                    verify=await asyncio.to_thread(_tls_verify),
                 ) as client:
                     response = await client.post(
                         target.url,
