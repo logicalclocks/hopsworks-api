@@ -21,6 +21,7 @@ import logging
 import os
 import sys
 import tempfile
+import urllib.parse
 import warnings
 from pathlib import Path
 from typing import Literal
@@ -215,7 +216,10 @@ def login(
     engine: Literal["spark", "python", "training", "spark-no-metastore", "spark-delta"]
     | None = None,
 ) -> project.Project:
-    """Connect to [Hopsworks SaaS](https://run.hopsworks.ai/) by calling the `hopsworks.login()` function with no arguments.
+    """Connect to Hopsworks.
+
+    With no arguments, `login()` first uses the host, API key and project that `hops setup` cached in `~/.hops.toml`;
+    without that file it connects to [Hopsworks SaaS](https://run.hopsworks.ai/) and prompts for an API key.
 
     Example: Connect to Hopsworks SaaS
         ```python
@@ -315,7 +319,25 @@ def login(
     # If host argument not defined, get HOPSWORKS_HOST environment variable
     if host is None and "HOPSWORKS_HOST" in os.environ:
         host = os.environ["HOPSWORKS_HOST"]
-    elif host is None:  # Always do a fallback to Hopsworks SaaS if not defined
+
+    # Nothing named a host or a key: use what `hops setup` cached in ~/.hops.toml,
+    # so the CLI login carries over to Python without a second prompt.
+    if (
+        host is None
+        and api_key is None
+        and api_key_value is None
+        and api_key_file is None
+    ):
+        cached = _cached_cli_config()
+        if cached is not None:
+            host, port, api_key = cached["host"], cached["port"], cached["api_key"]
+            if project is None:
+                project = cached["project"]
+            if cached["hostname_verification"] is not None:
+                hostname_verification = cached["hostname_verification"]
+            print(f"Using the API key cached by `hops setup` for {host}")
+
+    if host is None:  # Always do a fallback to Hopsworks SaaS if not defined
         host = constants.HOSTS.SAAS_HOST
 
     is_saas = host == constants.HOSTS.SAAS_HOST
@@ -425,6 +447,32 @@ def _handle_ssl_errors(ssl_e):
         "Hopsworks certificate verification can be turned off by specifying hopsworks.login(hostname_verification=False) "
         "or setting the environment variable HOPSWORKS_HOSTNAME_VERIFICATION='False'"
     ) from ssl_e
+
+
+def _cached_cli_config():
+    """Read the host, port, key and project that `hops setup` cached in `~/.hops.toml`.
+
+    Returns `None` when the file is missing, unreadable, or carries no host and key.
+    """
+    from hopsworks.cli.config import CONFIG_PATH, _read_toml
+
+    data = _read_toml(CONFIG_PATH).get("default", {})
+    if not isinstance(data, dict) or not data.get("host") or not data.get("api_key"):
+        return None
+    raw = str(data["host"])
+    parsed = urllib.parse.urlparse(raw if "://" in raw else "https://" + raw)
+    scheme = (parsed.scheme or "https").lower()
+    netloc = parsed.netloc or parsed.path
+    verification = data.get("hostname_verification")
+    return {
+        "host": netloc.split(":")[0],
+        "port": parsed.port or (80 if scheme == "http" else 443),
+        "api_key": str(data["api_key"]).strip(),
+        "project": data.get("project") or None,
+        "hostname_verification": bool(verification)
+        if verification is not None
+        else None,
+    }
 
 
 def _get_cached_api_key_path():
