@@ -88,6 +88,11 @@ def mock_project(authed_config):
     with (
         mock.patch.object(session, "get_project", return_value=project),
         mock.patch.object(session, "get_feature_store", return_value=fs),
+        mock.patch.object(
+            session,
+            "get_model_serving",
+            side_effect=lambda ctx: project.get_model_serving(),
+        ),
         # A logged-in session has a client; these tests have none, and run as
         # if inside the cluster unless a test says otherwise.
         mock.patch("hopsworks_common.client._is_external", return_value=False),

@@ -85,6 +85,49 @@ def get_project(ctx: click.Context) -> Project:
     return project
 
 
+def get_model_serving(ctx: click.Context) -> Any:
+    """Return the project's ``ModelServing`` handle, logging in for serving only when nothing else did.
+
+    The ``hops deployment`` verbs that touch only a deployment run with a key
+    that holds just the SERVING scope (``auth.login_serving``). A command that
+    already logged in fully reuses that project. Cached on ``ctx.obj``.
+
+    Args:
+        ctx: Click context.
+
+    Returns:
+        The SDK ``ModelServing`` handle.
+    """
+    obj: dict[str, Any] = ctx.ensure_object(dict)
+    if obj.get("model_serving") is not None:
+        return obj["model_serving"]
+    if obj.get("project") is not None:
+        ms = obj["project"].get_model_serving()
+    else:
+        cfg = require_auth(ctx)
+        if cfg.internal:
+            ms = get_project(ctx).get_model_serving()
+        else:
+            if not cfg.project:
+                raise click.ClickException(
+                    "No project set. Pass --project or set HOPSWORKS_PROJECT."
+                )
+            try:
+                ms = auth.login_serving(
+                    host=cfg.host or "",
+                    api_key_value=cfg.api_key or "",
+                    project=cfg.project,
+                    project_id=cfg.project_id,
+                    hostname_verification=cfg.hostname_verification,
+                )
+            except click.ClickException:
+                raise
+            except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
+                raise click.ClickException(f"Login failed: {exc}") from exc
+    obj["model_serving"] = ms
+    return ms
+
+
 def get_feature_store(ctx: click.Context) -> Any:
     """Return the project's feature store; cached alongside the project.
 
