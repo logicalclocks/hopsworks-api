@@ -339,26 +339,43 @@ def _get_fg(
     lookup to a single store by name when the same name exists in several.
     ``exact`` refuses a missing version when several exist.
     """
-    stores = session.get_accessible_feature_stores(ctx)
-    if featurestore is not None:
-        stores = [s for s in stores if getattr(s, "name", None) == featurestore]
-        if not stores:
-            raise click.ClickException(
-                f"Feature store '{featurestore}' is not accessible from this project."
-            )
+    own = session.get_feature_store(ctx)
     last_exc: Exception | None = None
-    for fs in stores:
+    # The own store answers most lookups; the shared stores are listed only on a miss.
+    if featurestore is None or featurestore == getattr(own, "name", None):
         try:
-            fg = versions.feature_group(fs, name, version, exact=exact)
+            fg = versions.feature_group(own, name, version, exact=exact)
         except versions.AmbiguousVersionError:
             raise
         except Exception as exc:  # noqa: BLE001 - not in this store, try the next
-            last_exc = exc
-            continue
-        # The SDK returns None (rather than raising) when a store lacks the
-        # feature group; keep searching the remaining accessible stores.
+            fg, last_exc = None, exc
         if fg is not None:
             return fg
+    if featurestore is None or featurestore != getattr(own, "name", None):
+        own_id = getattr(own, "id", None)
+        stores = [
+            s
+            for s in session.get_accessible_feature_stores(ctx)
+            if getattr(s, "id", None) != own_id
+        ]
+        if featurestore is not None:
+            stores = [s for s in stores if getattr(s, "name", None) == featurestore]
+            if not stores:
+                raise click.ClickException(
+                    f"Feature store '{featurestore}' is not accessible from this project."
+                )
+        for fs in stores:
+            try:
+                fg = versions.feature_group(fs, name, version, exact=exact)
+            except versions.AmbiguousVersionError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - not in this store, try the next
+                last_exc = exc
+                continue
+            # The SDK returns None (rather than raising) when a store lacks the
+            # feature group; keep searching the remaining accessible stores.
+            if fg is not None:
+                return fg
     suffix = f": {last_exc}" if last_exc else ""
     raise click.ClickException(
         f"Feature group '{name}' not found in any accessible feature store{suffix}"

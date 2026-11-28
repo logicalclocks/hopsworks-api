@@ -54,6 +54,7 @@ class LocalEngine:
         remote_path: str,
         upload_configuration=None,
         overwrite: bool = False,
+        into_new_folder: bool = False,
     ):
         local_path = self._get_abs_path(local_path)
         remote_path = self._prepend_project_path(remote_path)
@@ -88,6 +89,7 @@ class LocalEngine:
                     "max_chunk_retries",
                     self._dataset_api.DEFAULT_UPLOAD_MAX_CHUNK_RETRIES,
                 ),
+                _into_new_folder=into_new_folder,
             )
 
     def _download(self, remote_path: str, local_path: str, download_configuration=None):
