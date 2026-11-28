@@ -283,3 +283,106 @@ class ProjectMembersApi:
         _client = client._get_instance()
         path_params = ["project", _client._project_id, "projectMembers", email, "owner"]
         _client._send_request("PUT", path_params)
+
+    @public
+    def invite_member(self, email: str, role: str) -> dict:
+        """Invite an email address with no Hopsworks account to the project.
+
+        Once an account with that address is activated and its email is proven, it becomes a member with `role`.
+        The invite is valid for 14 days.
+        Inviting the same address again refreshes the role and the expiry.
+        Hopsworks sends no mail: the platform that signs users up tells the address.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            project.get_members_api().invite_member("dana@example.com", "Data scientist")
+            ```
+
+        Parameters:
+            email: Email address to invite.
+            role: The project role it gets, one of `Data owner`, `Data scientist`, `Observer`,
+                `Feature store restricted`. Matched regardless of case.
+
+        Returns:
+            The pending invite: `email`, `role`, `inviter`, `created` and `expires`.
+
+        Raises:
+            ValueError: If `role` is not a built-in project role.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if a user with that email exists (add them instead), the caller may not give the role, or the caller has sent too many invites in the last 24 hours.
+        """
+        name = _match_role(role, _ROLES)
+        if name is None:
+            raise ValueError(f"Role must be one of the following: {_ROLES}.")
+        _client = client._get_instance()
+        path_params = ["project", _client._project_id, "projectMembers", "invites"]
+        headers = {"content-type": "application/json"}
+        return _client._send_request(
+            "POST",
+            path_params,
+            headers=headers,
+            data=json.dumps({"email": email, "role": name}),
+        )
+
+    @public
+    def get_invites(self) -> list[dict]:
+        """Get the pending invites of the project.
+
+        Returns:
+            One dict per pending invite: `email`, `role`, `inviter`, `created` and `expires`.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        _client = client._get_instance()
+        path_params = ["project", _client._project_id, "projectMembers", "invites"]
+        return _client._send_request("GET", path_params) or []
+
+    @public
+    def get_usage(self, since: str = "7d", until: str | None = None) -> dict:
+        """Get each member's container use of the project over a window of whole hours.
+
+        The numbers are use, not the bill: CPU core-hours and memory GB-hours of the pods each member started, from an
+        hourly rollup. GPU and storage are not split by member.
+
+        Parameters:
+            since: How far back from `until`, in hours (`36h`) or days (`7d`).
+            until: An ISO-8601 instant; now when not given.
+
+        Returns:
+            A dict with `since`, `until`, `hours`, `hoursMissing`, `members` (each `email`, `cpuCoreHours`,
+            `memoryGbHours`), `notByMember` (pods with no user label, Data owners only) and `gpu` and `storage`
+            (always None).
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the window is invalid or longer than the use kept.
+        """
+        _client = client._get_instance()
+        path_params = ["project", _client._project_id, "projectMembers", "usage"]
+        query_params = {"since": since}
+        if until:
+            query_params["until"] = until
+        return _client._send_request("GET", path_params, query_params) or {}
+
+    @public
+    def cancel_invite(self, email: str) -> None:
+        """Cancel the pending invite of an email address.
+
+        Parameters:
+            email: The invited email address.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the project has no pending invite for `email`.
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "projectMembers",
+            "invites",
+            email,
+        ]
+        _client._send_request("DELETE", path_params)

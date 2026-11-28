@@ -310,6 +310,26 @@ class TestProjectMembersApi:
             "PUT", ["project", 119, "projectMembers", "carol@example.com", "owner"]
         )
 
+    def test_get_usage_sends_the_window(self, mocker):
+        api = ProjectMembersApi()
+        client_instance = _patch_client(mocker, {"members": []})
+
+        assert api.get_usage("36h", "2026-11-23T00:00:00Z") == {"members": []}
+        client_instance._send_request.assert_called_once_with(
+            "GET",
+            ["project", 119, "projectMembers", "usage"],
+            {"since": "36h", "until": "2026-11-23T00:00:00Z"},
+        )
+
+    def test_get_usage_leaves_until_out_when_not_given(self, mocker):
+        api = ProjectMembersApi()
+        client_instance = _patch_client(mocker, None)
+
+        assert api.get_usage() == {}
+        client_instance._send_request.assert_called_once_with(
+            "GET", ["project", 119, "projectMembers", "usage"], {"since": "7d"}
+        )
+
 
 class TestProjectMember:
     def test_update_role_delegates_to_api_and_updates_local_state(self, mocker):
