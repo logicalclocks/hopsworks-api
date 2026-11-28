@@ -508,6 +508,7 @@ def init_cmd(
     fmt = (fmt or ("AUTO" if existing else "DBT")).upper()
     url = repo if existing else None
     git_repository_id = None
+    externals = []
     if existing:
         clone = _clone(
             ctx, repo, git_cmd.provider_for_host(urlparse(repo).hostname or "")
@@ -515,17 +516,26 @@ def init_cmd(
         path, git_repository_id = clone.path, clone.id
     else:
         feature_groups = [fg_cmd._get_fg(ctx, *_fg_ref(ref)) for ref in from_fg]
-        # A spine group holds no rows. An external feature group over a table resolves at compile time
-        # through a Trino catalog of the project created from its data source.
-        spines = [
-            f"{fg.name} version {fg.version}"
-            for fg in feature_groups
-            if fg_cmd._fg_type_label(fg) == "spine"
-        ]
-        if spines:
-            raise click.ClickException(
-                f"{', '.join(spines)}: a spine group holds no rows for a semantic model to read."
-            )
+        # Refused before anything is created: no compile resolves these.
+        # The backend resolves an external feature group only over a table, not a SQL query or a path.
+        refused = []
+        for fg in feature_groups:
+            label = fg_cmd._fg_type_label(fg)
+            if label == "spine":
+                refused.append(
+                    f"{fg.name} version {fg.version}: a spine group holds no rows for a semantic model to read"
+                )
+            elif label == "external":
+                source = fg_cmd._source_to_dict(fg)
+                if source["query"] or not source["table"]:
+                    refused.append(
+                        f"{fg.name} version {fg.version}: an external feature group over a SQL query or a path "
+                        "has no table for a semantic model to read"
+                    )
+                else:
+                    externals.append(f"{fg.name} version {fg.version}")
+        if refused:
+            raise click.ClickException("; ".join(refused) + ".")
         files = _scaffold(
             name,
             feature_groups,
@@ -580,6 +590,17 @@ def init_cmd(
         )
         if build:
             _render_build(build)
+        if externals and any(
+            issue.rule == "RELATION"
+            for issue in (build.issues if build else None) or []
+        ):
+            output.info(
+                "An external feature group (%s) resolves only through a catalog Trino has loaded from its data "
+                "source: a project catalog a Data Owner creates with `create_trino_catalog()`, or one another "
+                "project shares with this one. A data source with credentials_mode PROVIDED yields only private "
+                "catalogs, which no build reads.",
+                ", ".join(externals),
+            )
         if not existing:
             output.info(
                 "%s models/semantic.yml, then run `hops semantic compile %s --wait`.",
