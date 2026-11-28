@@ -1078,3 +1078,24 @@ class TestVerifyAttributeKeyNames:
         fg = self._FeatureGroupStub(columns=[Feature(name="id", type="int")])
 
         assert util._verify_attribute_key_names(fg, True) is None
+
+
+def test_numpy_encoder_writes_decimal_date_and_object_arrays():
+    import decimal
+    import json
+
+    import numpy as np
+    import pandas as pd
+
+    frame = pd.DataFrame(
+        {
+            "monthly_spend": [decimal.Decimal("91.63")],
+            "signup_date": [date(2025, 4, 12)],
+        }
+    )
+    example = json.dumps(
+        util._input_example_to_json(frame.head(1)), cls=util.NumpyEncoder
+    )
+    assert json.loads(example) == [91.63, "2025-04-12"]
+    mixed = np.array([1, "a", decimal.Decimal("2.5")], dtype=object)
+    assert json.loads(json.dumps(mixed, cls=util.NumpyEncoder)) == [1, "a", 2.5]
