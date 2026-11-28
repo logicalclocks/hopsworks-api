@@ -31,7 +31,8 @@ the environment: they are read once over REST with the pod's job JWT.
 ## Secrets
 
 Any private secret of the starting user, for example a third-party API key
-stored with `hops secret create` or the UI:
+stored with `hopsworks.get_secrets_api().create_secret(name, value)` or in
+Account settings, Secrets:
 
 ```js
 const openaiKey = await getSecret("openai_api_key");

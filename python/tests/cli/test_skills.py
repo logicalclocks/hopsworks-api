@@ -6,6 +6,7 @@ import json
 import re
 from pathlib import Path
 
+import click
 import pytest
 from click.testing import CliRunner
 from hopsworks.cli.main import cli
@@ -95,3 +96,51 @@ def test_shipped_skill_frontmatter_loads_in_every_agent(skill_md):
         f"{skill_md} declares name={fields['name']!r} but lives in "
         f"{skill_md.parent.name!r}"
     )
+
+
+HOPSWORKS_ROOT = SKILLS_ROOT.parent
+FENCE = re.compile(r"^\s*```")
+INLINE = re.compile(r"`([^`\n]+)`")
+# `hops` at a command position: the start of the code (after an optional `$ ` prompt), or after ; & | (
+VERB = re.compile(
+    r"(?:^\s*(?:\$\s+)?|[;&|(]\s*)hops ([a-z][a-z-]*)(?: ([a-z][a-z-]*))?"
+)
+
+
+def _code_spans(text):
+    """Yield (line number, code) for fenced lines and inline code spans."""
+    fenced = False
+    for number, line in enumerate(text.splitlines(), 1):
+        if FENCE.match(line):
+            fenced = not fenced
+            continue
+        if fenced:
+            yield number, line
+        else:
+            for span in INLINE.findall(line):
+                yield number, span
+
+
+def test_shipped_markdown_names_only_cli_commands_that_exist():
+    ctx = click.Context(cli)
+
+    def children(command):
+        if not isinstance(command, click.Group):
+            return None
+        return {
+            name: command.get_command(ctx, name) for name in command.list_commands(ctx)
+        }
+
+    top = children(cli)
+    missing = []
+    for md in sorted(HOPSWORKS_ROOT.glob("**/*.md")):
+        for number, code in _code_spans(md.read_text(encoding="utf-8")):
+            for verb, sub in VERB.findall(code):
+                where = f"{md.relative_to(HOPSWORKS_ROOT)}:{number}"
+                if verb not in top:
+                    missing.append(f"{where}: hops {verb}")
+                    continue
+                subs = children(top[verb])
+                if sub and subs is not None and sub not in subs:
+                    missing.append(f"{where}: hops {verb} {sub}")
+    assert missing == []
