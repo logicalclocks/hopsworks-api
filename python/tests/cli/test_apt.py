@@ -37,6 +37,7 @@ class FakeTools:
         self.layout = layout
         self.offer: dict[str, dict] = {}
         self.calls: list[list[str]] = []
+        self.fail_extract: str | None = None
 
     def run(self, args):
         self.calls.append(args)
@@ -50,15 +51,23 @@ class FakeTools:
             "Package": deb.read_text(),
             "Version": spec.get("version", "1.0"),
             "Description": "x",
+            **spec.get("fields", {}),
         }
 
     def scripts(self, deb: Path):
         return self.offer[deb.read_text()].get("scripts", {})
 
-    def extract(self, deb: Path, root: Path):
-        files = []
+    def members(self, deb: Path):
+        return [
+            "./",
+            *(f"./{rel}" for rel in self.offer[deb.read_text()].get("files", {})),
+        ]
+
+    def extract(self, deb: Path, dest: Path):
+        if deb.read_text() == self.fail_extract:
+            raise OSError("simulated I/O error")
         for rel, content in self.offer[deb.read_text()].get("files", {}).items():
-            path = root / rel
+            path = dest / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             if isinstance(content, tuple) and content[0] == "link":
                 path.symlink_to(content[1])
@@ -66,8 +75,8 @@ class FakeTools:
                 path.write_text(content)
                 if rel.endswith("-suid"):
                     path.chmod(0o4755)
-            files.append(rel)
-        return files
+                if "/bin/" in rel:
+                    path.chmod(0o755)
 
 
 @pytest.fixture
@@ -78,6 +87,11 @@ def layout(tmp_path, monkeypatch):
     parts.mkdir()
     (parts / "ubuntu.sources").write_text("Types: deb\n")
     (parts / "ignored.save").write_text("x")
+    system_root = tmp_path / "system"
+    (system_root / "usr/lib/x86_64-linux-gnu").mkdir(parents=True)
+    (system_root / "usr/lib/x86_64-linux-gnu/libssl.so.3").write_text("image")
+    monkeypatch.setattr(apt, "SYSTEM_ROOT", system_root)
+    monkeypatch.setattr(apt, "_check_platform", lambda: None)
     monkeypatch.setattr(apt, "SYSTEM_STATUS", status)
     monkeypatch.setattr(apt, "SYSTEM_SOURCE_PARTS", parts)
     monkeypatch.setenv(apt.PREFIX_ENV, str(tmp_path / "prefix"))
@@ -89,10 +103,11 @@ def layout(tmp_path, monkeypatch):
 @pytest.fixture
 def tools(layout, monkeypatch):
     fake = FakeTools(layout)
-    monkeypatch.setattr(apt, "run", fake.run)
-    monkeypatch.setattr(apt, "deb_fields", fake.fields)
-    monkeypatch.setattr(apt, "deb_scripts", fake.scripts)
-    monkeypatch.setattr(apt, "deb_extract", fake.extract)
+    monkeypatch.setattr(apt, "_run", fake.run)
+    monkeypatch.setattr(apt, "_deb_fields", fake.fields)
+    monkeypatch.setattr(apt, "_deb_scripts", fake.scripts)
+    monkeypatch.setattr(apt, "_deb_members", fake.members)
+    monkeypatch.setattr(apt, "_deb_extract", fake.extract)
     return fake
 
 
@@ -233,12 +248,12 @@ def test_remove_refuses_what_hops_apt_did_not_install(layout, tools):
         apt.remove(layout, ["libc6"])
 
 
-def test_env_appends_the_prefix_after_the_system_paths(layout):
+def test_env_puts_only_the_wrappers_on_path_by_default(layout):
     exports = apt.env_exports(layout)
-    assert exports.startswith(
-        'export PATH="$PATH:' + str(layout.root / "usr/local/bin")
-    )
-    assert str(layout.root / "usr/lib/x86_64-linux-gnu") in exports
+    assert exports == f'export PATH="$PATH:{layout.bin}"\n'
+    assert "LD_LIBRARY_PATH" not in exports
+    with_libs = apt.env_exports(layout, libraries=True)
+    assert str(layout.root / "usr/lib/x86_64-linux-gnu") in with_libs
 
 
 def test_cli_install_warns_about_install_scripts(layout, tools, monkeypatch):
@@ -330,4 +345,232 @@ def test_install_creates_alternatives_inside_the_prefix(layout, tools):
 def test_hidden_files_keep_their_names(layout, tools):
     tools.offer = {"dots": {"files": {"usr/share/dots/.hidden": "h"}}}
     apt.install(layout, ["dots"])
-    assert "usr/share/dots/.hidden" in (layout.info / "dots.list").read_text().split()
+    assert (
+        "usr/share/dots/.hidden" in (layout.info / "dots.list").read_text().splitlines()
+    )
+
+
+# --- review round 3: library scope, anchored paths, dependencies, atomic installs, platform ---
+
+
+def test_programs_get_wrappers_that_scope_the_libraries_to_them(layout, tools):
+    tools.offer = {
+        "jq": {"files": {"usr/bin/jq": "bin"}},
+        "libjq1": {"files": {"usr/lib/x86_64-linux-gnu/libjq.so.1": "lib"}},
+    }
+    apt.install(layout, ["jq"])
+    wrapper = (layout.bin / "jq").read_text()
+    assert os.access(layout.bin / "jq", os.X_OK)
+    assert str(layout.root / "usr/lib/x86_64-linux-gnu") in wrapper
+    assert f"exec {layout.root / 'usr/bin/jq'} " in wrapper
+    # Only programs get wrappers; libraries stay off every global search path.
+    assert sorted(p.name for p in layout.bin.iterdir()) == ["jq"]
+
+
+def test_wrappers_skip_links_that_leave_the_prefix(layout, tools):
+    tools.offer = {
+        "tool": {
+            "files": {
+                "usr/bin/tool": "b",
+                "usr/bin/sh-link": ("link", "/bin/sh"),
+                "usr/bin/bad name": "b",
+            }
+        }
+    }
+    apt.install(layout, ["tool"])
+    assert sorted(p.name for p in layout.bin.iterdir()) == ["tool"]
+
+
+def test_refuses_a_library_whose_name_the_image_has(layout, tools):
+    tools.offer = {
+        "tool": {"files": {"usr/bin/tool": "b"}},
+        "libssl-compat": {"files": {"usr/lib/x86_64-linux-gnu/libssl.so.3": "evil"}},
+    }
+    with pytest.raises(
+        click.ClickException, match=r"libssl-compat ships libssl\.so\.3"
+    ):
+        apt.install(layout, ["tool"])
+    assert not (layout.root / "usr/bin/tool").exists()
+    assert apt.installed(layout) == []
+
+
+def test_refuses_a_package_with_a_path_outside_its_root(layout, tools, monkeypatch):
+    tools.offer = {"evil": {"files": {"usr/bin/evil": "b"}}}
+    monkeypatch.setattr(apt, "_deb_members", lambda deb: ["./", "./../../etc/x"])
+    with pytest.raises(click.ClickException, match="outside its root"):
+        apt.install(layout, ["evil"])
+
+
+@pytest.mark.parametrize("entry", ["../outside", "/outside-abs", "link/victim"])
+def test_remove_never_deletes_outside_the_prefix(layout, tools, tmp_path, entry):
+    tools.offer = {"a": {"files": {"usr/bin/a": "a"}}}
+    apt.install(layout, ["a"])
+    outside = tmp_path / "prefix" / "outside"
+    outside.write_text("keep")
+    (tmp_path / "outside-abs").write_text("keep")
+    victim_dir = tmp_path / "victims"
+    victim_dir.mkdir()
+    (victim_dir / "victim").write_text("keep")
+    (layout.root / "link").symlink_to(victim_dir)
+    (layout.info / "a.list").write_text(f"usr/bin/a\n{entry}\n")
+    apt.remove(layout, ["a"])
+    assert outside.read_text() == "keep"
+    assert (tmp_path / "outside-abs").read_text() == "keep"
+    assert (victim_dir / "victim").read_text() == "keep"
+    assert not (layout.root / "usr/bin/a").exists()
+
+
+def test_file_names_with_spaces_survive_the_manifest(layout, tools):
+    tools.offer = {"sp": {"files": {"usr/share/sp/two words.txt": "x"}}}
+    apt.install(layout, ["sp"])
+    assert "usr/share/sp/two words.txt" in apt._read_list(layout.info / "sp.list")
+    apt.remove(layout, ["sp"])
+    assert not (layout.root / "usr/share/sp/two words.txt").exists()
+
+
+def test_alternatives_cannot_link_outside_the_prefix(layout, tools):
+    tools.offer = {
+        "alt": {
+            "scripts": {
+                "postinst": "update-alternatives --install /usr/bin/../../../../evil x /usr/bin/alt 10\n"
+            },
+            "files": {"usr/bin/alt": "b"},
+        }
+    }
+    apt.install(layout, ["alt"])
+    assert not (layout.prefix.parent / "evil").exists()
+    assert not (layout.prefix / "evil").exists()
+
+
+def test_remove_refuses_a_dependency_an_installed_package_needs(layout, tools):
+    tools.offer = {
+        "jq": {
+            "files": {"usr/bin/jq": "b"},
+            "fields": {"Depends": "libjq1 (= 1.7.1-3), libc6 (>= 2.34)"},
+        },
+        "libjq1": {"files": {"usr/lib/x86_64-linux-gnu/libjq.so.1": "l"}},
+    }
+    apt.install(layout, ["jq"])
+    with pytest.raises(click.ClickException, match=r"libjq1 \(needed by jq\)"):
+        apt.remove(layout, ["libjq1"])
+    assert (layout.root / "usr/lib/x86_64-linux-gnu/libjq.so.1").exists()
+    # Both together is fine; so is a dependency an alternative or the image satisfies.
+    apt.remove(layout, ["jq", "libjq1"])
+    assert apt.installed(layout) == []
+
+
+def test_remove_accepts_a_dependency_satisfied_by_an_alternative(layout, tools):
+    tools.offer = {
+        "tool": {
+            "files": {"usr/bin/tool": "b"},
+            "fields": {"Depends": "liba | zlib1g"},
+        },
+        "liba": {"files": {"usr/lib/liba.so.1": "l"}},
+    }
+    apt.install(layout, ["tool", "liba"])
+    apt.remove(layout, ["liba"])
+    assert [p["Package"] for p in apt.installed(layout)] == ["tool"]
+
+
+def test_a_failed_unpack_changes_nothing(layout, tools):
+    tools.offer = {
+        "a": {"files": {"usr/bin/a": "a"}},
+        "b": {"files": {"usr/bin/b": "b"}},
+    }
+    tools.fail_extract = "b"
+    with pytest.raises(OSError, match="simulated"):
+        apt.install(layout, ["a", "b"])
+    assert not (layout.root / "usr/bin/a").exists()
+    assert apt.installed(layout) == []
+    assert not layout.staging.exists()
+
+
+def test_a_failure_while_moving_in_puts_everything_back(layout, tools, monkeypatch):
+    tools.offer = {
+        "a": {"version": "1", "files": {"usr/bin/a": "old", "usr/bin/a2": "x"}}
+    }
+    apt.install(layout, ["a"])
+    tools.offer = {
+        "a": {"version": "2", "files": {"usr/bin/a": "new", "usr/bin/a2": "y"}},
+        "b": {"files": {"usr/bin/b": "b", "usr/share/b/data": "d"}},
+    }
+    real_replace = os.replace
+    moves = []
+
+    def flaky(src, dst):
+        moves.append(dst)
+        if str(dst).endswith("usr/share/b/data"):
+            raise OSError("simulated I/O error")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(apt.os, "replace", flaky)
+    with pytest.raises(OSError, match="simulated"):
+        apt.install(layout, ["a", "b"])
+    monkeypatch.setattr(apt.os, "replace", real_replace)
+    assert (layout.root / "usr/bin/a").read_text() == "old"
+    assert (layout.root / "usr/bin/a2").read_text() == "x"
+    assert not (layout.root / "usr/bin/b").exists()
+    assert not (layout.root / "usr/share/b").exists()
+    assert [(p["Package"], p["Version"]) for p in apt.installed(layout)] == [("a", "1")]
+
+
+def test_two_packages_shipping_the_same_file_are_refused(layout, tools):
+    tools.offer = {"a": {"files": {"usr/bin/a": "a"}}}
+    apt.install(layout, ["a"])
+    tools.offer = {"b": {"files": {"usr/bin/a": "b"}}}
+    with pytest.raises(click.ClickException, match="b and a both ship usr/bin/a"):
+        apt.install(layout, ["b"])
+    assert (layout.root / "usr/bin/a").read_text() == "a"
+
+
+def test_an_upgrade_drops_the_files_the_new_version_lacks(layout, tools):
+    tools.offer = {"a": {"files": {"usr/bin/a": "1", "usr/bin/a-old": "1"}}}
+    apt.install(layout, ["a"])
+    tools.offer = {"a": {"version": "2", "files": {"usr/bin/a": "2"}}}
+    apt.install(layout, ["a"])
+    assert (layout.root / "usr/bin/a").read_text() == "2"
+    assert not (layout.root / "usr/bin/a-old").exists()
+    assert not (layout.bin / "a-old").exists()
+
+
+def test_dry_run_shows_the_plan_and_unpacks_nothing(layout, tools, monkeypatch):
+    monkeypatch.setattr(apt.shutil, "which", lambda _: "/usr/bin/x")
+    tools.offer = {
+        "jq": {"version": "1.7.1", "files": {"usr/bin/jq": "b"}},
+        "libjq1": {"files": {"usr/lib/libjq.so.1": "l"}},
+    }
+    result = CliRunner().invoke(cli, ["apt", "install", "--dry-run", "jq", "zlib1g"])
+    assert result.exit_code == 0, result.output
+    assert "jq" in result.output and "dependency" in result.output
+    assert "Already in the image: zlib1g" in result.output
+    assert not (layout.root / "usr/bin/jq").exists()
+    assert apt.installed(layout) == []
+    assert not list(layout.archives.glob("*.deb"))
+
+
+def test_dry_run_reports_what_blocks_the_install(layout, tools, monkeypatch):
+    monkeypatch.setattr(apt.shutil, "which", lambda _: "/usr/bin/x")
+    tools.offer = {"libc6": {"version": "2.43-1"}}
+    result = CliRunner().invoke(cli, ["apt", "install", "--dry-run", "libc6"])
+    assert result.exit_code != 0
+    assert "libc6 2.43-1" in result.output and "custom commands" in result.output
+
+
+def test_top_level_help_works_without_fcntl(monkeypatch):
+    import importlib
+    import sys
+
+    monkeypatch.setitem(sys.modules, "fcntl", None)
+    monkeypatch.delitem(sys.modules, "hopsworks.cli.commands.apt")
+    reloaded = importlib.import_module("hopsworks.cli.commands.apt")
+    assert reloaded.apt_group.name == "apt"
+    result = CliRunner().invoke(cli, ["--help"])
+    assert result.exit_code == 0, result.output
+    assert "apt" in result.output
+
+
+def test_commands_refuse_other_platforms(monkeypatch):
+    monkeypatch.setattr(apt.sys, "platform", "win32")
+    result = CliRunner().invoke(cli, ["apt", "remove", "x"])
+    assert result.exit_code != 0
+    assert "Linux only" in result.output
