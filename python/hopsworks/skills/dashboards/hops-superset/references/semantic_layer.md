@@ -35,13 +35,13 @@ It needs no Superset client, so it also works from an external client:
 
 ```bash
 hops semantic dashboard sales --metrics revenue,orders --group-by customer__country --title "Sales overview"
-# Created dashboard 12 "Sales overview": https://<host>/hopsworks-api/superset/dashboard/12/?projectId=119
+# Created dashboard 12 "Sales overview": https://<host>/hopsworks-api/superset/superset/dashboard/12/?projectId=119
 ```
 
 ```python
 sales = project.get_semantic_layer_api().get_project("sales")
 sales.create_dashboard(["revenue", "orders"], group_by=["customer__country"], title="Sales overview")
-# {"id": 12, "title": "Sales overview", "url": "https://<host>/hopsworks-api/superset/dashboard/12/?projectId=119"}
+# {"id": 12, "title": "Sales overview", "url": "https://<host>/hopsworks-api/superset/superset/dashboard/12/?projectId=119"}
 sales.create_dashboard(saved_query="revenue_by_country")   # on the saved query's table; also hops semantic dashboard sales --saved-query revenue_by_country
 sales.explore_url("revenue")   # Explore, the metric over metric_time, nothing saved
 ```

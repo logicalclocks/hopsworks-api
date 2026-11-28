@@ -203,7 +203,7 @@ class TestDashboard:
     DASHBOARD = {
         "id": 12,
         "title": "Sales overview",
-        "url": "https://h/hopsworks-api/superset/dashboard/12/?projectId=119",
+        "url": "https://h/hopsworks-api/superset/superset/dashboard/12/?projectId=119",
     }
 
     def test_dashboard_flattens_metrics_and_prints_the_url(self, sales):
@@ -230,7 +230,7 @@ class TestDashboard:
         )
         assert result.output.strip() == (
             'Created dashboard 12 "Sales overview": '
-            "https://h/hopsworks-api/superset/dashboard/12/?projectId=119"
+            "https://h/hopsworks-api/superset/superset/dashboard/12/?projectId=119"
         )
 
     def test_dashboard_in_json_is_id_title_and_url(self, sales):
