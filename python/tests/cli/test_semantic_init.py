@@ -753,19 +753,139 @@ class TestInitInAFolder:
         assert result.exit_code == 1
         assert "unknown column" in result.output
 
-    def test_an_external_feature_group_is_refused(self, sl, datasets, mocker):
-        external = mock.MagicMock(name="ExternalFeatureGroup")
-        external.__class__ = type("ExternalFeatureGroup", (), {})
-        external.name, external.version = "crm_accounts", 1
-        mocker.patch.object(fg_cmd, "_get_fg", return_value=external)
+    def test_a_spine_group_is_refused(self, sl, datasets, mocker):
+        spine = mock.MagicMock(name="SpineGroup")
+        spine.__class__ = type("SpineGroup", (), {})
+        spine.name, spine.version = "dates", 1
+        mocker.patch.object(fg_cmd, "_get_fg", return_value=spine)
+
+        result = _run("sales", "--from-fg", "dates")
+
+        assert result.exit_code == 1
+        assert "dates version 1" in result.output
+        assert "spine group" in result.output
+        datasets.upload.assert_not_called()
+        sl.create_project.assert_not_called()
+
+    @staticmethod
+    def _external(**source):
+        accounts = _fg(
+            "crm_accounts",
+            1,
+            [("account_id", "bigint"), ("opened_at", "timestamp")],
+            ["account_id"],
+            "opened_at",
+        )
+        data_source = SimpleNamespace(
+            storage_connector=SimpleNamespace(name="crm_pg"),
+            **{
+                "query": None,
+                "path": None,
+                "database": "crm",
+                "table": None,
+                **source,
+            },
+        )
+        return type("ExternalFeatureGroup", (SimpleNamespace,), {})(
+            **vars(accounts), data_source=data_source
+        )
+
+    def test_an_external_feature_group_over_a_table_is_scaffolded(
+        self, sl, datasets, mocker
+    ):
+        # The compile resolves it through a Trino catalog of its data source (HWORKS-3875).
+        mocker.patch.object(
+            fg_cmd, "_get_fg", return_value=self._external(table="accounts")
+        )
+
+        result = _run("sales", "--from-fg", "crm_accounts")
+
+        assert result.exit_code == 0, result.output
+        assert (
+            "ref('crm_accounts')" in datasets.uploaded["files"]["models/semantic.yml"]
+        )
+        sl.create_project.assert_called_once()
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            {"query": "SELECT * FROM accounts", "table": None},
+            {"query": "SELECT * FROM accounts", "table": "accounts"},
+            {"path": "s3://crm/accounts/", "table": None},
+        ],
+        ids=["query", "query-and-table", "path"],
+    )
+    def test_an_external_feature_group_over_a_query_or_path_is_refused(
+        self, sl, datasets, mocker, source
+    ):
+        mocker.patch.object(fg_cmd, "_get_fg", return_value=self._external(**source))
 
         result = _run("sales", "--from-fg", "crm_accounts")
 
         assert result.exit_code == 1
         assert "crm_accounts version 1" in result.output
-        assert "offline table" in result.output
+        assert "SQL query or a path" in result.output
         datasets.upload.assert_not_called()
         sl.create_project.assert_not_called()
+
+    def test_an_unresolved_external_feature_group_names_its_catalog(
+        self, sl, datasets, mocker
+    ):
+        mocker.patch.object(
+            fg_cmd, "_get_fg", return_value=self._external(table="accounts")
+        )
+        build = SemanticBuild(
+            id=1,
+            status="INVALID",
+            error_count=1,
+            issues=[
+                SemanticIssue(
+                    level="ERROR",
+                    rule="RELATION",
+                    message="no feature group in demo_featurestore matches crm_accounts",
+                    file="models/semantic.yml",
+                    line=3,
+                )
+            ],
+        )
+        sl.create_project.return_value.compile.side_effect = SemanticBuildException(
+            "sales", build
+        )
+
+        result = _run("sales", "--from-fg", "crm_accounts")
+
+        assert result.exit_code == 1
+        assert "crm_accounts version 1" in result.output
+        assert "create_trino_catalog()" in result.output
+
+    def test_an_invalid_build_without_a_relation_issue_has_no_catalog_hint(
+        self, sl, datasets, mocker
+    ):
+        mocker.patch.object(
+            fg_cmd, "_get_fg", return_value=self._external(table="accounts")
+        )
+        build = SemanticBuild(
+            id=1,
+            status="INVALID",
+            error_count=1,
+            issues=[
+                SemanticIssue(
+                    level="ERROR",
+                    rule="EXPR",
+                    message="unknown column",
+                    file="models/semantic.yml",
+                    line=9,
+                )
+            ],
+        )
+        sl.create_project.return_value.compile.side_effect = SemanticBuildException(
+            "sales", build
+        )
+
+        result = _run("sales", "--from-fg", "crm_accounts")
+
+        assert result.exit_code == 1
+        assert "create_trino_catalog()" not in result.output
 
     def test_a_bad_version_is_a_usage_error(self, sl, datasets, feature_groups):
         result = _run("sales", "--from-fg", "orders:latest")
