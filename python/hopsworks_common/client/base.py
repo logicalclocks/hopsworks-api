@@ -56,6 +56,8 @@ class Client:
     TOKEN_EXPIRED_MAX_RETRIES = 10
     # GenericErrorCode.TOO_MANY_REQUESTS: the backend's rate limiter refused the request before any resource ran, so it is safe to resend.
     RATE_LIMITED_ERROR_CODE = 120015
+    # PROJECT_COMPUTE_BUSY of the Project, Job, Service, Serving and Kube error families (family range + code): the project's workload start is refused while another start or an ending workload holds its compute quota. Nothing was started, so it is safe to resend.
+    COMPUTE_BUSY_ERROR_CODES = frozenset({150131, 130095, 100086, 240077, 510032})
     RATE_LIMITED_RETRY_BUDGET_SECONDS = 60
 
     APIKEY_FILE = "api.key"
@@ -140,7 +142,7 @@ class Client:
         """Send REST request to Hopsworks.
 
         Uses the client it is executed from. Path parameters are url encoded automatically.
-        A request refused by the backend's per-user rate limiter is resent after the advertised `Retry-After`, for up to 60 seconds in total, as long as its body can be resent.
+        A request refused by the backend's per-user rate limiter, or because the project's compute quota is busy with another start, is resent after the advertised `Retry-After`, for up to 60 seconds in total, as long as its body can be resent.
 
         Parameters:
             method: 'GET', 'PUT' or 'POST'
@@ -280,7 +282,7 @@ class Client:
         return True
 
     def _rate_limited_wait(self, response) -> int | None:
-        """Seconds the rate limiter asks the client to wait, or None if the response is not a rate-limit refusal."""
+        """Seconds the backend asks the client to wait, or None if the response is not a rate-limit or compute-busy refusal."""
         if (
             response.status_code
             != exceptions.RestAPIError.STATUS_CODE_TOO_MANY_REQUESTS
@@ -291,7 +293,10 @@ class Client:
             error_code = response.json().get("errorCode")
         except (TypeError, ValueError, AttributeError):
             return None
-        if error_code != self.RATE_LIMITED_ERROR_CODE or wait < 0:
+        if (
+            error_code != self.RATE_LIMITED_ERROR_CODE
+            and error_code not in self.COMPUTE_BUSY_ERROR_CODES
+        ) or wait < 0:
             return None
         return wait
 
