@@ -56,10 +56,10 @@ job = api.create_job(name="feature-pipeline", config=config)
 job.run(await_termination=True)
 ```
 
-A job without `--resources` gets the type's default (a Python job: 2048 MB,
-0.5 cores). Set the job's own resources with `--resources` on `hops job create`
-or `hops job deploy`; fields not given keep their value, and a later deploy
-keeps them. A start beyond the project's quota is refused (412).
+A job without `--resources` gets the cluster's default for its type. Set the
+job's own resources with `--resources` on `hops job create` or
+`hops job deploy`; fields not given keep their value, and a later deploy keeps
+them. A start beyond the project's quota is refused (412).
 
 ```bash
 hops job deploy telco-churn-features features.py \

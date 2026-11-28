@@ -181,7 +181,7 @@ def _job_to_dict(job: Any) -> dict[str, Any]:
     "--resources",
     default=None,
     help=(
-        "Resources the job runs with, as JSON with the compute fields to set, e.g. "
+        "Resources the job runs with, as JSON with the configuration fields to set, e.g. "
         '\'{"resourceConfig": {"cores": 2, "memory": 8192}}\' or '
         "'{\"spark.executor.memory\": 8192}'. Other fields keep the type's default. "
         "A start beyond the project's quota is refused."
@@ -208,7 +208,7 @@ def job_create(
         environment: Python environment the job runs in; the type's default when omitted.
         app_args: Optional argument string passed to the job.
         description: Optional free-form description.
-        resources: JSON with the compute fields to set on the job.
+        resources: JSON with the configuration fields to set on the job.
     """
     job_resources = _parse_resources(resources)
     project = session.get_project(ctx)
@@ -272,7 +272,7 @@ def job_create(
     "--resources",
     default=None,
     help=(
-        "Resources the job runs with, as JSON with the compute fields to set, e.g. "
+        "Resources the job runs with, as JSON with the configuration fields to set, e.g. "
         '\'{"resourceConfig": {"cores": 2, "memory": 8192}}\'. Other fields keep the '
         "job's stored value, or the type's default for a new job. "
         "A start beyond the project's quota is refused."
@@ -312,7 +312,7 @@ def job_deploy(
         wait: With ``do_run``, block until the execution terminates.
         upload_dir: HopsFS directory for a local script upload.
         overwrite: Overwrite an existing uploaded script.
-        resources: JSON with the compute fields to set on the job.
+        resources: JSON with the configuration fields to set on the job.
     """
     job_resources = _parse_resources(resources)
     project = session.get_project(ctx)
