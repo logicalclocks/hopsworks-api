@@ -189,12 +189,23 @@ public class FeatureGroupApi {
         .set("fgId", featureGroup.getId())
         .expand();
 
+    featureGroupCommit.setExecutionId(jobExecutionId(System.getenv("HOPSWORKS_JOB_EXECUTION_ID")));
     HttpPost postRequest = new HttpPost(uri);
     postRequest.setHeader(HttpHeaders.CONTENT_TYPE, "application/json");
     postRequest.setEntity(hopsworksClient.buildStringEntity(featureGroupCommit));
 
     LOGGER.info("Sending metadata request: " + uri);
     return hopsworksClient.handleRequest(postRequest, FeatureGroupCommit.class);
+  }
+
+  // The job execution of HOPSWORKS_JOB_EXECUTION_ID; null outside a job, and for an empty or malformed
+  // value: the commit is then sent without it.
+  static Integer jobExecutionId(String value) {
+    if (value == null || !value.matches("[0-9]{1,10}")) {
+      return null;
+    }
+    long id = Long.parseLong(value);
+    return id > 0 && id <= Integer.MAX_VALUE ? (int) id : null;
   }
 
   public List<FeatureGroupCommit> getCommitDetails(FeatureGroupBase featureGroupBase, Long wallclockTimestamp,

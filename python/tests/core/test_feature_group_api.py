@@ -15,10 +15,12 @@
 #
 
 import copy
+import json
 import warnings
 from unittest.mock import Mock
 
 from hsfs import feature_group as fg_mod
+from hsfs import feature_group_commit
 from hsfs.core import feature_group_api
 
 
@@ -176,3 +178,31 @@ class TestFeatureGroupApi:
             ],
             timeout=60,
         )
+
+    def test_commit_payload_names_the_job_execution(self, monkeypatch):
+        monkeypatch.setenv("HOPSWORKS_JOB_EXECUTION_ID", "42")
+        commit = feature_group_commit.FeatureGroupCommit(
+            commit_time=11, rows_inserted=1
+        )
+
+        payload = feature_group_api._commit_payload(commit)
+
+        assert payload["executionId"] == 42
+        assert payload["commitTime"] == 11
+        assert json.loads(json.dumps(payload))["executionId"] == 42
+
+    def test_commit_payload_outside_a_job_or_with_a_malformed_execution_names_none(
+        self, monkeypatch
+    ):
+        commit = feature_group_commit.FeatureGroupCommit(
+            commit_time=11, rows_inserted=1
+        )
+        malformed = ["", "abc", "-1", "0", "4.2", " 42", "\u0664\u0662", "\u00b2"]
+        malformed += [str(2**31), "9" * 11, "1" * 5000]
+        monkeypatch.delenv("HOPSWORKS_JOB_EXECUTION_ID", raising=False)
+        assert "executionId" not in feature_group_api._commit_payload(commit)
+        for value in malformed:
+            monkeypatch.setenv("HOPSWORKS_JOB_EXECUTION_ID", value)
+            payload = feature_group_api._commit_payload(commit)
+            assert "executionId" not in payload, value[:20]
+            assert payload["commitTime"] == 11
