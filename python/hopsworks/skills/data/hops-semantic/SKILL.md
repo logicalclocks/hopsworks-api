@@ -150,7 +150,7 @@ hops semantic update sales --path Jupyter/analytics/dbt_v2     # a new root path
 ```
 
 - **When builds happen.** A clone, pull, checkout or reset through Hopsworks git (UI or REST) recompiles automatically.
-  Edits made in Jupyter, a terminal or the file browser are noticed by a staleness check that later queries run, at most every 30 seconds, and compile in the background; run `hops semantic compile` to see the result at once.
+  After an edit or an upload (Jupyter, a terminal, `hops files upload`, the file browser), run `hops semantic compile` next: it compiles at once and needs no wait before it. Queries also notice an edit through a staleness check (at most every 30 seconds) and compile it in the background.
 - **Invalid builds never serve.** Queries keep the last valid build and log that the answer is stale. Fix the issues listed by `compile --wait` and compile again.
 - **Deployment modes.** `FOLLOW` (default) serves every new valid build, for a developer's own clone. `PINNED` (`--mode PINNED`) serves one build until `hops semantic promote <name> <build id>`, for a production project.
 - `--path` is relative to the project root; `/hopsfs/...` paths from a terminal and absolute `/Projects/<project>/...` paths also work.
