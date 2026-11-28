@@ -111,6 +111,16 @@ class _PendingQuestions(ABC):
     def _claim(self, conversation_id: str, version: int) -> bool:
         """Take the record for one resume; False when another resume took it first."""
 
+    def _renew(self, conversation_id: str) -> bool:  # noqa: ARG002
+        """Keep a claim past its lease while the resume it was taken for still runs.
+
+        Called by the replica that holds the claim, on its heartbeat: a resumed
+        turn longer than the lease would otherwise be claimed again by another
+        replica handed the same answer.
+        False when there is no claim to renew.
+        """
+        return False
+
     @abstractmethod
     def _release(self, conversation_id: str) -> None:
         """Give a claim back: the resume did not finish, and the question is open again."""
@@ -169,6 +179,14 @@ class _ProcessPending(_PendingQuestions):
                 return False
             row["version"] += 1
             row["claimed_at"] = now
+            return True
+
+    def _renew(self, conversation_id: str) -> bool:
+        with self._lock:
+            row = self._rows.get(conversation_id)
+            if row is None or row["claimed_at"] is None:
+                return False
+            row["claimed_at"] = _utcnow()
             return True
 
     def _release(self, conversation_id: str) -> None:
@@ -274,6 +292,17 @@ class _ManagedPendingBase(_PendingQuestions):
                 .values(version=t.c.version + 1, claimed_at=now, updated_at=now)
             ).rowcount
         return taken == 1
+
+    def _renew(self, conversation_id: str) -> bool:
+        now = _utcnow()
+        t = self._table
+        with self._engine.begin() as conn:
+            renewed = conn.execute(
+                self._update(conversation_id)
+                .where(t.c.claimed_at.is_not(None))
+                .values(claimed_at=now, updated_at=now)
+            ).rowcount
+        return renewed == 1
 
     def _release(self, conversation_id: str) -> None:
         with self._engine.begin() as conn:

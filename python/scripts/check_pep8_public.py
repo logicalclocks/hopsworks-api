@@ -132,6 +132,13 @@ POLYMORPHISM_FALLBACK_QUALNAMES: set[str] = {
     "_BoundedTaskStore.delete",
     # The request checks extend the SDK's ``SimpleRequestContextBuilder``.
     "_RequestChecks.build",
+    # The spilling store implements the SDK's ``VersionedTaskStore``, and the
+    # push sender its ``PushNotificationSender``.
+    "_SpillingStore.save",
+    "_SpillingStore.get",
+    "_SpillingStore.list",
+    "_SpillingStore.delete",
+    "_PushSender.send_notification",
 }
 
 # Third-party-API-mirroring re-exports: symbols that intentionally mirror an

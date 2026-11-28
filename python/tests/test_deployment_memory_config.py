@@ -128,3 +128,19 @@ class TestFromJson:
             DeploymentMemoryConfig.from_json(config.to_dict()).to_dict()
             == config.to_dict()
         )
+
+
+class TestAPolicyPassedTwice:
+    def test_one_policy_dict_reaches_every_deployment_it_is_passed_to(self):
+        from hopsworks_common import util
+
+        policy = {"enabled": True, "long_term": True, "search": {"enabled": False}}
+        first = util._get_obj_from_json(policy, DeploymentMemoryConfig)
+        second = util._get_obj_from_json(policy, DeploymentMemoryConfig)
+        assert second is not None
+        assert second.to_dict() == first.to_dict()
+        assert policy == {
+            "enabled": True,
+            "long_term": True,
+            "search": {"enabled": False},
+        }

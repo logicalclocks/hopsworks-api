@@ -801,7 +801,7 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert mock_fv_engine_get_training_dataset_metadata.call_count == 2
+        assert mock_fv_engine_get_training_dataset_metadata.call_count == 1
         assert mock_fv_engine_create_training_data_metadata.call_count == 1
         assert mock_fv_engine_read_from_storage_connector.call_count == 1
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
@@ -941,7 +941,7 @@ class TestFeatureViewEngine:
         ]
 
         # Assert
-        assert mock_fv_engine_get_training_dataset_metadata.call_count == 2
+        assert mock_fv_engine_get_training_dataset_metadata.call_count == 1
         assert mock_fv_engine_create_training_data_metadata.call_count == 1
         assert mock_fv_engine_read_from_storage_connector.call_count == 1
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
@@ -1012,7 +1012,7 @@ class TestFeatureViewEngine:
         fv_engine._get_training_data(feature_view_obj=fv, training_dataset_version=1)
 
         # Assert
-        assert mock_fv_engine_get_training_dataset_metadata.call_count == 3
+        assert mock_fv_engine_get_training_dataset_metadata.call_count == 2
         assert mock_fv_engine_create_training_data_metadata.call_count == 0
         assert mock_fv_engine_read_from_storage_connector.call_count == 1
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
@@ -1149,7 +1149,7 @@ class TestFeatureViewEngine:
         ]
 
         # Assert
-        assert mock_fv_engine_get_training_dataset_metadata.call_count == 3
+        assert mock_fv_engine_get_training_dataset_metadata.call_count == 2
         assert mock_fv_engine_create_training_data_metadata.call_count == 0
         assert mock_fv_engine_read_from_storage_connector.call_count == 1
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
@@ -1211,7 +1211,7 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert mock_fv_engine_get_training_dataset_metadata.call_count == 2
+        assert mock_fv_engine_get_training_dataset_metadata.call_count == 1
         assert mock_fv_engine_create_training_data_metadata.call_count == 1
         assert mock_fv_engine_read_from_storage_connector.call_count == 0
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 1
@@ -1271,7 +1271,7 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert mock_fv_engine_get_training_dataset_metadata.call_count == 2
+        assert mock_fv_engine_get_training_dataset_metadata.call_count == 1
         assert mock_fv_engine_create_training_data_metadata.call_count == 1
         assert mock_fv_engine_read_from_storage_connector.call_count == 1
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0

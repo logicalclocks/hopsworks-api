@@ -1,0 +1,423 @@
+#
+#   Copyright 2026 Hopsworks AB
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+#
+from __future__ import annotations
+
+import json
+import logging
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING
+
+from hopsworks_common.core import variable_api
+from hsfs import engine, feature_group
+from hsfs.core import feature_group_api
+from hsfs.core import monitoring_window_config as mwc
+from hsfs.statistics import Statistics
+
+
+if TYPE_CHECKING:
+    from hsfs.core import statistics_engine
+
+
+_logger = logging.getLogger(__name__)
+
+
+class IncrementalStatisticsEngine:
+    """Statistics of a commit from the statistics of the commit before it.
+
+    An ingestion statistics run profiles the whole table as of its commit.
+    A feature group that keeps growing therefore pays more for every commit.
+    When `statistics_incremental_enabled` is set, the run profiles only the rows the commits since the previous snapshot added.
+    It profiles them with the state a profile can be merged with, and merges them into the previous snapshot's statistics in the JVM.
+    The result is the snapshot's statistics, as before.
+    Counts, sums, min and max are exact.
+    Mean and standard deviation follow the parallel variance formula.
+    The percentiles come from a merged KLL sketch and the distinct count from a merged HLL sketch.
+    The merge applies to an append-only stretch of commits on a Delta or Hudi feature group.
+    Its statistics must ask for nothing without a mergeable state, that is no correlations, histograms or exact uniqueness.
+    Anything else profiles the whole snapshot as before.
+    """
+
+    VARIABLE = "statistics_incremental_enabled"
+    ALLOWED_VARIABLE = "statistics_incremental_allowed"
+    FULL_PROFILE_EVERY_VARIABLE = "statistics_incremental_full_profile_every"
+    DEFAULT_FULL_PROFILE_EVERY = 50
+    # commits looked back over for the previous snapshot; further back profiles the snapshot in full
+    MAX_COMMITS = 100
+    # rows listed, without content, while looking for the previous snapshot among other windows' rows
+    MAX_LISTED_ROWS = 1000
+    _MERGEABLE_FORMAT = "datasketches-native-v1"
+
+    def __init__(self, statistics_engine: statistics_engine.StatisticsEngine):
+        self._statistics_engine = statistics_engine
+        self._feature_group_api = feature_group_api.FeatureGroupApi()
+        self._variable_api = variable_api.VariableApi()
+
+    def _read_variable(self, name: str):
+        """The cluster variable, or `None` when it is not readable."""
+        try:
+            return self._variable_api._get_variable(name)
+        except Exception as e:
+            _logger.debug("Incremental statistics setting %s not readable: %s", name, e)
+            return None
+
+    def _enabled(self, entity) -> bool:
+        """Whether incremental statistics are on for the entity.
+
+        The cluster must allow them, and the entity's own setting decides, falling back to the cluster default when it has none.
+        When the allow switch cannot be read, they are not allowed.
+        When the cluster default cannot be read, it is off.
+        """
+        if str(self._read_variable(self.ALLOWED_VARIABLE)).lower() != "true":
+            return False
+        config = getattr(entity, "statistics_config", None)
+        incremental = getattr(config, "incremental", None)
+        if incremental is not None:
+            return bool(incremental)
+        return str(self._read_variable(self.VARIABLE)).lower() == "true"
+
+    def _full_profile_every(self) -> int:
+        """Merged commits after which a full profile is due; 0 never forces one."""
+        value = self._read_variable(self.FULL_PROFILE_EVERY_VARIABLE)
+        try:
+            return max(int(value), 0)
+        except (TypeError, ValueError):
+            return self.DEFAULT_FULL_PROFILE_EVERY
+
+    def _applies(
+        self,
+        entity,
+        monitoring_window_config: mwc.MonitoringWindowConfig,
+        profile_flags: dict | None,
+        start_time: int | None,
+        end_time: int | None,
+    ) -> bool:
+        """Whether the window is one whose statistics can be merged from the previous snapshot."""
+        if not isinstance(
+            entity, feature_group.FeatureGroup
+        ) or entity.time_travel_format not in (
+            "DELTA",
+            "HUDI",
+        ):
+            return False
+        if (
+            monitoring_window_config.window_config_type != mwc.WindowConfigType.ALL_TIME
+            or (monitoring_window_config.row_percentage or 1.0) != 1.0
+            or start_time not in (None, 0)
+            or end_time is None
+        ):
+            return False
+        flags = profile_flags or {}
+        if any(
+            flags.get(name)
+            for name in ("correlations", "histograms", "exact_uniqueness")
+        ):
+            return False
+        try:
+            if engine._get_type() != "spark":
+                return False
+        except Exception:
+            # no engine set up: nothing to merge with
+            return False
+        return self._enabled(entity)
+
+    def _compute(
+        self,
+        entity,
+        feature_names: list[str] | None,
+        end_commit_time: int,
+        kll: bool = False,
+        histogram_bins: int | None = None,
+    ) -> Statistics | None:
+        """Merge the rows committed since the previous snapshot into its statistics.
+
+        Returns the saved statistics, or `None` when the merge does not apply or fails, and the caller profiles the whole snapshot.
+        """
+        try:
+            return self._merge(
+                entity, feature_names, end_commit_time, kll, histogram_bins
+            )
+        except Exception as e:
+            _logger.warning(
+                "Incremental statistics failed, profiling the whole snapshot: %s", e
+            )
+            return None
+
+    def _merge(
+        self,
+        entity,
+        feature_names: list[str] | None,
+        end_commit_time: int,
+        kll: bool,
+        histogram_bins: int | None,
+    ) -> Statistics | None:
+        """The merge itself, or `None` when it does not apply.
+
+        It does not apply without a previous snapshot with a mergeable state, with a feature the snapshot does not cover, or with a commit in between that updated or deleted rows.
+        """
+        commits = self._commits_until(entity, end_commit_time)
+        if not commits:
+            return None
+        # A scheduled run ends its window at the time it ran.
+        # Its statistics are those of the latest commit at or before that time, and the commit time is what the merge reads up to.
+        end_commit_time = commits[0].commit_time
+        previous = self._previous_snapshot(entity, commits[1:])
+        if previous is None:
+            return None
+        names = self._profiled_names(
+            entity, feature_names or [feature.name for feature in entity.features]
+        )
+        if not names:
+            return None
+        previous_fds = {
+            fds.feature_name: fds
+            for fds in previous.feature_descriptive_statistics or []
+            if ((fds.extended_statistics or {}).get("mergeable") or {}).get("format")
+            == self._MERGEABLE_FORMAT
+        }
+        missing = [name for name in names if name not in previous_fds]
+        if missing:
+            _logger.info(
+                "Incremental statistics: previous snapshot has no mergeable state for %s",
+                missing,
+            )
+            return None
+        full_profile_every = self._full_profile_every()
+        if full_profile_every > 0:
+            merges = max(
+                (
+                    int(
+                        ((fds.extended_statistics or {}).get("mergeable") or {}).get(
+                            "merges"
+                        )
+                        or 0
+                    )
+                    for fds in previous.feature_descriptive_statistics or []
+                ),
+                default=0,
+            )
+            if merges >= full_profile_every:
+                _logger.info(
+                    "Incremental statistics: %s commits merged since the last full profile, profiling the whole snapshot",
+                    merges,
+                )
+                return None
+        if not self._append_only_after(commits, previous.window_end_commit_time):
+            return None
+        delta_df = self._read_commits_after(
+            entity, names, previous.window_end_commit_time, end_commit_time
+        )
+        if delta_df is None:
+            return None
+        spark_engine = engine._get_instance()
+        delta_profile = spark_engine._profile(
+            delta_df,
+            names,
+            False,
+            False,
+            False,
+            kll,
+            histogram_bins,
+            mergeable_state=True,
+        )
+        previous_json = json.dumps([previous_fds[name].to_dict() for name in names])
+        merged = spark_engine._jvm.com.logicalclocks.hsfs.spark.engine.profile.ProfileMerger.merge(
+            previous_json, delta_profile
+        )
+        statistics = Statistics(
+            computation_time=int(datetime.now(timezone.utc).timestamp() * 1000),
+            row_percentage=1.0,
+            feature_descriptive_statistics=self._statistics_engine._parse_deequ_statistics(
+                merged, False
+            ),
+            window_end_commit_time=end_commit_time,
+        )
+        _logger.info(
+            "Incremental statistics: merged the commits after %s into the snapshot at %s",
+            previous.window_end_commit_time,
+            end_commit_time,
+        )
+        return self._statistics_engine._save_statistics(statistics, entity, None)
+
+    # offline types the Spark profiler profiles; it skips every other column (timestamps,
+    # dates, arrays, structs, binary), so no statistics row ever holds one
+    _PROFILED_TYPES = {
+        "tinyint",
+        "smallint",
+        "int",
+        "bigint",
+        "float",
+        "double",
+        "string",
+        "boolean",
+    }
+
+    def _profiled_names(self, entity, names: list[str]) -> list[str]:
+        types = {
+            feature.name: (feature.type or "").lower() for feature in entity.features
+        }
+        return [
+            name
+            for name in names
+            if types.get(name) is None
+            or types[name] in self._PROFILED_TYPES
+            or types[name].startswith("decimal")
+        ]
+
+    def _read_commits_after(
+        self, entity, names: list[str], previous_end: int, end_commit_time: int
+    ):
+        """The rows the commits in (previous_end, end_commit_time] added, or `None`."""
+        if entity.time_travel_format != "DELTA":
+            return (
+                entity.select(names)
+                .as_of(exclude_until=previous_end, wallclock_time=end_commit_time)
+                .read()
+            )
+        # The change feed is bounded by version, read from the log, and each bound must be the very commit the backend recorded.
+        # How a commit time maps to a version: DeltaEngine._delta_version_at.
+        from hsfs.core import delta_engine
+        from pyspark.sql import functions as F
+
+        spark = engine._get_instance()._spark_session
+        reader = delta_engine.DeltaEngine(
+            entity.feature_store_id,
+            entity.feature_store_name,
+            entity,
+            spark,
+            spark.sparkContext,
+        )
+        location = entity.prepare_spark_location()
+        if not self._change_data_feed_enabled(spark, location):
+            _logger.info(
+                "Incremental statistics: the Delta table has no change data feed"
+            )
+            return None
+        versions = []
+        for commit_time in (previous_end, end_commit_time):
+            version = reader._delta_version_at(location, commit_time)
+            if version is None or int(commit_time) not in self._delta_commit_times(
+                reader, spark, location, version
+            ):
+                _logger.info(
+                    "Incremental statistics: no Delta version recorded at %s",
+                    commit_time,
+                )
+                return None
+            versions.append(version)
+        if versions[1] <= versions[0]:
+            return None
+        feed = (
+            spark.read.format(delta_engine.DeltaEngine.DELTA_SPARK_FORMAT)
+            .option("readChangeFeed", "true")
+            .option("startingVersion", versions[0] + 1)
+            .option("endingVersion", versions[1])
+            .load(location)
+        )
+        # The commit details bound the window by commit time, the feed by version, and the two can disagree on which commits fall in between.
+        # The feed is the authority on what changed, so any update or delete in it rules the merge out.
+        # Stopping at the first such row keeps the check cheap when there is one.
+        if feed.filter(F.col("_change_type") != "insert").limit(1).count() > 0:
+            _logger.info(
+                "Incremental statistics: the change feed holds updated or deleted rows"
+            )
+            return None
+        return feed.filter(F.col("_change_type") == "insert").select(*names)
+
+    @staticmethod
+    def _change_data_feed_enabled(spark, location: str) -> bool:
+        properties = spark.sql(f"DESCRIBE DETAIL delta.`{location}`").first()[
+            "properties"
+        ]
+        return (
+            str((properties or {}).get("delta.enableChangeDataFeed")).lower() == "true"
+        )
+
+    @staticmethod
+    def _delta_commit_times(reader, spark, location: str, version: int) -> set[int]:
+        jvm = spark._jvm
+        log_path = jvm.org.apache.hadoop.fs.Path(location.rstrip("/") + "/_delta_log")
+        fs = log_path.getFileSystem(spark._jsc.hadoopConfiguration())
+        times = {reader._delta_commit_file_time(jvm, fs, log_path, version)}
+        commit_info_time = reader._delta_commit_timestamp(jvm, fs, log_path, version)
+        if commit_info_time is not None:
+            times.add(commit_info_time)
+        return times
+
+    def _commits_until(self, entity, end_commit_time: int) -> list:
+        """The latest commits at or before `end_commit_time`, newest first."""
+        commits = self._feature_group_api._get_commit_details(
+            entity, end_commit_time, self.MAX_COMMITS + 1
+        )
+        if not isinstance(commits, list):
+            commits = [commits] if commits is not None else []
+        return [c for c in commits if c.commit_time is not None]
+
+    def _previous_snapshot(self, entity, earlier_commits: list) -> Statistics | None:
+        """The newest snapshot of the whole table at one of the commits, newest first, with its content.
+
+        The rows ending at or before the newest of the commits are listed once without content, and only the snapshot's content is read.
+        A snapshot is a row of the whole table, with no start bound, ending at one of the commits.
+        """
+        if not earlier_commits:
+            return None
+        commit_times = {commit.commit_time for commit in earlier_commits}
+        api = self._statistics_engine._statistics_api
+        rows = api._get_all_in_window(
+            entity,
+            end_commit_time=earlier_commits[0].commit_time,
+            limit=self.MAX_LISTED_ROWS,
+            row_percentage=1.0,
+            with_content=False,
+        )
+        for row in rows or []:
+            if (
+                row.window_start_commit_time in (None, 0)
+                and row.window_end_commit_time in commit_times
+            ):
+                # start 0 is how the backend stores a window with no start bound
+                snapshot = api._get(
+                    entity,
+                    start_commit_time=0,
+                    end_commit_time=row.window_end_commit_time,
+                    row_percentage=1.0,
+                    with_content=True,
+                )
+                if (
+                    snapshot is not None
+                    and snapshot.window_start_commit_time in (None, 0)
+                    and snapshot.window_end_commit_time == row.window_end_commit_time
+                ):
+                    return snapshot
+                break
+        _logger.info(
+            "Incremental statistics: no snapshot at the %s commits before this one",
+            len(earlier_commits),
+        )
+        return None
+
+    @staticmethod
+    def _append_only_after(commits: list, previous_end: int) -> bool:
+        """Whether every commit after the previous snapshot only inserted rows."""
+        for commit in commits:
+            if commit.commit_time <= previous_end:
+                break
+            if (commit.rows_updated or 0) > 0 or (commit.rows_deleted or 0) > 0:
+                _logger.info(
+                    "Incremental statistics: commit %s updated or deleted rows",
+                    commit.commit_time,
+                )
+                return False
+        return True
