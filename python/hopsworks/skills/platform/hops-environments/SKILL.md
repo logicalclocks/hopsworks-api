@@ -235,11 +235,20 @@ a scoped `@scope/name` is two path segments).
   `await_installation=False` to fire-and-forget, but then you must poll before the
   workload can use the env.
 - **Install into the clone, never the base** — bases are managed/read-only.
+- **Ubuntu packages in this terminal or Jupyter server: `hops apt install <pkg>`, never `sudo`.**
+  There is no sudo at runtime.
+  `hops apt` downloads the package and missing dependencies as the user, unpacks them into `/srv/hops/apt-packages/root`, and puts a wrapper per program in `/srv/hops/apt-packages/bin`, which is on `PATH`.
+  The libraries are only on the wrapped programs' own `LD_LIBRARY_PATH`; to load them from Python, run `eval "$(hops apt env --libraries)"` first.
+  `hops apt install --dry-run <pkg>` shows what would be added and what blocks it.
+  It does not run install scripts, refuses packages that would replace a package or shared library the image has, refuses to remove a package another installed one needs, and is lost on restart.
+  Self-contained tools and libraries work; packages that need their install script or hardcode `/usr/...` paths do not.
+  For those, and for anything a job, app or deployment needs, use custom commands on a cloned environment.
 - **MLOps:** prefer code (SDK/CLI) over the UI so env setup is reproducible across
   dev/staging/prod, and name the clone after the pipeline version it serves (e.g.
   `spark-feature-pipeline-v1`) so a pinned env travels with the code version.
 
 ## Toolset
+- **CLI (this container):** `hops apt install [--dry-run]|remove|list|env [--libraries]` for Ubuntu packages, without root.
 - **CLI:** `hops env list`, `hops env clone <new> --from <base> [--description]`, `hops env install <env> -f <local-file-or-project-path> [--upload-dir] [--no-overwrite]`.
 - **SDK:** `project.get_environment_api()` → `create_environment(base_environment_name=, await_creation=)`, `env.install_requirements()`, `env.install_wheel()`, `env.uninstall()`, `env.delete()`.
 - **npm (5.2+):** `env.install_npm()`, `env.install_npm_from_package_json()` / `env.resolve_npm_package_json()`, `env.install_npm_from_git()` / `env.inspect_npm_git()`, `env.uninstall(name, package_source="NPM")`, as in *npm packages* above.
