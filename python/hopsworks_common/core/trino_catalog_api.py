@@ -175,7 +175,9 @@ class TrinoCatalogApi:
     ) -> dict[str, Any]:
         """Create a Trino catalog.
 
-        The catalog is recorded now and becomes queryable when the query engine restarts. Check
+        The catalog is recorded now. Where `get_capabilities()["dynamicCatalogs"]` is true it becomes
+        queryable within about a minute, with no restart, and `get_catalog(name)["status"]` reads
+        `SYNCED`. Otherwise it becomes queryable when the query engine restarts: check
         `get_capabilities()["nextScheduledRestart"]` for when that is, or call `restart()` as a
         cluster administrator to do it immediately.
 
@@ -220,7 +222,8 @@ class TrinoCatalogApi:
     ) -> dict[str, Any]:
         """Change an existing catalog's connector or properties.
 
-        Like a create, the change takes effect at the next query engine restart. A property left at
+        Like a create, the change takes effect within about a minute with dynamic catalogs, else at
+        the next query engine restart. A property left at
         its masked value keeps the secret already stored for it, which is how an update changes one
         property without retyping the others' credentials.
 
@@ -248,7 +251,8 @@ class TrinoCatalogApi:
     def delete_catalog(self, name: str) -> None:
         """Delete a catalog.
 
-        The catalog stays queryable until the query engine restarts and unloads it.
+        The catalog stays queryable for about a minute with dynamic catalogs, else until the query
+        engine restarts and unloads it.
 
         Parameters:
             name: The catalog's full name, including the `<project>__` prefix.

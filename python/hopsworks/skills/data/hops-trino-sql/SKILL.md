@@ -58,7 +58,12 @@ hops trino catalogs                       # delta, hive, hudi, iceberg, ...
 hops trino schemas delta                  # schemas in a catalog
 hops trino tables delta.<project>_featurestore
 hops trino describe delta.<project>_featurestore.<fg>_1
+hops trino catalog create <data_source>   # query a data source through Trino; waits until it answers
+hops trino catalog info <catalog>         # status SYNCED: Trino has it; FAILED: failureReason says why
+hops trino catalog delete <catalog> --yes # the data source stays
 ```
+
+A catalog made from a data source is queried as `"<catalog>".<schema>.<table>`, with the name `catalog create` prints, in double quotes: it can start with a digit.
 
 ## Related skills
 
