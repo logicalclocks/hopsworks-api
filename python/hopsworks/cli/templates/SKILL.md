@@ -134,6 +134,7 @@ Join spec: `"<fg>[:<ver>] <INNER|LEFT|RIGHT|FULL> <on>[=<right_on>] [prefix]"`.
 ```bash
 hops fv list
 hops fv info <name> [--version N]
+hops fv preview <name> [--limit 10] [--td-version N]   # First rows, keys and event time, untransformed
 hops fv create <name> --feature-group <fg> [--join <spec>] [--transform <fn:col>]
 hops fv get <name> --entry "id=42,region=eu"       # Online vector lookup
 hops fv read <name> [--n 100] [--output data.parquet]
