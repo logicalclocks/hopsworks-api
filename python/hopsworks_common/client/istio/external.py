@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
 
 import requests
@@ -59,14 +60,20 @@ class Client(istio.Client):
         self._connected = False
 
     def _replace_public_host(self, url: ParseResult) -> ParseResult:
-        """No need to replace as we are already in external client.
+        """Replace the host with the public host set in HOPSWORKS_PUBLIC_HOST.
+
+        Only used for UI URLs. API calls keep the client's base URL.
 
         Parameters:
             url: The URL to replace the host in.
 
         Returns:
-            The URL as is.
+            The URL with the host replaced when HOPSWORKS_PUBLIC_HOST is set and
+            not empty, else the URL as is.
         """
+        public_host = os.environ.get(self.HOPSWORKS_PUBLIC_HOST)
+        if public_host:
+            return url._replace(netloc=public_host)
         return url
 
     def _is_external(self):
