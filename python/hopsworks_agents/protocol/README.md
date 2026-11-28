@@ -428,6 +428,7 @@ A streaming caller receives the bytes inline in the events; a caller that reads 
 
 By default every holder of the deployment's credential sees every task of the deployment, as `/v1/conversations` works.
 An agent built with `memory_routes=False` is **private**: a task, a conversation, its memory, its open questions and its push configs belong to the caller the gateway verified (`x-hopsworks-principal`), over A2A and over `/v1/run` and `/v1/chat` alike.
+Where the platform gives the deployment its key (`HOPSWORKS_AGENT_PRINCIPAL_KEY`), the header counts only with the authenticator's signature over it (`x-hopsworks-principal-signature`, HMAC-SHA256 over the principal, the auth kind and `x-hopsworks-principal-time`, at most five minutes old): a workload that reaches the pod around the gateway cannot name a caller. Without the key (an older platform, a local run) the header is taken as it comes.
 Another caller's task is `TaskNotFoundError`, and a new task by another caller on the same `contextId` starts an empty conversation.
 The handler and the wire still see the plain ids; the caller's namespace is added where memory is stored.
 Behind the gateway a private agent refuses a request that names no caller (`401`, `principal_required`); a local run has no gateway and treats every caller as `anonymous`.
@@ -458,7 +459,7 @@ On a deployment the card served at `HOPSWORKS_AGENT_PUBLIC_URL` carries a signat
 
 A cluster that serves agents on the Gateway API path can give every agent deployment a hostname of its own (`<deployment>-<serving id>.<domain>`, set up by the administrator).
 The platform then sets `HOPSWORKS_AGENT_PUBLIC_URL` to `https://<host>`, the card's interfaces are at the domain root (`https://<host>/a2a`, `https://<host>/a2a/rest`), and A2A discovery works as the protocol expects: a client needs only the hostname.
-Without one the path form stays, and the manifest says why under `hostname_off`: `no_domain` (the cluster configures no agent domain), `knative_mode` (a Knative-mode deployment while Envoy Gateway serves inference), or `not_set` (a local run or an older platform).
+Without one the path form stays, and the manifest says why under `hostname_off`: `no_domain` (the cluster configures no agent domain), `knative_mode` (a Knative-mode deployment while Envoy Gateway serves inference), `not_reserved` (the deployment owns no hostname yet: one from before hostnames were reserved that was not restarted since, or one whose hostname another deployment owns), or `not_set` (a local run or an older platform).
 
 The card is anonymous only when the deployment asks for it, `deploy_agent(..., public_card=True)` or the "Public Agent Card" switch, and the administrator allows public cards: the gateway then lets `GET /.well-known/agent-card.json` on the agent's hostname through without a credential, and the platform sets `HOPSWORKS_AGENT_PUBLIC_CARD=true`.
 What is served there is the public card, the same one an authenticated caller reads; the extended card and every other request still need the deployment's credential, and a private agent refuses them without a caller, a principal header that is present but empty included.

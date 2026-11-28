@@ -53,6 +53,7 @@ def local(monkeypatch):
         "HOPSWORKS_AGENT_GRPC_PORT",
         "HOPSWORKS_AGENT_PUBLIC_CARD",
         "HOPSWORKS_AGENT_HOSTNAME_OFF_REASON",
+        "HOPSWORKS_AGENT_PRINCIPAL_KEY",
         "HOPSWORKS_AGENT_CARD_SIGN_URL",
     ):
         monkeypatch.delenv(name, raising=False)
@@ -336,6 +337,52 @@ class TestPrivateOverGrpc:
                 return app._a2a.executor.runs
 
         assert not run(scenario())
+
+    def test_a_principal_the_gateway_did_not_sign_is_refused(
+        self, grpc_port, monkeypatch
+    ):
+        import base64
+        import hashlib
+        import hmac
+        import time
+
+        key = "e9AV4-UqqYsmJmjUeMJJMudEM7tbNW9L7GpmP5cAt1E"
+        monkeypatch.setenv("DEPLOYMENT_ID", "42")
+        monkeypatch.setenv("HOPSWORKS_AGENT_PRINCIPAL_KEY", key)
+        app = self._app()
+
+        def signed(principal):
+            at = str(int(time.time()))
+            raw = base64.urlsafe_b64decode(key + "=")
+            sig = base64.urlsafe_b64encode(
+                hmac.new(
+                    raw, f"{principal}\napikey\n{at}".encode(), hashlib.sha256
+                ).digest()
+            ).rstrip(b"=")
+            return [
+                ("a2a-version", "1.0"),
+                (PRINCIPAL, principal),
+                ("x-hopsworks-auth-kind", "apikey"),
+                ("x-hopsworks-principal-time", at),
+                ("x-hopsworks-principal-signature", sig.decode()),
+            ]
+
+        async def scenario():
+            async with _Serving(app):
+                # a workload that reaches the pod around the gateway names a caller
+                with pytest.raises(grpc.aio.AioRpcError) as refused:
+                    await self._call(
+                        grpc_port, "SendMessage", message("x"), "user:alice"
+                    )
+                assert refused.value.code() == grpc.StatusCode.UNAUTHENTICATED
+                # the gateway's signed one is let in
+                async with grpc.aio.insecure_channel(f"localhost:{grpc_port}") as ch:
+                    stub = a2a_pb2_grpc.A2AServiceStub(ch)
+                    return await stub.SendMessage(
+                        message("y"), metadata=signed("user:alice"), timeout=10
+                    )
+
+        assert run(scenario()).task.id
 
     def test_a_local_run_takes_the_caller_for_anonymous(self, grpc_port):
         app = self._app()
