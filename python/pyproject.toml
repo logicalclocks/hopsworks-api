@@ -98,8 +98,10 @@ dev-no-opt = [
     "pytest==7.4.4",
     "pytest-mock==3.12.0",
     "pytest-cov>=4.0",
-    # the A2A task stores are tested on SQLite through SQLAlchemy's async engine
-    "aiosqlite>=0.20",
+    # the A2A task stores are tested on SQLite through SQLAlchemy's async engine.
+    # <0.22: in 0.22 a second close of a connection never returns, which hangs
+    # the A2A tests (https://github.com/omnilib/aiosqlite/issues/403)
+    "aiosqlite>=0.20,<0.22",
     "ruff==0.15.6",
     "docsig==0.79.0",
     "pyspark==4.1.1",
@@ -114,8 +116,10 @@ dev-pandas1 = [
     "pytest==7.4.4",
     "pytest-mock==3.12.0",
     "pytest-cov>=4.0",
-    # the A2A task stores are tested on SQLite through SQLAlchemy's async engine
-    "aiosqlite>=0.20",
+    # the A2A task stores are tested on SQLite through SQLAlchemy's async engine.
+    # <0.22: in 0.22 a second close of a connection never returns, which hangs
+    # the A2A tests (https://github.com/omnilib/aiosqlite/issues/403)
+    "aiosqlite>=0.20,<0.22",
     "ruff==0.15.6",
     "docsig==0.79.0",
     "pyspark==4.1.1",
