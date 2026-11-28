@@ -25,7 +25,7 @@ Superset is reachable only inside the cluster.
 
   ```bash
   hops job deploy <slug>-dashboard <program> --env python-feature-pipeline \
-    --upload-dir Users/<user>/dashboards --overwrite --run --wait
+    --overwrite --run --wait
   hops job logs <slug>-dashboard --stdout
   ```
 
