@@ -142,6 +142,10 @@ class DataSourceApi:
         if result is None:
             return []
         if isinstance(result, ds.DataSource):
+            # An empty listing (an S3 prefix with no readable file) comes back
+            # as one blank item, which is no table at all.
+            if not (result.table or result.path or result.query):
+                return []
             return [result]
         return result
 

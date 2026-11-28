@@ -166,3 +166,11 @@ def test_create_external_fails_when_nothing_was_saved(mock_project):
     )
     assert result.exit_code == 1
     assert "Could not create external FG: bad schema" in result.output
+
+
+def test_create_external_refuses_empty_path(mock_project):
+    result, create = _create(mock_project, ["--path", "", "--data-format", "csv"])
+    assert result.exit_code == 2
+    assert "--path is empty" in result.output
+    assert "hops datasource tables src" in result.output
+    create.assert_not_called()
