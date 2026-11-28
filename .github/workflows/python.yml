@@ -170,7 +170,7 @@ jobs:
       - name: Cache Spark ivy packages
         uses: actions/cache@v4
         with:
-          path: ~/.ivy2
+          path: ~/.ivy2.5.2 # Spark 4's Ivy home; spark-ivy-cache.yml saves this entry on main
           key: ivy-spark-avro-4.1.1
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
@@ -220,7 +220,7 @@ jobs:
       - name: Cache Spark ivy packages
         uses: actions/cache@v4
         with:
-          path: ~/.ivy2
+          path: ~/.ivy2.5.2 # Spark 4's Ivy home; spark-ivy-cache.yml saves this entry on main
           key: ivy-spark-avro-4.1.1
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
@@ -273,7 +273,7 @@ jobs:
       - name: Cache Spark ivy packages
         uses: actions/cache@v4
         with:
-          path: ~/.ivy2
+          path: ~/.ivy2.5.2 # Spark 4's Ivy home; spark-ivy-cache.yml saves this entry on main
           key: ivy-spark-avro-4.1.1
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
@@ -326,7 +326,7 @@ jobs:
       - name: Cache Spark ivy packages
         uses: actions/cache@v4
         with:
-          path: ~/.ivy2
+          path: ~/.ivy2.5.2 # Spark 4's Ivy home; spark-ivy-cache.yml saves this entry on main
           key: ivy-spark-avro-4.1.1
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
@@ -379,7 +379,7 @@ jobs:
       - name: Cache Spark ivy packages
         uses: actions/cache@v4
         with:
-          path: ~/.ivy2
+          path: ~/.ivy2.5.2 # Spark 4's Ivy home; spark-ivy-cache.yml saves this entry on main
           key: ivy-spark-avro-4.1.1
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
@@ -420,7 +420,7 @@ jobs:
       - name: Cache Spark ivy packages
         uses: actions/cache@v4
         with:
-          path: ~/.ivy2
+          path: ~/.ivy2.5.2 # Spark 4's Ivy home; spark-ivy-cache.yml saves this entry on main
           key: ivy-spark-avro-4.1.1
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
@@ -469,7 +469,7 @@ jobs:
       - name: Cache Spark ivy packages
         uses: actions/cache@v4
         with:
-          path: ~/.ivy2
+          path: ~/.ivy2.5.2 # Spark 4's Ivy home; spark-ivy-cache.yml saves this entry on main
           key: ivy-spark-avro-4.1.1
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
@@ -520,7 +520,7 @@ jobs:
       - name: Cache Spark ivy packages
         uses: actions/cache@v4
         with:
-          path: ~/.ivy2
+          path: ~/.ivy2.5.2 # Spark 4's Ivy home; spark-ivy-cache.yml saves this entry on main
           key: ivy-spark-avro-4.1.1
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support

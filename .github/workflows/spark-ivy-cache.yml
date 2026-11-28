@@ -1,0 +1,66 @@
+name: spark-ivy-cache
+
+# Saves the spark-avro Ivy cache on main, so pull request runs restore it instead of downloading spark-avro from
+# Maven Central, which rate-limits the runners (HTTP 429, reported by Ivy as "not found").
+# A pull request reads the caches of main and of its own runs, never another pull request's.
+# Windows cannot restore a cache saved on Linux, so each OS saves its own entry.
+# The path and key must match the "Cache Spark ivy packages" steps in python.yml and coverage.yml.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    paths:
+      - .github/workflows/spark-ivy-cache.yml
+
+jobs:
+  seed:
+    name: Seed the spark-avro Ivy cache (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Restore the Ivy cache
+        id: ivy
+        uses: actions/cache@v4
+        with:
+          path: ~/.ivy2.5.2
+          key: ivy-spark-avro-4.1.1
+
+      - name: Set up JDK 17
+        if: steps.ivy.outputs.cache-hit != 'true'
+        uses: actions/setup-java@v5
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Setup Python
+        if: steps.ivy.outputs.cache-hit != 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Spark resolves the package itself, so the cache holds what the tests' PYSPARK_SUBMIT_ARGS reads.
+      # Resolution copies the jars to ~/.ivy2.5.2/jars before the session starts, and on Windows the start then fails
+      # without the winutils the tests take from python/tests/data/hadoop, so the jar decides whether it worked.
+      # A failed resolution leaves nothing that stops the next attempt from downloading.
+      - name: Download spark-avro into the Ivy cache
+        if: steps.ivy.outputs.cache-hit != 'true'
+        shell: bash
+        env:
+          PYSPARK_SUBMIT_ARGS: --packages org.apache.spark:spark-avro_2.13:4.1.1 pyspark-shell
+        run: |
+          pip install pyspark==4.1.1
+          jar=~/.ivy2.5.2/jars/org.apache.spark_spark-avro_2.13-4.1.1.jar
+          for attempt in 1 2 3 4 5; do
+            python -c 'from pyspark.sql import SparkSession; SparkSession.builder.master("local[1]").getOrCreate().stop()' || true
+            if [ -f "$jar" ]; then
+              exit 0
+            fi
+            sleep $((attempt * 30))
+          done
+          exit 1
