@@ -283,7 +283,7 @@ class FeatureGroupApi:
         """Delete the content of a feature group.
 
         This endpoint serves to simulate the overwrite/insert mode.
-        The backend deletes and recreates the feature group under a new id, so the instance is updated from the response; later commits would otherwise be registered against the deleted id.
+        The backend empties the feature group in place and keeps its id; the instance is updated from the response.
 
         Parameters:
             feature_group_instance: metadata object of feature group to clear the content for
