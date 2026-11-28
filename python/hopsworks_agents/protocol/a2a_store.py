@@ -1046,13 +1046,37 @@ def _version_ordered_stream() -> type:
     return _VersionOrderedStream
 
 
+def _push_config_store() -> type:
+    """The SDK's push notification config store, whose table may be created by another replica at the same moment.
+
+    The store creates its table on first use, which two replicas sharing a
+    local database can reach together: the one that loses fails with "table
+    already exists", and the replica would take the table for unreadable.
+    The table is there then, so the creation is made again, which finds it.
+    """
+    if "push" not in _TYPES:
+        from a2a.server.tasks.database_push_notification_config_store import (  # noqa: PLC0415
+            DatabasePushNotificationConfigStore,
+        )
+        from sqlalchemy.exc import OperationalError  # noqa: PLC0415
+
+        class _PushConfigStore(DatabasePushNotificationConfigStore):
+            async def initialize(self) -> None:
+                try:
+                    await super().initialize()
+                except OperationalError as e:
+                    if "already exists" not in str(e):
+                        raise
+                    await super().initialize()
+
+        _TYPES["push"] = _PushConfigStore
+    return _TYPES["push"]
+
+
 class _DurableStores:
     """The SDK's database stores over one engine, under our table names and owner."""
 
     def __init__(self, url: str, ownership: _Ownership):
-        from a2a.server.tasks.database_push_notification_config_store import (  # noqa: PLC0415
-            DatabasePushNotificationConfigStore,
-        )
         from sqlalchemy.ext.asyncio import create_async_engine  # noqa: PLC0415
 
         self.url = url
@@ -1095,7 +1119,7 @@ class _DurableStores:
             self.engine, create_table=create, owner_resolver=ownership._owner
         )
         self.event_stream._event_model = models["events"]
-        self.push_configs = DatabasePushNotificationConfigStore(
+        self.push_configs = _push_config_store()(
             self.engine,
             create_table=create,
             encryption_key=os.environ.get(PUSH_KEY_ENV) or None,
