@@ -1614,6 +1614,20 @@ class TestQueryHistory:
         assert frame.empty
         assert "started_at" in frame.columns
 
+    def test_parses_timestamps_with_and_without_a_fraction(self, http, sales):
+        whole_second = {**HISTORY_JSON, "startedAt": "2026-11-25T13:14:00Z"}
+        http._send_request.reset_mock()
+        http._send_request.side_effect = [
+            {"items": [HISTORY_JSON, whole_second], "nextCursor": None}
+        ]
+
+        frame = sales.query_history()
+
+        assert [str(t) for t in frame["started_at"]] == [
+            "2026-11-08 10:00:00.123000+00:00",
+            "2026-11-25 13:14:00+00:00",
+        ]
+
 
 class TestExports:
     def test_exports_lists_the_control_plane_answer(self, http, sales):

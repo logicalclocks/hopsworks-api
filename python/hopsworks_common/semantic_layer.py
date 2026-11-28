@@ -1278,8 +1278,13 @@ class SemanticProject:
             ],
             columns=list(_HISTORY_COLUMNS.values()),
         )
+        # A timestamp on a whole second comes without a fraction, so the format pandas 2 infers from the first row does not fit every row.
+        # Its "ISO8601" format accepts both; pandas 1 has no such format and parses each ISO 8601 string on its own.
+        iso8601 = (
+            {"format": "ISO8601"} if int(pd.__version__.split(".")[0]) >= 2 else {}
+        )
         for column in ("started_at", "finished_at"):
-            frame[column] = pd.to_datetime(frame[column], utc=True)
+            frame[column] = pd.to_datetime(frame[column], utc=True, **iso8601)
         for column in ("build_id", "rows", "duration_ms"):
             frame[column] = frame[column].astype("Int64")
         return frame
