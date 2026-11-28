@@ -31,8 +31,9 @@ builds/reuses the container behind the scenes — no Dockerfile to write. One
 customized environment can back many jobs.
 
 `hops job deploy` is the one-shot: it uploads a local script, sets the Python
-environment, schedules, and runs — everything `create` + `schedule` + `run` do
-separately, plus the environment selection `create` cannot do.
+environment and resources, schedules, and runs: everything `create` + `schedule`
++ `run` do separately. A redeploy of a job of the same type keeps its stored
+configuration and changes only what the command gives.
 
 ```bash
 # Positional args are NAME then SCRIPT (a local script is uploaded for you).
@@ -55,14 +56,14 @@ job = api.create_job(name="feature-pipeline", config=config)
 job.run(await_termination=True)
 ```
 
-`hops job deploy` sets no memory or cores (a Python job gets the default,
-2048 MB and 1 core). Set them once after the deploy; a later `--overwrite`
-deploy keeps them:
+A job without `--resources` gets the cluster's default for its type. Set the
+job's own resources with `--resources` on `hops job create` or
+`hops job deploy`; fields not given keep their value, and a later deploy keeps
+them. A start beyond the project's quota is refused (412).
 
-```python
-job = hopsworks.login().get_job_api().get_job("telco-churn-features")
-job.config["resourceConfig"]["memory"] = 4096      # MB; "cores" beside it
-job.save()
+```bash
+hops job deploy telco-churn-features features.py \
+  --resources '{"resourceConfig": {"cores": 2, "memory": 4096}}'
 ```
 
 To give one run more (a backfill, a retry after an out-of-memory kill) without
